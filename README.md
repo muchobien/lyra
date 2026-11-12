@@ -121,18 +121,13 @@ lyra event list [--repo NAME] [--limit N]
 `internal/store/queries.sql`; run `sqlc generate` after changing either, and commit the
 generated `internal/store/queries` package.
 
-`scripts/e2e.zsh` runs the end-to-end check that CI runs. It needs zsh, `git`,
-`ssh-keygen`, `jq` and `curl`, and uses ports 18080 and 18081:
-
-```sh
-go build -o bin/lyra ./cmd/lyra && scripts/e2e.zsh
-```
-
-It starts two servers on a temporary data directory with generated SSH keys and
-covers:
+`go test ./...` runs the end-to-end tests in `e2e/`, which CI also runs. They need
+`git` and `ssh-keygen` on `PATH`. The tests build the `lyra` binary, start servers on
+free ports with temporary data directories and generated SSH keys, and drive them
+with `git` and the CLI. They cover:
 
 - Auth through the Tailscale header and through tokens.
 - Clone and push, including chunked request bodies.
-- Scoped, read-only and revoked tokens, and recorded actors.
+- Scoped, read-only, revoked and expired tokens, and recorded actors.
 - Signature status of commits and tags, cross-checked against `git verify-commit`
   and `git verify-tag`, including forged signatures.
