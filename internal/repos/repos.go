@@ -19,17 +19,16 @@ const (
 	Unsigned   = "unsigned"
 )
 
-type Git struct {
-	AllowedSigners string
-}
+type Git struct{}
 
 type Signature struct {
 	Status      string `json:"status"`
 	Fingerprint string `json:"fingerprint,omitempty"`
-	Principal   string `json:"principal,omitempty"`
 	KeyID       int64  `json:"key_id,omitempty"`
 	KeyUser     string `json:"key_user,omitempty"`
 	KeyAgent    string `json:"key_agent,omitempty"`
+	Payload     []byte `json:"-"`
+	Armored     []byte `json:"-"`
 }
 
 type Person struct {
@@ -70,19 +69,93 @@ type Ref struct {
 	SHA  string `json:"sha"`
 }
 
-var fingerprintPattern = regexp.MustCompile(`key (SHA256:[A-Za-z0-9+/=]+)`)
-var principalPattern = regexp.MustCompile(`signature for (\S+) with`)
+var signatureStart = regexp.MustCompile(`(?m)^-----BEGIN (PGP|SSH) SIGNATURE-----$|^-----BEGIN SIGNED MESSAGE-----$`)
 
-func (g Git) run(dir string, args ...string) ([]byte, []byte, error) {
-	full := append([]string{"-c", "gpg.ssh.allowedSignersFile=" + g.AllowedSigners}, args...)
-	cmd := exec.Command("git", full...)
+func (g Git) command(dir string, stdin []byte, args ...string) ([]byte, []byte, error) {
+	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+func (g Git) run(dir string, args ...string) ([]byte, []byte, error) {
+	return g.command(dir, nil, args...)
+}
+
+func (g Git) objects(dir string, shas []string) (map[string][]byte, error) {
+	objects := map[string][]byte{}
+	if len(shas) == 0 {
+		return objects, nil
+	}
+	stdout, stderr, err := g.command(dir, []byte(strings.Join(shas, "\n")+"\n"), "cat-file", "--batch")
+	if err != nil {
+		return nil, fmt.Errorf("cat-file --batch: %v: %s", err, stderr)
+	}
+	for len(stdout) > 0 {
+		header, rest, found := bytes.Cut(stdout, []byte("\n"))
+		if !found {
+			break
+		}
+		fields := strings.Fields(string(header))
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("cat-file --batch: unexpected header %q", header)
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size+1 > len(rest) {
+			return nil, fmt.Errorf("cat-file --batch: bad size in %q", header)
+		}
+		objects[fields[0]] = rest[:size]
+		stdout = rest[size+1:]
+	}
+	return objects, nil
+}
+
+func commitSignature(raw []byte) Signature {
+	headers, message := raw, []byte(nil)
+	if end := bytes.Index(raw, []byte("\n\n")); end >= 0 {
+		headers, message = raw[:end+1], raw[end+1:]
+	}
+	var payload, armored bytes.Buffer
+	inSignature := false
+	for _, line := range bytes.SplitAfter(headers, []byte("\n")) {
+		if inSignature && bytes.HasPrefix(line, []byte(" ")) {
+			armored.Write(line[1:])
+			continue
+		}
+		inSignature = false
+		if value, isSignature := bytes.CutPrefix(line, []byte("gpgsig ")); isSignature {
+			inSignature = true
+			armored.Write(value)
+			continue
+		}
+		if value, isSignature := bytes.CutPrefix(line, []byte("gpgsig-sha256 ")); isSignature {
+			inSignature = true
+			armored.Write(value)
+			continue
+		}
+		payload.Write(line)
+	}
+	if armored.Len() == 0 {
+		return Signature{Status: Unsigned}
+	}
+	payload.Write(message)
+	return Signature{Status: Unverified, Payload: payload.Bytes(), Armored: armored.Bytes()}
+}
+
+func tagSignature(raw []byte) Signature {
+	matches := signatureStart.FindAllIndex(raw, -1)
+	if matches == nil {
+		return Signature{Status: Unsigned}
+	}
+	start := matches[len(matches)-1][0]
+	return Signature{Status: Unverified, Payload: raw[:start], Armored: raw[start:]}
 }
 
 func (g Git) Init(dir string) error {
@@ -128,39 +201,7 @@ func (g Git) Branches(dir string) ([]Ref, error) {
 	return refs, nil
 }
 
-const logFormat = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%G?%x00%GK%x00%GS%x00%s%x00%b%x1e"
-
-func parseCommits(output []byte) []Commit {
-	commits := []Commit{}
-	for _, record := range strings.Split(string(output), "\x1e") {
-		record = strings.TrimLeft(record, "\n")
-		if record == "" {
-			continue
-		}
-		fields := strings.SplitN(record, "\x00", 13)
-		if len(fields) < 13 {
-			continue
-		}
-		commit := Commit{
-			SHA:       fields[0],
-			Parents:   strings.Fields(fields[1]),
-			Author:    Person{Name: fields[2], Email: fields[3], Date: fields[4]},
-			Committer: Person{Name: fields[5], Email: fields[6], Date: fields[7]},
-			Subject:   fields[11],
-			Body:      strings.TrimSpace(fields[12]),
-		}
-		switch fields[8] {
-		case "G":
-			commit.Signature = Signature{Status: Verified, Fingerprint: fields[9], Principal: fields[10]}
-		case "N":
-			commit.Signature = Signature{Status: Unsigned}
-		default:
-			commit.Signature = Signature{Status: Unverified, Fingerprint: fields[9]}
-		}
-		commits = append(commits, commit)
-	}
-	return commits
-}
+const logFormat = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%b%x1e"
 
 func (g Git) Log(dir, rev string, limit int) ([]Commit, error) {
 	sha, err := g.ResolveCommit(dir, rev)
@@ -171,50 +212,46 @@ func (g Git) Log(dir, rev string, limit int) ([]Commit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git log: %v: %s", err, stderr)
 	}
-	return parseCommits(stdout), nil
-}
-
-func verifyOutput(stderr []byte, err error) Signature {
-	output := string(stderr)
-	signature := Signature{Status: Unverified}
-	if match := fingerprintPattern.FindStringSubmatch(output); match != nil {
-		signature.Fingerprint = match[1]
-	}
-	if err == nil {
-		signature.Status = Verified
-		if match := principalPattern.FindStringSubmatch(output); match != nil {
-			signature.Principal = match[1]
+	commits := []Commit{}
+	shas := []string{}
+	for _, record := range strings.Split(string(stdout), "\x1e") {
+		record = strings.TrimLeft(record, "\n")
+		if record == "" {
+			continue
 		}
+		fields := strings.SplitN(record, "\x00", 10)
+		if len(fields) < 10 {
+			continue
+		}
+		commits = append(commits, Commit{
+			SHA:       fields[0],
+			Parents:   strings.Fields(fields[1]),
+			Author:    Person{Name: fields[2], Email: fields[3], Date: fields[4]},
+			Committer: Person{Name: fields[5], Email: fields[6], Date: fields[7]},
+			Subject:   fields[8],
+			Body:      strings.TrimSpace(fields[9]),
+		})
+		shas = append(shas, fields[0])
 	}
-	return signature
+	objects, err := g.objects(dir, shas)
+	if err != nil {
+		return nil, err
+	}
+	for index := range commits {
+		commits[index].Signature = commitSignature(objects[commits[index].SHA])
+	}
+	return commits, nil
 }
 
 func (g Git) Commit(dir, rev string) (Commit, error) {
-	sha, err := g.ResolveCommit(dir, rev)
+	commits, err := g.Log(dir, rev, 1)
 	if err != nil {
 		return Commit{}, err
 	}
-	stdout, stderr, err := g.run(dir, "log", "--max-count=1", "--format="+logFormat, sha, "--")
-	if err != nil {
-		return Commit{}, fmt.Errorf("git log: %v: %s", err, stderr)
-	}
-	commits := parseCommits(stdout)
 	if len(commits) != 1 {
 		return Commit{}, ErrNotFound
 	}
-	commit := commits[0]
-	raw, _, err := g.run(dir, "cat-file", "commit", sha)
-	if err != nil {
-		return Commit{}, err
-	}
-	header, _, _ := strings.Cut(string(raw), "\n\n")
-	if !strings.Contains("\n"+header, "\ngpgsig") {
-		commit.Signature = Signature{Status: Unsigned}
-		return commit, nil
-	}
-	_, verifyStderr, verifyErr := g.run(dir, "verify-commit", sha)
-	commit.Signature = verifyOutput(verifyStderr, verifyErr)
-	return commit, nil
+	return commits[0], nil
 }
 
 func (g Git) Patch(dir, sha string) (string, error) {
@@ -226,19 +263,20 @@ func (g Git) Patch(dir, sha string) (string, error) {
 }
 
 func (g Git) Tags(dir string) ([]Tag, error) {
-	format := "%(refname:short)%00%(objecttype)%00%(*objectname)%00%(objectname)%00%(taggername)%00%(taggeremail:trim)%00%(taggerdate:iso-strict)%00%(contents:subject)%00%(contents:signature)%1e"
+	format := "%(refname:short)%00%(objecttype)%00%(*objectname)%00%(objectname)%00%(taggername)%00%(taggeremail:trim)%00%(taggerdate:iso-strict)%00%(contents:subject)%1e"
 	stdout, stderr, err := g.run(dir, "for-each-ref", "--sort=-creatordate", "--format="+format, "refs/tags")
 	if err != nil {
 		return nil, fmt.Errorf("for-each-ref: %v: %s", err, stderr)
 	}
 	tags := []Tag{}
+	tagObjects := []string{}
 	for _, record := range strings.Split(string(stdout), "\x1e") {
 		record = strings.TrimLeft(record, "\n")
 		if record == "" {
 			continue
 		}
-		fields := strings.SplitN(record, "\x00", 9)
-		if len(fields) < 9 {
+		fields := strings.SplitN(record, "\x00", 8)
+		if len(fields) < 8 {
 			continue
 		}
 		tag := Tag{Name: fields[0], Target: fields[3], Signature: Signature{Status: Unsigned}}
@@ -247,12 +285,20 @@ func (g Git) Tags(dir string) ([]Tag, error) {
 			tag.Target = fields[2]
 			tag.Tagger = &Person{Name: fields[4], Email: fields[5], Date: fields[6]}
 			tag.Message = fields[7]
-			if strings.TrimSpace(fields[8]) != "" {
-				_, verifyStderr, verifyErr := g.run(dir, "verify-tag", "--end-of-options", "refs/tags/"+tag.Name)
-				tag.Signature = verifyOutput(verifyStderr, verifyErr)
-			}
+			tagObjects = append(tagObjects, fields[3])
 		}
 		tags = append(tags, tag)
+	}
+	objects, err := g.objects(dir, tagObjects)
+	if err != nil {
+		return nil, err
+	}
+	objectIndex := 0
+	for index := range tags {
+		if tags[index].Annotated {
+			tags[index].Signature = tagSignature(objects[tagObjects[objectIndex]])
+			objectIndex++
+		}
 	}
 	return tags, nil
 }

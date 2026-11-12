@@ -336,7 +336,7 @@ func (s *Server) uiCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil {
-		err = s.attachKeys(&commit.Signature)
+		err = s.verifySignatures(&commit.Signature)
 	}
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, err.Error())

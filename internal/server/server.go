@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -68,7 +67,7 @@ func New(config Config) (*Server, error) {
 	server := &Server{
 		config: config,
 		store:  db,
-		git:    repos.Git{AllowedSigners: filepath.Join(config.DataDir, "allowed_signers")},
+		git:    repos.Git{},
 		dbPath: dbPath,
 	}
 	executable, err := os.Executable()
@@ -77,9 +76,6 @@ func New(config Config) (*Server, error) {
 	}
 	hook := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", `'\''`) + "' hook post-receive\n"
 	if err := os.WriteFile(filepath.Join(config.DataDir, "hooks", "post-receive"), []byte(hook), 0o755); err != nil {
-		return nil, err
-	}
-	if err := server.writeAllowedSigners(); err != nil {
 		return nil, err
 	}
 	return server, nil
@@ -91,24 +87,6 @@ func (s *Server) Close() error {
 
 func (s *Server) repoDir(name string) string {
 	return filepath.Join(s.config.DataDir, "repos", name+".git")
-}
-
-func (s *Server) writeAllowedSigners() error {
-	keys, err := s.store.Keys("")
-	if err != nil {
-		return err
-	}
-	var lines strings.Builder
-	for _, key := range keys {
-		if key.Signing {
-			fmt.Fprintf(&lines, "%s namespaces=\"git\" %s\n", key.User, key.PublicKey)
-		}
-	}
-	path := s.git.AllowedSigners
-	if err := os.WriteFile(path+".tmp", []byte(lines.String()), 0o640); err != nil {
-		return err
-	}
-	return os.Rename(path+".tmp", path)
 }
 
 func (s *Server) Handler() http.Handler {

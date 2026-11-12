@@ -13,11 +13,10 @@ lyra serve --listen :8080 --data /var/lib/lyra \
 ```
 
 Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY` and `LYRA_ALLOW_LOGIN`.
-The server needs `git` and `ssh-keygen` (used by git to check signatures) on `PATH`.
+The server needs `git` on `PATH`.
 
-The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/post-receive` (written
-at startup, applied through `core.hooksPath`) and `allowed_signers` (rebuilt when
-signing keys change).
+The data directory holds `lyra.db`, `repos/<name>.git` and `hooks/post-receive`
+(written at startup, applied through `core.hooksPath`).
 
 ## Authentication
 
@@ -45,13 +44,16 @@ Pushing needs `write`; cloning and fetching need `read`.
 Register SSH signing keys with `lyra key add --signing [--agent NAME] key.pub`. Commits
 and tags are reported as:
 
-- `verified`: signed by a registered key (`git verify-commit` / `git verify-tag`
-  succeed against `allowed_signers`);
-- `unverified`: signed, but not by a registered key, or the signature is bad;
+- `verified`: an SSH signature in the `git` namespace, made by a registered signing
+  key over the exact signed content;
+- `unverified`: signed, but by an unregistered or deleted key, in another namespace,
+  over different content, or not an SSH signature;
 - `unsigned`: no signature.
 
-Commit lists use `git log` signature placeholders, which run the same check; single
-commits and tags call `git verify-commit` and `git verify-tag`.
+Lyra reads the raw commit and tag objects with `git cat-file --batch`, splits off the
+`gpgsig` header or the trailing tag signature the way git does, and verifies the
+SSHSIG in Go. Status is computed when read, so registering or deleting a key changes
+it for existing commits.
 
 ## CLI
 

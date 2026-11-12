@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hiddeco/sshsig"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/muchobien/lyra/internal/repos"
@@ -173,14 +175,30 @@ func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": repo.Name})
 }
 
-func (s *Server) attachKeys(signatures ...*repos.Signature) error {
+func (s *Server) verifySignatures(signatures ...*repos.Signature) error {
 	keys, err := s.store.Keys("")
 	if err != nil {
 		return err
 	}
 	for _, signature := range signatures {
+		if signature.Armored == nil {
+			continue
+		}
+		parsed, err := sshsig.Unarmor(signature.Armored)
+		if err != nil {
+			continue
+		}
+		signature.Fingerprint = ssh.FingerprintSHA256(parsed.PublicKey)
 		for _, key := range keys {
-			if signature.Fingerprint != "" && key.Fingerprint == signature.Fingerprint {
+			if !key.Signing || key.Fingerprint != signature.Fingerprint {
+				continue
+			}
+			publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.PublicKey))
+			if err != nil {
+				return err
+			}
+			if sshsig.Verify(bytes.NewReader(signature.Payload), parsed, publicKey, parsed.HashAlgorithm, "git") == nil {
+				signature.Status = repos.Verified
 				signature.KeyID = key.ID
 				signature.KeyUser = key.User
 				signature.KeyAgent = key.Agent
@@ -199,7 +217,7 @@ func (s *Server) commits(repo, ref string, limit int) ([]repos.Commit, error) {
 	for index := range commits {
 		signatures = append(signatures, &commits[index].Signature)
 	}
-	return commits, s.attachKeys(signatures...)
+	return commits, s.verifySignatures(signatures...)
 }
 
 func (s *Server) handleListCommits(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +256,7 @@ func (s *Server) handleGetCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil {
-		err = s.attachKeys(&commit.Signature)
+		err = s.verifySignatures(&commit.Signature)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -256,7 +274,7 @@ func (s *Server) tags(repo string) ([]repos.Tag, error) {
 	for index := range tags {
 		signatures = append(signatures, &tags[index].Signature)
 	}
-	return tags, s.attachKeys(signatures...)
+	return tags, s.verifySignatures(signatures...)
 }
 
 func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) {
@@ -414,10 +432,6 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.writeAllowedSigners(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	if err := s.store.AddEvent("key.add", "", id.actor, map[string]any{"id": key.ID, "fingerprint": key.Fingerprint, "agent": key.Agent}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -440,10 +454,6 @@ func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "key not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if err := s.writeAllowedSigners(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
