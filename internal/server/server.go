@@ -133,6 +133,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /{repo}/git-upload-pack", s.handleGit)
 	mux.HandleFunc("POST /{repo}/git-receive-pack", s.handleGit)
 
+	mux.HandleFunc("GET /{$}", s.uiRepoList)
+	mux.HandleFunc("GET /{repo}", s.uiRepo)
+	mux.HandleFunc("GET /{repo}/tree/{ref}/{path...}", s.uiTree)
+	mux.HandleFunc("GET /{repo}/blob/{ref}/{path...}", s.uiBlob)
+	mux.HandleFunc("GET /{repo}/commits/{ref}", s.uiCommits)
+	mux.HandleFunc("GET /{repo}/commit/{sha}", s.uiCommit)
+	mux.HandleFunc("GET /{repo}/tags", s.uiTags)
+
 	return s.authenticate(mux)
 }
 

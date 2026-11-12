@@ -1,0 +1,7 @@
+{{define "content"}}
+<table>
+{{range .Data}}<tr><td><strong>{{.Name}}</strong>{{with .Message}} <span class="muted">· {{.}}</span>{{end}}{{with .Tagger}}<br><span class="muted">{{.Name}} · {{day .Date}}</span>{{end}}</td><td class="right">{{if .Annotated}}{{template "sig" .Signature}}{{with .Signature.KeyAgent}}<br><span class="muted">agent {{.}}</span>{{end}}{{else}}<span class="muted">lightweight</span>{{end}}</td><td class="right mono hide-sm"><a href="/{{esc $.Repo.Name}}/commit/{{.Target}}">{{short .Target}}</a></td></tr>
+{{else}}<tr><td class="muted">No tags.</td></tr>
+{{end}}
+</table>
+{{end}}
