@@ -16,6 +16,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 
 	"github.com/muchobien/lyra/internal/repos"
@@ -72,7 +73,10 @@ var templateFuncs = template.FuncMap{
 
 var pages = map[string]*template.Template{}
 
-var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
+var markdown = goldmark.New(goldmark.WithExtensions(
+	extension.GFM,
+	highlighting.NewHighlighting(highlighting.WithFormatOptions(chromahtml.WithClasses(true))),
+))
 
 var codeFormatter = chromahtml.New(chromahtml.WithClasses(true), chromahtml.WithLineNumbers(true), chromahtml.LineNumbersInTable(true))
 
