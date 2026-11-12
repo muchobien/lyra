@@ -56,7 +56,9 @@ commits and tags call `git verify-commit` and `git verify-tag`.
 ## CLI
 
 Output is JSON on stdout. Errors are `{"error": "..."}` on stderr with exit code 1
-(2 for usage errors).
+(2 for usage errors). Every command takes `--help` and `--jq <expression>`, which
+prints strings raw and other values as JSON. `lyra completion <shell>` prints shell
+completion.
 
 ```
 LYRA_URL, LYRA_TOKEN, LYRA_AGENT, LYRA_SESSION
