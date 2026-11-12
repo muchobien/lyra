@@ -165,7 +165,7 @@ func (s *Server) uiRepo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiTree(w http.ResponseWriter, r *http.Request) {
-	s.showTree(w, r, r.PathValue("ref"), strings.Trim(r.PathValue("path"), "/"))
+	s.showTree(w, r, r.PathValue("ref"), strings.Trim(r.PathValue("*"), "/"))
 }
 
 func (s *Server) showTree(w http.ResponseWriter, r *http.Request, ref, path string) {
@@ -250,7 +250,7 @@ func (s *Server) uiBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	dir := s.repoDir(repo.Name)
 	ref := r.PathValue("ref")
-	path := strings.Trim(r.PathValue("path"), "/")
+	path := strings.Trim(r.PathValue("*"), "/")
 	sha, err := s.git.ResolveCommit(dir, ref)
 	if err != nil {
 		s.renderError(w, r, http.StatusNotFound, "Unknown ref "+ref+".")

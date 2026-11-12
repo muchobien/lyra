@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
@@ -90,40 +91,61 @@ func (s *Server) repoDir(name string) string {
 }
 
 func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				chi.RouteContext(r.Context()).RouteMethod = http.MethodGet
+			}
+			next.ServeHTTP(w, r)
+		})
+	}, s.authenticate)
+	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok\n"))
 	})
 
-	mux.HandleFunc("GET /api/me", s.handleMe)
-	mux.HandleFunc("GET /api/repos", s.handleListRepos)
-	mux.HandleFunc("POST /api/repos", s.handleCreateRepo)
-	mux.HandleFunc("GET /api/repos/{repo}", s.handleGetRepo)
-	mux.HandleFunc("DELETE /api/repos/{repo}", s.handleDeleteRepo)
-	mux.HandleFunc("GET /api/repos/{repo}/commits", s.handleListCommits)
-	mux.HandleFunc("GET /api/repos/{repo}/commits/{rev}", s.handleGetCommit)
-	mux.HandleFunc("GET /api/repos/{repo}/tags", s.handleListTags)
-	mux.HandleFunc("GET /api/tokens", s.handleListTokens)
-	mux.HandleFunc("POST /api/tokens", s.handleCreateToken)
-	mux.HandleFunc("DELETE /api/tokens/{id}", s.handleDeleteToken)
-	mux.HandleFunc("GET /api/keys", s.handleListKeys)
-	mux.HandleFunc("POST /api/keys", s.handleCreateKey)
-	mux.HandleFunc("DELETE /api/keys/{id}", s.handleDeleteKey)
-	mux.HandleFunc("GET /api/events", s.handleListEvents)
+	router.Route("/api", func(api chi.Router) {
+		api.Get("/me", s.handleMe)
+		api.Route("/repos", func(repos chi.Router) {
+			repos.Get("/", s.handleListRepos)
+			repos.Post("/", s.handleCreateRepo)
+			repos.Route("/{repo}", func(repo chi.Router) {
+				repo.Get("/", s.handleGetRepo)
+				repo.Delete("/", s.handleDeleteRepo)
+				repo.Get("/commits", s.handleListCommits)
+				repo.Get("/commits/{rev}", s.handleGetCommit)
+				repo.Get("/tags", s.handleListTags)
+			})
+		})
+		api.Route("/tokens", func(tokens chi.Router) {
+			tokens.Get("/", s.handleListTokens)
+			tokens.Post("/", s.handleCreateToken)
+			tokens.Delete("/{id}", s.handleDeleteToken)
+		})
+		api.Route("/keys", func(keys chi.Router) {
+			keys.Get("/", s.handleListKeys)
+			keys.Post("/", s.handleCreateKey)
+			keys.Delete("/{id}", s.handleDeleteKey)
+		})
+		api.Get("/events", s.handleListEvents)
+	})
 
-	mux.HandleFunc("GET /{repo}/info/refs", s.handleGit)
-	mux.HandleFunc("POST /{repo}/git-upload-pack", s.handleGit)
-	mux.HandleFunc("POST /{repo}/git-receive-pack", s.handleGit)
+	router.Get("/", s.uiRepoList)
+	router.Route("/{repo}", func(repo chi.Router) {
+		repo.Get("/info/refs", s.handleGit)
+		repo.Post("/git-upload-pack", s.handleGit)
+		repo.Post("/git-receive-pack", s.handleGit)
 
-	mux.HandleFunc("GET /{$}", s.uiRepoList)
-	mux.HandleFunc("GET /{repo}", s.uiRepo)
-	mux.HandleFunc("GET /{repo}/tree/{ref}/{path...}", s.uiTree)
-	mux.HandleFunc("GET /{repo}/blob/{ref}/{path...}", s.uiBlob)
-	mux.HandleFunc("GET /{repo}/commits/{ref}", s.uiCommits)
-	mux.HandleFunc("GET /{repo}/commit/{sha}", s.uiCommit)
-	mux.HandleFunc("GET /{repo}/tags", s.uiTags)
+		repo.Get("/", s.uiRepo)
+		repo.Get("/tree/{ref}", s.uiTree)
+		repo.Get("/tree/{ref}/*", s.uiTree)
+		repo.Get("/blob/{ref}/*", s.uiBlob)
+		repo.Get("/commits/{ref}", s.uiCommits)
+		repo.Get("/commit/{sha}", s.uiCommit)
+		repo.Get("/tags", s.uiTags)
+	})
 
-	return s.authenticate(mux)
+	return router
 }
 
 func (s *Server) trustedProxy(remoteAddr string) bool {

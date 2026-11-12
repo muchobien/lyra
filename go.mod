@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/hiddeco/sshsig v0.2.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/pressly/goose/v3 v3.30.1
