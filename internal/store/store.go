@@ -1,62 +1,27 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
 
 var ErrNotFound = errors.New("not found")
 
-const schema = `
-CREATE TABLE IF NOT EXISTS repos (
-	name TEXT PRIMARY KEY,
-	description TEXT NOT NULL DEFAULT '',
-	created_at TEXT NOT NULL,
-	created_by TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS tokens (
-	id INTEGER PRIMARY KEY,
-	name TEXT NOT NULL,
-	user TEXT NOT NULL,
-	hash TEXT NOT NULL UNIQUE,
-	prefix TEXT NOT NULL,
-	scope TEXT NOT NULL,
-	repos TEXT NOT NULL DEFAULT '[]',
-	created_at TEXT NOT NULL,
-	expires_at TEXT,
-	last_used_at TEXT
-);
-CREATE TABLE IF NOT EXISTS keys (
-	id INTEGER PRIMARY KEY,
-	user TEXT NOT NULL,
-	title TEXT NOT NULL,
-	agent TEXT NOT NULL DEFAULT '',
-	public_key TEXT NOT NULL UNIQUE,
-	fingerprint TEXT NOT NULL UNIQUE,
-	signing INTEGER NOT NULL,
-	created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS events (
-	id INTEGER PRIMARY KEY,
-	at TEXT NOT NULL,
-	action TEXT NOT NULL,
-	repo TEXT NOT NULL DEFAULT '',
-	user TEXT NOT NULL,
-	via TEXT NOT NULL,
-	agent TEXT NOT NULL DEFAULT '',
-	session TEXT NOT NULL DEFAULT '',
-	data TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS events_repo ON events (repo, id);
-`
+//go:embed migrations/*.sql
+var migrations embed.FS
 
 type Store struct {
 	db *sql.DB
@@ -113,11 +78,26 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(schema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
-	}
 	return &Store{db: db}, nil
+}
+
+func (s *Store) Migrate(ctx context.Context) error {
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, s.db, files)
+	if err != nil {
+		return err
+	}
+	results, err := provider.Up(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	for _, result := range results {
+		slog.Info("migrated", "version", result.Source.Version, "file", result.Source.Path, "duration", result.Duration)
+	}
+	return nil
 }
 
 func (s *Store) Close() error {

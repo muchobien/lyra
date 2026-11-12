@@ -61,6 +61,10 @@ func New(config Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := db.Migrate(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
 	server := &Server{
 		config: config,
 		store:  db,
