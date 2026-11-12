@@ -12,8 +12,8 @@ lyra serve --listen :8080 --data /var/lib/lyra \
   --trusted-proxy 10.42.0.0/16 --allow-login you@example.com
 ```
 
-Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY` and `LYRA_ALLOW_LOGIN`.
-The server needs `git` on `PATH`.
+Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY`, `LYRA_ALLOW_LOGIN` and
+`LYRA_SIGNING_KEY_FILE`. The server needs `git` on `PATH`.
 
 ### Container image
 
@@ -27,8 +27,9 @@ docker run -p 8080:8080 -v lyra-data:/data \
   ghcr.io/muchobien/lyra:main
 ```
 
-The data directory holds `lyra.db`, `repos/<name>.git` and `hooks/post-receive`
-(written at startup, applied through `core.hooksPath`).
+The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/post-receive`
+(written at startup, applied through `core.hooksPath`) and, unless
+`--signing-key-file` is set, the generated `lyra_signing_key`.
 
 ## Authentication
 
@@ -67,6 +68,17 @@ Lyra reads the raw commit and tag objects with `git cat-file --batch`, splits of
 SSHSIG in Go. Status is computed when read, so registering or deleting a key changes
 it for existing commits.
 
+Lyra signs the squash commits it creates with its own SSH key:
+
+- **The key:** `--signing-key-file` (an OpenSSH private key, for example from a
+  Secret). Without it, Lyra generates an ed25519 key in the data directory on first
+  start.
+- **Registration:** at startup the public key is registered as a signing key of the
+  user `lyra`, so those commits show as `verified`. Keys used before stay registered,
+  so changing the key keeps earlier merges verified.
+- **Checking locally:** `lyra signing-key` prints the key and an `allowed_signers`
+  line for `git verify-commit`.
+
 ## CLI
 
 Output is JSON on stdout. Errors are `{"error": "..."}` on stderr with exit code 1
@@ -103,6 +115,8 @@ lyra pr create <repo> --head BRANCH [--base BRANCH] --title TEXT [--body ...] [-
 lyra pr list <repo> [--state open|closed|merged|all] [--label L]... [--assignee NAME|@me]... [--limit N]
 lyra pr view|commits <repo> <number>
 lyra pr diff <repo> <number> [--files]
+lyra pr merge <repo> <number> --squash|--ff [--head SHA] [--delete-branch] [--title TEXT] [--body ...]
+lyra signing-key
 lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
 lyra label create <repo> <name> [--color d73a4a] [--description TEXT]
 lyra label list <repo>
@@ -131,6 +145,26 @@ Pushes update pull requests:
   body references them.
 
 Git prints what changed as `remote: lyra: …` lines.
+
+`lyra pr merge` merges from Lyra:
+
+- **`--ff`:** moves the base branch to the head commit. Only possible when the base
+  hasn't moved since the branch was made.
+- **`--squash`:** writes one commit on top of the base, signed by Lyra.
+  - Its tree comes from `git merge-tree`, and conflicts are refused.
+  - The author is the author of the pull request's first commit. Other authors get
+    `Co-authored-by` trailers.
+  - The committer is `Lyra <lyra@<host>>`.
+  - The message is the title with `(#<number>)`, then the body.
+- **Safety:** the base branch is updated only if it hasn't moved since Lyra read it.
+  `--head SHA` refuses the merge if the head branch is no longer at the commit you
+  reviewed.
+- **Conflicts and moved branches:** these return HTTP 409.
+- **Afterwards:** a merge records the same events as a push, and closes issues
+  referenced in the pull request or the squash message.
+
+`lyra pr view` includes `merge`, with the current head and base commits,
+`fast_forward` and the `conflicts`.
 
 `lyra event wait` blocks until a matching event happens and prints it. Actions are glob
 patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
@@ -167,6 +201,8 @@ the server restarts.
 | `GET /api/repos/{name}/pulls/{number}/commits` | read |
 | `GET /api/repos/{name}/pulls/{number}/diff` (`text/x-diff`) | read |
 | `GET /api/repos/{name}/pulls/{number}/files` | read |
+| `POST /api/repos/{name}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
+| `GET /api/signing-key` | any |
 
 `PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
 `remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as
@@ -190,7 +226,9 @@ open one. `/{name}/issues/{number}` shows the issue and its comments, rendered a
 Markdown with raw HTML removed, with forms to comment, close or reopen, and set labels
 and assignees. `/{name}/pulls` and `/{name}/pulls/{number}` do the same for pull
 requests, with `?tab=commits` (signature status) and `?tab=files` (changed files and
-the diff).
+the diff). An open pull request's page has a merge form: squash or fast-forward,
+optionally deleting the branch. If the branches conflict, it lists the conflicting
+files instead.
 
 Requests that change data and come from another site are rejected, using Go's
 `http.CrossOriginProtection` (`Sec-Fetch-Site` and `Origin`). Without this, any page
@@ -223,3 +261,7 @@ with `git` and the CLI. They cover:
     rename.
   - Updates and merges detected from pushes, and closing keywords.
   - Closed and reopened pull requests, deleted head branches, and the UI tabs.
+- Merging:
+  - Squash merges by several authors, checked with `git verify-commit`.
+  - Fast-forward, conflicts, a stale `--head`, and merging from the UI.
+  - The signing key surviving a restart, and a key set with `--signing-key-file`.

@@ -9,7 +9,20 @@ import (
 
 type pullView struct {
 	store.Pull
-	Comments []store.Comment `json:"comments"`
+	Merge      *mergePlan      `json:"merge,omitempty"`
+	MergeError string          `json:"merge_error,omitempty"`
+	Comments   []store.Comment `json:"comments"`
+}
+
+func (s *Server) mergeStatus(repo string, pull store.Pull) (*mergePlan, string) {
+	if pull.State != "open" {
+		return nil, ""
+	}
+	plan, err := s.planMerge(s.repoDir(repo), pull)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return &plan, ""
 }
 
 func (s *Server) lookupPull(w http.ResponseWriter, r *http.Request) (store.Repo, store.Pull, bool) {
@@ -119,7 +132,7 @@ func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err, "repository not found")
 		return
 	}
-	if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", pull.Number), headSHA); err != nil {
+	if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", pull.Number), headSHA, ""); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -127,7 +140,7 @@ func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
-	_, pull, ok := s.lookupPull(w, r)
+	repo, pull, ok := s.lookupPull(w, r)
 	if !ok {
 		return
 	}
@@ -136,7 +149,9 @@ func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, pullView{Pull: pull, Comments: comments})
+	view := pullView{Pull: pull, Comments: comments}
+	view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
+	writeJSON(w, http.StatusOK, view)
 }
 
 func (s *Server) handlePullCommits(w http.ResponseWriter, r *http.Request) {

@@ -24,16 +24,17 @@ import (
 func main() {
 	root := cli.Root()
 
-	var listen, dataDir string
+	var listen, dataDir, signingKey string
 	var proxies, logins []string
 	serveCommand := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the Lyra server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return serve(listen, dataDir, proxies, logins)
+			return serve(listen, dataDir, signingKey, proxies, logins)
 		},
 	}
+	serveCommand.Flags().StringVar(&signingKey, "signing-key-file", os.Getenv("LYRA_SIGNING_KEY_FILE"), "SSH private key Lyra signs merge commits with (LYRA_SIGNING_KEY_FILE; default: generated in the data directory)")
 	serveCommand.Flags().StringVar(&listen, "listen", envOr("LYRA_LISTEN", ":8080"), "listen address (LYRA_LISTEN)")
 	serveCommand.Flags().StringVar(&dataDir, "data", envOr("LYRA_DATA", "data"), "data directory (LYRA_DATA)")
 	serveCommand.Flags().StringSliceVar(&proxies, "trusted-proxy", splitEnv("LYRA_TRUSTED_PROXY"), "IPs or CIDRs allowed to set Tailscale-User-Login (LYRA_TRUSTED_PROXY, comma-separated)")
@@ -77,8 +78,8 @@ func splitEnv(name string) []string {
 	return nil
 }
 
-func serve(listen, dataDir string, proxies, logins []string) error {
-	config := server.Config{}
+func serve(listen, dataDir, signingKey string, proxies, logins []string) error {
+	config := server.Config{SigningKeyFile: signingKey}
 	absolute, err := filepath.Abs(dataDir)
 	if err != nil {
 		return err

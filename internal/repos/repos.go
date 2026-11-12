@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -286,11 +287,42 @@ func (g Git) IsAncestor(dir, ancestor, descendant string) (bool, error) {
 	return true, nil
 }
 
-func (g Git) UpdateRef(dir, ref, sha string) error {
-	if _, stderr, err := g.run(dir, "update-ref", ref, sha); err != nil {
+func (g Git) UpdateRef(dir, ref, newSHA, oldSHA string) error {
+	args := []string{"update-ref", ref, newSHA}
+	if newSHA == "" {
+		args = []string{"update-ref", "-d", ref}
+	}
+	if oldSHA != "" {
+		args = append(args, oldSHA)
+	}
+	if _, stderr, err := g.run(dir, args...); err != nil {
 		return fmt.Errorf("update-ref %s: %v: %s", ref, err, stderr)
 	}
 	return nil
+}
+
+func (g Git) MergeTree(dir, base, head string) (string, []string, error) {
+	stdout, stderr, err := g.run(dir, "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", base, head)
+	var exitError *exec.ExitError
+	if err != nil && !(errors.As(err, &exitError) && exitError.ExitCode() == 1) {
+		return "", nil, fmt.Errorf("merge-tree: %v: %s", err, stderr)
+	}
+	fields := strings.Split(strings.TrimRight(string(stdout), "\x00"), "\x00")
+	conflicts := []string{}
+	for _, path := range fields[1:] {
+		if path != "" && !slices.Contains(conflicts, path) {
+			conflicts = append(conflicts, path)
+		}
+	}
+	return fields[0], conflicts, nil
+}
+
+func (g Git) WriteCommit(dir string, raw []byte) (string, error) {
+	stdout, stderr, err := g.command(dir, raw, "hash-object", "-w", "-t", "commit", "--stdin")
+	if err != nil {
+		return "", fmt.Errorf("hash-object: %v: %s", err, stderr)
+	}
+	return strings.TrimSpace(string(stdout)), nil
 }
 
 func (g Git) Diff(dir, base, head string) (string, error) {

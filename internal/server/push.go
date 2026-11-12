@@ -22,26 +22,33 @@ func zeroSHA(sha string) bool {
 	return strings.Trim(sha, "0") == ""
 }
 
+func closeReferenced(db *store.Store, repo string, actor store.Actor, text, commit string) ([]string, error) {
+	messages := []string{}
+	for _, match := range closingKeyword.FindAllStringSubmatch(text, -1) {
+		number, err := strconv.ParseInt(match[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		issue, err := db.Item("issue", repo, number)
+		if err != nil || issue.State != "open" {
+			continue
+		}
+		closed := "closed"
+		if _, _, err := db.EditItem("issue", repo, number, actor, store.ItemEdit{State: &closed, Commit: commit}); err != nil {
+			return messages, err
+		}
+		messages = append(messages, fmt.Sprintf("closed issue #%d", number))
+	}
+	return messages, nil
+}
+
 func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, updates []RefUpdate) ([]string, error) {
 	messages := []string{}
 	defaultBranch := git.DefaultBranch(dir)
 	closeIssues := func(text, commit string) error {
-		for _, match := range closingKeyword.FindAllStringSubmatch(text, -1) {
-			number, err := strconv.ParseInt(match[1], 10, 64)
-			if err != nil {
-				continue
-			}
-			issue, err := db.Item("issue", repo, number)
-			if err != nil || issue.State != "open" {
-				continue
-			}
-			closed := "closed"
-			if _, _, err := db.EditItem("issue", repo, number, actor, store.ItemEdit{State: &closed, Commit: commit}); err != nil {
-				return err
-			}
-			messages = append(messages, fmt.Sprintf("closed issue #%d", number))
-		}
-		return nil
+		closed, err := closeReferenced(db, repo, actor, text, commit)
+		messages = append(messages, closed...)
+		return err
 	}
 
 	open, err := db.Pulls(repo, "open")
@@ -61,7 +68,7 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 			if err != nil {
 				baseSHA = pull.BaseSHA
 			}
-			if err := git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", pull.Number), update.New); err != nil {
+			if err := git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", pull.Number), update.New, ""); err != nil {
 				return messages, err
 			}
 			if _, err := db.SyncPull(repo, pull.Number, actor, update.New, baseSHA); err != nil {

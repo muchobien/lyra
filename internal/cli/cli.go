@@ -466,7 +466,54 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 		},
 	}
 	prDiff.Flags().BoolVar(&filesOnly, "files", false, "list changed files as JSON instead")
-	pr.AddCommand(prCommits, prDiff)
+	var squash, fastForward, deleteBranch bool
+	var mergeHead, mergeTitle string
+	prMerge := &cobra.Command{
+		Use:   "merge <repo> <number>",
+		Short: "Merge a pull request by squashing or fast-forwarding",
+		Long: `Merge a pull request into its base branch.
+
+--squash writes one commit with the pull request's changes, signed by Lyra's key
+(see lyra signing-key). --ff moves the base branch to the head commit, keeping its
+commits and their signatures. Pass --head with the commit you reviewed to refuse the
+merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if squash == fastForward {
+				return UsageError{errors.New("pr merge needs exactly one of --squash or --ff")}
+			}
+			request := map[string]any{"method": "ff", "head_sha": mergeHead, "delete_branch": deleteBranch}
+			if squash {
+				body, set, err := readBody(cmd)
+				if err != nil {
+					return err
+				}
+				request["method"], request["title"] = "squash", mergeTitle
+				if set {
+					request["message"] = body
+				}
+			}
+			return call(cmd, http.MethodPost, pullPath(args)+"/merge", request)
+		},
+	}
+	prMerge.Flags().BoolVar(&squash, "squash", false, "squash into one commit signed by Lyra")
+	prMerge.Flags().BoolVar(&fastForward, "ff", false, "fast-forward the base branch to the head")
+	prMerge.Flags().BoolVar(&deleteBranch, "delete-branch", false, "delete the head branch after merging")
+	prMerge.Flags().StringVar(&mergeHead, "head", "", "merge only if the head branch is at this commit")
+	prMerge.Flags().StringVar(&mergeTitle, "title", "", "squash commit title (default: the pull request title and number)")
+	addBodyFlags(prMerge)
+	pr.AddCommand(prCommits, prDiff, prMerge)
+
+	signingKey := &cobra.Command{
+		Use:   "signing-key",
+		Short: "Show the public key Lyra signs merge commits with",
+		Long:  "Show the public key Lyra signs merge commits with, and an allowed_signers line for git verify-commit.",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/signing-key", nil)
+		},
+	}
+	root.AddCommand(signingKey)
 
 	label := &cobra.Command{Use: "label", Short: "Manage a repository's labels"}
 	labelsPath := func(repo string) string {

@@ -23,19 +23,21 @@ type itemRow struct {
 }
 
 type itemPage struct {
-	Kind      string
-	Path      string
-	Noun      string
-	Item      store.Item
-	Pull      *store.Pull
-	Comments  []store.Comment
-	CanWrite  bool
-	Labels    string
-	Assignees string
-	Tab       string
-	Commits   []repos.Commit
-	Files     []repos.FileChange
-	Diff      template.HTML
+	Kind       string
+	Path       string
+	Noun       string
+	Item       store.Item
+	Pull       *store.Pull
+	Comments   []store.Comment
+	CanWrite   bool
+	Labels     string
+	Assignees  string
+	Tab        string
+	Commits    []repos.Commit
+	Files      []repos.FileChange
+	Diff       template.HTML
+	Merge      *mergePlan
+	MergeError string
 }
 
 func splitList(text string) []string {
@@ -182,6 +184,7 @@ func (s *Server) uiItemPage(kind string) http.HandlerFunc {
 				return
 			}
 			view.Pull = &pull
+			view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
 			base, head := s.pullRange(repo.Name, pull)
 			switch view.Tab {
 			case "commits":

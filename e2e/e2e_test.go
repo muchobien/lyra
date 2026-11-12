@@ -84,9 +84,9 @@ func startServer(test *testing.T, trustedProxy string) server {
 	return startServerAt(test, address, filepath.Join(test.TempDir(), "data"), trustedProxy)
 }
 
-func startServerAt(test *testing.T, address, data, trustedProxy string) server {
+func startServerAt(test *testing.T, address, data, trustedProxy string, extra ...string) server {
 	test.Helper()
-	cmd := exec.Command(lyraBinary, "serve", "--listen", address, "--data", data, "--trusted-proxy", trustedProxy, "--allow-login", login)
+	cmd := exec.Command(lyraBinary, append([]string{"serve", "--listen", address, "--data", data, "--trusted-proxy", trustedProxy, "--allow-login", login}, extra...)...)
 	logs := &lockedBuffer{}
 	cmd.Stdout = logs
 	cmd.Stderr = logs

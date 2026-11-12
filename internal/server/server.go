@@ -2,8 +2,12 @@ package server
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +20,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/ssh"
+
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
@@ -24,6 +30,7 @@ type Config struct {
 	DataDir        string
 	TrustedProxies []netip.Prefix
 	AllowedLogins  []string
+	SigningKeyFile string
 }
 
 type Server struct {
@@ -31,7 +38,10 @@ type Server struct {
 	store  *store.Store
 	git    repos.Git
 	dbPath string
+	signer ssh.Signer
 }
+
+const lyraUser = "lyra"
 
 type identity struct {
 	actor   store.Actor
@@ -71,6 +81,42 @@ func New(config Config) (*Server, error) {
 		store:  db,
 		git:    repos.Git{},
 		dbPath: dbPath,
+	}
+	keyFile := config.SigningKeyFile
+	if keyFile == "" {
+		keyFile = filepath.Join(config.DataDir, "lyra_signing_key")
+		if _, err := os.Stat(keyFile); errors.Is(err, os.ErrNotExist) {
+			_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				return nil, err
+			}
+			block, err := ssh.MarshalPrivateKey(privateKey, "lyra merge commits")
+			if err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(keyFile, pem.EncodeToMemory(block), 0o600); err != nil {
+				return nil, err
+			}
+			slog.Info("generated signing key", "file", keyFile)
+		}
+	}
+	keyData, err := os.ReadFile(keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("signing key: %w", err)
+	}
+	if server.signer, err = ssh.ParsePrivateKey(keyData); err != nil {
+		return nil, fmt.Errorf("signing key %s: %w", keyFile, err)
+	}
+	fingerprint := ssh.FingerprintSHA256(server.signer.PublicKey())
+	lyraKeys, err := db.Keys(lyraUser)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(lyraKeys, func(key store.Key) bool { return key.Fingerprint == fingerprint }) {
+		publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(server.signer.PublicKey()))) + " lyra"
+		if _, err := db.CreateKey(store.Key{User: lyraUser, Title: "Lyra merge commits", PublicKey: publicKey, Fingerprint: fingerprint, Signing: true}); err != nil {
+			return nil, fmt.Errorf("register signing key: %w", err)
+		}
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -132,6 +178,7 @@ func (s *Server) Handler() http.Handler {
 					pulls.Get("/{number}/commits", s.handlePullCommits)
 					pulls.Get("/{number}/diff", s.handlePullDiff)
 					pulls.Get("/{number}/files", s.handlePullFiles)
+					pulls.Post("/{number}/merge", s.handleMergePull)
 				})
 				repo.Route("/labels", func(labels chi.Router) {
 					labels.Get("/", s.handleListLabels)
@@ -152,6 +199,7 @@ func (s *Server) Handler() http.Handler {
 		})
 		api.Get("/events", s.handleListEvents)
 		api.Get("/events/stream", s.handleEventStream)
+		api.Get("/signing-key", s.handleSigningKey)
 	})
 
 	router.Get("/", s.uiRepoList)
@@ -168,6 +216,7 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/commit/{sha}", s.uiCommit)
 		repo.Get("/tags", s.uiTags)
 		repo.Post("/issues", s.uiCreateIssue)
+		repo.Post("/pulls/{number}/merge", s.uiMergePull)
 		for kind, path := range itemPaths {
 			repo.Get("/"+path, s.uiItems(kind))
 			repo.Get("/"+path+"/{number}", s.uiItemPage(kind))

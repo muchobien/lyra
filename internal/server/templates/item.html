@@ -29,6 +29,21 @@
 {{range .Data.Comments}}
 <div class="comment" id="comment-{{.ID}}"><div class="meta">{{template "author" .Author}} <span class="muted">· {{.CreatedAt.Format "2006-01-02 15:04"}}</span></div><div class="body">{{markdown .Body}}</div></div>
 {{end}}
+{{if and .Data.CanWrite .Data.Pull (eq $item.State "open")}}
+<div class="comment"><div class="meta"><strong>Merge</strong></div><div class="body">
+{{with .Data.MergeError}}<p>{{.}}</p>{{else}}{{with .Data.Merge}}{{if .Conflicts}}
+<p>Merging conflicts with {{$.Data.Pull.Base}} in <span class="mono">{{range $index, $path := .Conflicts}}{{if $index}}, {{end}}{{$path}}{{end}}</span>. Resolve them on {{$.Data.Pull.Head}} and push.</p>
+{{else}}
+<form class="stack" method="post" action="{{$base}}/merge">
+<input type="hidden" name="head_sha" value="{{.HeadSHA}}">
+<label><input type="radio" name="method" value="squash" checked> Squash into one commit signed by Lyra</label>
+<label><input type="radio" name="method" value="ff"{{if not .FastForward}} disabled{{end}}> Fast-forward{{if not .FastForward}} <span class="muted">(not possible: {{$.Data.Pull.Base}} has moved)</span>{{end}}</label>
+<label><input type="checkbox" name="delete_branch" value="1"> Delete {{$.Data.Pull.Head}} after merging</label>
+<div><button type="submit">Merge pull request</button></div>
+</form>
+{{end}}{{end}}{{end}}
+</div></div>
+{{end}}
 {{if .Data.CanWrite}}
 <form class="stack" method="post" action="{{$base}}/comments">
 <textarea name="body" placeholder="Comment (Markdown)" required></textarea>
