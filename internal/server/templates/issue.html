@@ -1,0 +1,30 @@
+{{define "author"}}{{with .Agent}}<strong>{{.}}</strong> for {{end}}{{.User}}{{end}}
+{{define "content"}}
+{{$item := .Data.Item}}
+<h1>{{$item.Title}} <span class="muted">#{{$item.Number}}</span></h1>
+<p><span class="badge {{$item.State}}">{{if eq $item.State "open"}}Open{{else}}Closed{{end}}</span> <span class="muted">opened by {{template "author" $item.Author}} on {{$item.CreatedAt.Format "2006-01-02 15:04"}}</span></p>
+<div class="sidebar">
+<div><span class="muted">Labels</span><br>{{range $item.Labels}}<span class="badge label">{{.}}</span> {{else}}<span class="muted">None</span>{{end}}</div>
+<div><span class="muted">Assignees</span><br>{{range $index, $name := $item.Assignees}}{{if $index}}, {{end}}{{$name}}{{else}}<span class="muted">None</span>{{end}}</div>
+</div>
+<div class="comment"><div class="meta">{{template "author" $item.Author}}</div><div class="body">{{if $item.Body}}{{markdown $item.Body}}{{else}}<p class="muted">No description.</p>{{end}}</div></div>
+{{range .Data.Comments}}
+<div class="comment" id="comment-{{.ID}}"><div class="meta">{{template "author" .Author}} <span class="muted">· {{.CreatedAt.Format "2006-01-02 15:04"}}</span></div><div class="body">{{markdown .Body}}</div></div>
+{{end}}
+{{if .Data.CanWrite}}
+<form class="stack" method="post" action="/{{esc .Repo.Name}}/issues/{{$item.Number}}/comments">
+<textarea name="body" placeholder="Comment (Markdown)" required></textarea>
+<div><button type="submit">Comment</button></div>
+</form>
+<form class="inline" method="post" action="/{{esc .Repo.Name}}/issues/{{$item.Number}}/edit">
+{{if eq $item.State "open"}}<button type="submit" name="state" value="closed">Close issue</button>{{else}}<button type="submit" name="state" value="open">Reopen issue</button>{{end}}
+</form>
+<details><summary>Labels and assignees</summary>
+<form class="stack" method="post" action="/{{esc .Repo.Name}}/issues/{{$item.Number}}/edit">
+<label>Labels, comma-separated <input type="text" name="labels" value="{{.Data.Labels}}"></label>
+<label>Assignees, comma-separated (@me for you) <input type="text" name="assignees" value="{{.Data.Assignees}}"></label>
+<div><button type="submit">Save</button></div>
+</form>
+</details>
+{{end}}
+{{end}}

@@ -11,9 +11,94 @@ import (
 	"time"
 )
 
+const addItemAssignee = `-- name: AddItemAssignee :execrows
+INSERT OR IGNORE INTO item_assignees (item_id, assignee) VALUES (?, ?)
+`
+
+type AddItemAssigneeParams struct {
+	ItemID   int64  `json:"item_id"`
+	Assignee string `json:"assignee"`
+}
+
+func (q *Queries) AddItemAssignee(ctx context.Context, arg AddItemAssigneeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, addItemAssignee, arg.ItemID, arg.Assignee)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const addItemLabel = `-- name: AddItemLabel :execrows
+INSERT OR IGNORE INTO item_labels (item_id, label_id) VALUES (?, ?)
+`
+
+type AddItemLabelParams struct {
+	ItemID  int64 `json:"item_id"`
+	LabelID int64 `json:"label_id"`
+}
+
+func (q *Queries) AddItemLabel(ctx context.Context, arg AddItemLabelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, addItemLabel, arg.ItemID, arg.LabelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const countComments = `-- name: CountComments :one
+SELECT COUNT(*) FROM comments WHERE item_id = ?
+`
+
+func (q *Queries) CountComments(ctx context.Context, itemID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countComments, itemID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createComment = `-- name: CreateComment :one
+INSERT INTO comments (item_id, body, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, item_id, body, user, via, agent, session, created_at
+`
+
+type CreateCommentParams struct {
+	ItemID    int64     `json:"item_id"`
+	Body      string    `json:"body"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error) {
+	row := q.db.QueryRowContext(ctx, createComment,
+		arg.ItemID,
+		arg.Body,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i Comment
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.Body,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createEvent = `-- name: CreateEvent :one
-INSERT INTO events (at, action, repo, user, via, agent, session, data)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO events (at, action, repo, item, user, via, agent, session, data)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -21,6 +106,7 @@ type CreateEventParams struct {
 	At      time.Time `json:"at"`
 	Action  string    `json:"action"`
 	Repo    string    `json:"repo"`
+	Item    int64     `json:"item"`
 	User    string    `json:"user"`
 	Via     string    `json:"via"`
 	Agent   string    `json:"agent"`
@@ -33,6 +119,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (int64
 		arg.At,
 		arg.Action,
 		arg.Repo,
+		arg.Item,
 		arg.User,
 		arg.Via,
 		arg.Agent,
@@ -42,6 +129,62 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (int64
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const createItem = `-- name: CreateItem :one
+INSERT INTO items (repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at)
+VALUES (
+	?1,
+	(SELECT COALESCE(MAX(number), 0) + 1 FROM items WHERE repo = ?1),
+	?2, ?3, ?4, 'open',
+	?5, ?6, ?7, ?8,
+	?9, ?9
+)
+RETURNING id, repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at, closed_at
+`
+
+type CreateItemParams struct {
+	Repo      string    `json:"repo"`
+	Kind      string    `json:"kind"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, error) {
+	row := q.db.QueryRowContext(ctx, createItem,
+		arg.Repo,
+		arg.Kind,
+		arg.Title,
+		arg.Body,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i Item
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.State,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
 }
 
 const createKey = `-- name: CreateKey :one
@@ -80,6 +223,36 @@ func (q *Queries) CreateKey(ctx context.Context, arg CreateKeyParams) (Key, erro
 		&i.Fingerprint,
 		&i.Signing,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createLabel = `-- name: CreateLabel :one
+INSERT INTO labels (repo, name, color, description) VALUES (?, ?, ?, ?)
+RETURNING id, repo, name, color, description
+`
+
+type CreateLabelParams struct {
+	Repo        string `json:"repo"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+func (q *Queries) CreateLabel(ctx context.Context, arg CreateLabelParams) (Label, error) {
+	row := q.db.QueryRowContext(ctx, createLabel,
+		arg.Repo,
+		arg.Name,
+		arg.Color,
+		arg.Description,
+	)
+	var i Label
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Name,
+		&i.Color,
+		&i.Description,
 	)
 	return i, err
 }
@@ -175,6 +348,23 @@ func (q *Queries) DeleteKey(ctx context.Context, arg DeleteKeyParams) (int64, er
 	return result.RowsAffected()
 }
 
+const deleteLabel = `-- name: DeleteLabel :execrows
+DELETE FROM labels WHERE repo = ? AND name = ?
+`
+
+type DeleteLabelParams struct {
+	Repo string `json:"repo"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteLabel, arg.Repo, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteRepo = `-- name: DeleteRepo :execrows
 DELETE FROM repos WHERE name = ?
 `
@@ -204,6 +394,59 @@ func (q *Queries) DeleteToken(ctx context.Context, arg DeleteTokenParams) (int64
 	return result.RowsAffected()
 }
 
+const getItem = `-- name: GetItem :one
+SELECT id, repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at, closed_at FROM items WHERE repo = ? AND number = ?
+`
+
+type GetItemParams struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) {
+	row := q.db.QueryRowContext(ctx, getItem, arg.Repo, arg.Number)
+	var i Item
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.State,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const getLabel = `-- name: GetLabel :one
+SELECT id, repo, name, color, description FROM labels WHERE repo = ? AND name = ?
+`
+
+type GetLabelParams struct {
+	Repo string `json:"repo"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) GetLabel(ctx context.Context, arg GetLabelParams) (Label, error) {
+	row := q.db.QueryRowContext(ctx, getLabel, arg.Repo, arg.Name)
+	var i Label
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Name,
+		&i.Color,
+		&i.Description,
+	)
+	return i, err
+}
+
 const getRepo = `-- name: GetRepo :one
 SELECT name, description, created_at, created_by FROM repos WHERE name = ?
 `
@@ -231,8 +474,44 @@ func (q *Queries) LatestEventID(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+const listComments = `-- name: ListComments :many
+SELECT id, item_id, body, user, via, agent, session, created_at FROM comments WHERE item_id = ? ORDER BY id
+`
+
+func (q *Queries) ListComments(ctx context.Context, itemID int64) ([]Comment, error) {
+	rows, err := q.db.QueryContext(ctx, listComments, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Comment
+	for rows.Next() {
+		var i Comment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Body,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEvents = `-- name: ListEvents :many
-SELECT id, at, "action", repo, user, via, agent, session, data FROM events ORDER BY id DESC LIMIT ?
+SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events ORDER BY id DESC LIMIT ?
 `
 
 func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]Event, error) {
@@ -254,6 +533,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]Event, error) 
 			&i.Agent,
 			&i.Session,
 			&i.Data,
+			&i.Item,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +549,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]Event, error) 
 }
 
 const listEventsAfter = `-- name: ListEventsAfter :many
-SELECT id, at, "action", repo, user, via, agent, session, data FROM events WHERE id > ? ORDER BY id LIMIT ?
+SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events WHERE id > ? ORDER BY id LIMIT ?
 `
 
 type ListEventsAfterParams struct {
@@ -296,6 +576,115 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.Agent,
 			&i.Session,
 			&i.Data,
+			&i.Item,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemAssignees = `-- name: ListItemAssignees :many
+SELECT assignee FROM item_assignees WHERE item_id = ? ORDER BY assignee
+`
+
+func (q *Queries) ListItemAssignees(ctx context.Context, itemID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listItemAssignees, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var assignee string
+		if err := rows.Scan(&assignee); err != nil {
+			return nil, err
+		}
+		items = append(items, assignee)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemLabels = `-- name: ListItemLabels :many
+SELECT labels.name FROM item_labels
+JOIN labels ON labels.id = item_labels.label_id
+WHERE item_labels.item_id = ?
+ORDER BY labels.name
+`
+
+func (q *Queries) ListItemLabels(ctx context.Context, itemID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listItemLabels, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItems = `-- name: ListItems :many
+SELECT id, repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at, closed_at FROM items
+WHERE repo = ?1 AND kind = ?2
+	AND (?3 = 'all' OR state = ?3)
+ORDER BY number DESC
+`
+
+type ListItemsParams struct {
+	Repo  string      `json:"repo"`
+	Kind  string      `json:"kind"`
+	State interface{} `json:"state"`
+}
+
+func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Item, error) {
+	rows, err := q.db.QueryContext(ctx, listItems, arg.Repo, arg.Kind, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Number,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.State,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -346,8 +735,41 @@ func (q *Queries) ListKeys(ctx context.Context) ([]Key, error) {
 	return items, nil
 }
 
+const listLabels = `-- name: ListLabels :many
+SELECT id, repo, name, color, description FROM labels WHERE repo = ? ORDER BY name
+`
+
+func (q *Queries) ListLabels(ctx context.Context, repo string) ([]Label, error) {
+	rows, err := q.db.QueryContext(ctx, listLabels, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Label
+	for rows.Next() {
+		var i Label
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Name,
+			&i.Color,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRepoEvents = `-- name: ListRepoEvents :many
-SELECT id, at, "action", repo, user, via, agent, session, data FROM events WHERE repo = ? ORDER BY id DESC LIMIT ?
+SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events WHERE repo = ? ORDER BY id DESC LIMIT ?
 `
 
 type ListRepoEventsParams struct {
@@ -374,6 +796,7 @@ func (q *Queries) ListRepoEvents(ctx context.Context, arg ListRepoEventsParams) 
 			&i.Agent,
 			&i.Session,
 			&i.Data,
+			&i.Item,
 		); err != nil {
 			return nil, err
 		}
@@ -494,6 +917,40 @@ func (q *Queries) ListUserKeys(ctx context.Context, user string) ([]Key, error) 
 	return items, nil
 }
 
+const removeItemAssignee = `-- name: RemoveItemAssignee :execrows
+DELETE FROM item_assignees WHERE item_id = ? AND assignee = ?
+`
+
+type RemoveItemAssigneeParams struct {
+	ItemID   int64  `json:"item_id"`
+	Assignee string `json:"assignee"`
+}
+
+func (q *Queries) RemoveItemAssignee(ctx context.Context, arg RemoveItemAssigneeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeItemAssignee, arg.ItemID, arg.Assignee)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const removeItemLabel = `-- name: RemoveItemLabel :execrows
+DELETE FROM item_labels WHERE item_id = ? AND label_id = ?
+`
+
+type RemoveItemLabelParams struct {
+	ItemID  int64 `json:"item_id"`
+	LabelID int64 `json:"label_id"`
+}
+
+func (q *Queries) RemoveItemLabel(ctx context.Context, arg RemoveItemLabelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeItemLabel, arg.ItemID, arg.LabelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const tokenActive = `-- name: TokenActive :one
 SELECT COUNT(*) FROM tokens WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
 `
@@ -508,6 +965,64 @@ func (q *Queries) TokenActive(ctx context.Context, arg TokenActiveParams) (int64
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const touchItem = `-- name: TouchItem :exec
+UPDATE items SET updated_at = ? WHERE id = ?
+`
+
+type TouchItemParams struct {
+	UpdatedAt time.Time `json:"updated_at"`
+	ID        int64     `json:"id"`
+}
+
+func (q *Queries) TouchItem(ctx context.Context, arg TouchItemParams) error {
+	_, err := q.db.ExecContext(ctx, touchItem, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateItem = `-- name: UpdateItem :one
+UPDATE items SET title = ?, body = ?, state = ?, updated_at = ?, closed_at = ?
+WHERE id = ?
+RETURNING id, repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at, closed_at
+`
+
+type UpdateItemParams struct {
+	Title     string       `json:"title"`
+	Body      string       `json:"body"`
+	State     string       `json:"state"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	ClosedAt  sql.NullTime `json:"closed_at"`
+	ID        int64        `json:"id"`
+}
+
+func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error) {
+	row := q.db.QueryRowContext(ctx, updateItem,
+		arg.Title,
+		arg.Body,
+		arg.State,
+		arg.UpdatedAt,
+		arg.ClosedAt,
+		arg.ID,
+	)
+	var i Item
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.State,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
 }
 
 const useToken = `-- name: UseToken :one

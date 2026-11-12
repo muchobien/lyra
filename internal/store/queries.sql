@@ -1,6 +1,6 @@
 -- name: CreateEvent :one
-INSERT INTO events (at, action, repo, user, via, agent, session, data)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO events (at, action, repo, item, user, via, agent, session, data)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: ListEvents :many
@@ -59,3 +59,76 @@ SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) AS id FROM events;
 
 -- name: TokenActive :one
 SELECT COUNT(*) FROM tokens WHERE id = ? AND (expires_at IS NULL OR expires_at > ?);
+
+-- name: CreateItem :one
+INSERT INTO items (repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at)
+VALUES (
+	sqlc.arg(repo),
+	(SELECT COALESCE(MAX(number), 0) + 1 FROM items WHERE repo = sqlc.arg(repo)),
+	sqlc.arg(kind), sqlc.arg(title), sqlc.arg(body), 'open',
+	sqlc.arg(user), sqlc.arg(via), sqlc.arg(agent), sqlc.arg(session),
+	sqlc.arg(created_at), sqlc.arg(created_at)
+)
+RETURNING *;
+
+-- name: GetItem :one
+SELECT * FROM items WHERE repo = ? AND number = ?;
+
+-- name: ListItems :many
+SELECT * FROM items
+WHERE repo = sqlc.arg(repo) AND kind = sqlc.arg(kind)
+	AND (sqlc.arg(state) = 'all' OR state = sqlc.arg(state))
+ORDER BY number DESC;
+
+-- name: UpdateItem :one
+UPDATE items SET title = ?, body = ?, state = ?, updated_at = ?, closed_at = ?
+WHERE id = ?
+RETURNING *;
+
+-- name: TouchItem :exec
+UPDATE items SET updated_at = ? WHERE id = ?;
+
+-- name: ListItemLabels :many
+SELECT labels.name FROM item_labels
+JOIN labels ON labels.id = item_labels.label_id
+WHERE item_labels.item_id = ?
+ORDER BY labels.name;
+
+-- name: ListItemAssignees :many
+SELECT assignee FROM item_assignees WHERE item_id = ? ORDER BY assignee;
+
+-- name: CountComments :one
+SELECT COUNT(*) FROM comments WHERE item_id = ?;
+
+-- name: AddItemLabel :execrows
+INSERT OR IGNORE INTO item_labels (item_id, label_id) VALUES (?, ?);
+
+-- name: RemoveItemLabel :execrows
+DELETE FROM item_labels WHERE item_id = ? AND label_id = ?;
+
+-- name: AddItemAssignee :execrows
+INSERT OR IGNORE INTO item_assignees (item_id, assignee) VALUES (?, ?);
+
+-- name: RemoveItemAssignee :execrows
+DELETE FROM item_assignees WHERE item_id = ? AND assignee = ?;
+
+-- name: CreateLabel :one
+INSERT INTO labels (repo, name, color, description) VALUES (?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetLabel :one
+SELECT * FROM labels WHERE repo = ? AND name = ?;
+
+-- name: ListLabels :many
+SELECT * FROM labels WHERE repo = ? ORDER BY name;
+
+-- name: DeleteLabel :execrows
+DELETE FROM labels WHERE repo = ? AND name = ?;
+
+-- name: CreateComment :one
+INSERT INTO comments (item_id, body, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListComments :many
+SELECT * FROM comments WHERE item_id = ? ORDER BY id;

@@ -1,8 +1,8 @@
 # Lyra
 
 A self-hosted Git forge for one person and their agents. One Go binary, SQLite, bare
-repositories on disk. Agents use the `lyra` CLI; the web UI is a read-only browser for
-the user.
+repositories on disk. Agents use the `lyra` CLI; the user browses code and works on
+issues in the web UI.
 
 ## Run
 
@@ -93,7 +93,20 @@ lyra key list
 lyra key delete <id>
 lyra event list [--repo NAME] [--limit N]
 lyra event wait [--repo NAME] [--action PATTERN]... [--since ID] [--timeout 30m]
+lyra issue create <repo> --title TEXT [--body TEXT|--body-file F|-] [--label L]... [--assignee NAME|@me]...
+lyra issue list <repo> [--state open|closed|all] [--label L]... [--assignee NAME|@me]... [--limit N]
+lyra issue view <repo> <number>
+lyra issue comment <repo> <number> --body TEXT|--body-file F|-
+lyra issue edit <repo> <number> [--title TEXT] [--body ...] [--add-label L] [--remove-label L] [--add-assignee A] [--remove-assignee A]
+lyra issue close|reopen <repo> <number>
+lyra label create <repo> <name> [--color d73a4a] [--description TEXT]
+lyra label list <repo>
+lyra label delete <repo> <name>
 ```
+
+Issues are numbered per repository. Assignees are logins or agent names; `@me` is the
+`Lyra-Agent` name when one is set, otherwise the login. Labels must exist before they
+are applied. Every write returns the `event_id` it recorded.
 
 `lyra event wait` blocks until a matching event happens and prints it. Actions are glob
 patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
@@ -115,6 +128,18 @@ the server restarts.
 | `GET /api/keys`, `POST /api/keys`, `DELETE /api/keys/{id}` | read, admin |
 | `GET /api/events?repo=&limit=` | read |
 | `GET /api/events/stream?repo=&action=&since=` | read |
+| `GET /api/repos/{name}/issues?state=&label=&assignee=&limit=` | read |
+| `POST /api/repos/{name}/issues` | write |
+| `GET /api/repos/{name}/issues/{number}` | read |
+| `PATCH /api/repos/{name}/issues/{number}` | write |
+| `POST /api/repos/{name}/issues/{number}/comments` | write |
+| `GET /api/repos/{name}/labels`, `POST /api/repos/{name}/labels` | read, write |
+| `DELETE /api/repos/{name}/labels/{label}` | write |
+
+`PATCH` takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
+`remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as
+its own event (`issue.edited`, `issue.closed`, `issue.labeled`, `issue.assigned`, …),
+and `event_id` is the last one.
 
 `/api/events/stream` is a server-sent event stream. Each event's `id` is its event id,
 and the stream accepts `Last-Event-ID` to resume. It starts with an `id` line holding
@@ -127,6 +152,16 @@ a repository list.
 `/` lists repositories; `/{name}` browses files at the default branch,
 `/{name}/tree/{ref}/{path}`, `/{name}/blob/{ref}/{path}` (`?raw` for the raw file),
 `/{name}/commits/{ref}`, `/{name}/commit/{sha}` and `/{name}/tags`.
+
+`/{name}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
+open one. `/{name}/issues/{number}` shows the issue and its comments, rendered as
+Markdown with raw HTML removed, with forms to comment, close or reopen, and set labels
+and assignees.
+
+Requests that change data and come from another site are rejected, using Go's
+`http.CrossOriginProtection` (`Sec-Fetch-Site` and `Origin`). Without this, any page
+could post forms as the user, because the proxy adds the tailnet login header to every
+request. The CLI and git send neither header and aren't affected.
 
 ## Development
 
@@ -147,3 +182,5 @@ with `git` and the CLI. They cover:
   and `git verify-tag`, including forged signatures.
 - Waiting for events: filters, `--since`, timeouts, scoped tokens, and resuming across
   a server restart.
+- Issues, labels and comments from the CLI and the UI forms, including rejected
+  cross-site posts, Markdown sanitizing, and cleanup when a repository is deleted.

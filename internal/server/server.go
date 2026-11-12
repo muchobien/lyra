@@ -93,7 +93,7 @@ func (s *Server) repoDir(name string) string {
 
 func (s *Server) Handler() http.Handler {
 	router := chi.NewRouter()
-	router.Use(func(next http.Handler) http.Handler {
+	router.Use(http.NewCrossOriginProtection().Handler, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodHead {
 				chi.RouteContext(r.Context()).RouteMethod = http.MethodGet
@@ -116,6 +116,18 @@ func (s *Server) Handler() http.Handler {
 				repo.Get("/commits", s.handleListCommits)
 				repo.Get("/commits/{rev}", s.handleGetCommit)
 				repo.Get("/tags", s.handleListTags)
+				repo.Route("/issues", func(issues chi.Router) {
+					issues.Get("/", s.handleListIssues)
+					issues.Post("/", s.handleCreateIssue)
+					issues.Get("/{number}", s.handleGetIssue)
+					issues.Patch("/{number}", s.handleEditIssue)
+					issues.Post("/{number}/comments", s.handleCommentIssue)
+				})
+				repo.Route("/labels", func(labels chi.Router) {
+					labels.Get("/", s.handleListLabels)
+					labels.Post("/", s.handleCreateLabel)
+					labels.Delete("/{label}", s.handleDeleteLabel)
+				})
 			})
 		})
 		api.Route("/tokens", func(tokens chi.Router) {
@@ -145,6 +157,11 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/commits/{ref}", s.uiCommits)
 		repo.Get("/commit/{sha}", s.uiCommit)
 		repo.Get("/tags", s.uiTags)
+		repo.Get("/issues", s.uiIssues)
+		repo.Post("/issues", s.uiCreateIssue)
+		repo.Get("/issues/{number}", s.uiIssue)
+		repo.Post("/issues/{number}/comments", s.uiCommentIssue)
+		repo.Post("/issues/{number}/edit", s.uiEditIssue)
 	})
 
 	return router

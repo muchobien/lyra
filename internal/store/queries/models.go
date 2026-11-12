@@ -9,6 +9,17 @@ import (
 	"time"
 )
 
+type Comment struct {
+	ID        int64     `json:"id"`
+	ItemID    int64     `json:"item_id"`
+	Body      string    `json:"body"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Event struct {
 	ID      int64     `json:"id"`
 	At      time.Time `json:"at"`
@@ -19,6 +30,34 @@ type Event struct {
 	Agent   string    `json:"agent"`
 	Session string    `json:"session"`
 	Data    string    `json:"data"`
+	Item    int64     `json:"item"`
+}
+
+type Item struct {
+	ID        int64        `json:"id"`
+	Repo      string       `json:"repo"`
+	Number    int64        `json:"number"`
+	Kind      string       `json:"kind"`
+	Title     string       `json:"title"`
+	Body      string       `json:"body"`
+	State     string       `json:"state"`
+	User      string       `json:"user"`
+	Via       string       `json:"via"`
+	Agent     string       `json:"agent"`
+	Session   string       `json:"session"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	ClosedAt  sql.NullTime `json:"closed_at"`
+}
+
+type ItemAssignee struct {
+	ItemID   int64  `json:"item_id"`
+	Assignee string `json:"assignee"`
+}
+
+type ItemLabel struct {
+	ItemID  int64 `json:"item_id"`
+	LabelID int64 `json:"label_id"`
 }
 
 type Key struct {
@@ -30,6 +69,14 @@ type Key struct {
 	Fingerprint string    `json:"fingerprint"`
 	Signing     bool      `json:"signing"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+type Label struct {
+	ID          int64  `json:"id"`
+	Repo        string `json:"repo"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
 }
 
 type Repo struct {

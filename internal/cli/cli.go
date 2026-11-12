@@ -307,8 +307,186 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 	eventWait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
 	event.AddCommand(eventList, eventWait)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event)
+	issue := &cobra.Command{Use: "issue", Short: "Manage issues"}
+	issuesPath := func(repo string) string {
+		return "/api/repos/" + url.PathEscape(repo) + "/issues"
+	}
+	var issueTitle string
+	var issueLabels, issueAssignees []string
+	issueCreate := &cobra.Command{
+		Use:   "create <repo>",
+		Short: "Open an issue",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if issueTitle == "" {
+				return UsageError{errors.New("issue create needs --title")}
+			}
+			body, _, err := readBody(cmd)
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodPost, issuesPath(args[0]), map[string]any{"title": issueTitle, "body": body, "labels": issueLabels, "assignees": issueAssignees})
+		},
+	}
+	issueCreate.Flags().StringVar(&issueTitle, "title", "", "issue title (required)")
+	addBodyFlags(issueCreate)
+	issueCreate.Flags().StringArrayVar(&issueLabels, "label", nil, "add this label, which must exist (repeatable)")
+	issueCreate.Flags().StringArrayVar(&issueAssignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
+
+	var listState string
+	var listLabels, listAssignees []string
+	var listLimit int
+	issueList := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List issues, newest first",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query := url.Values{"state": {listState}, "limit": {fmt.Sprint(listLimit)}, "label": listLabels, "assignee": listAssignees}
+			return call(cmd, http.MethodGet, issuesPath(args[0])+"?"+query.Encode(), nil)
+		},
+	}
+	issueList.Flags().StringVar(&listState, "state", "open", "open, closed or all")
+	issueList.Flags().StringArrayVar(&listLabels, "label", nil, "only issues with this label (repeatable)")
+	issueList.Flags().StringArrayVar(&listAssignees, "assignee", nil, "only issues assigned to this login or agent, or @me (repeatable)")
+	issueList.Flags().IntVar(&listLimit, "limit", 30, "maximum number of issues")
+
+	issueView := &cobra.Command{
+		Use:   "view <repo> <number>",
+		Short: "Show an issue with its comments",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, issuesPath(args[0])+"/"+url.PathEscape(args[1]), nil)
+		},
+	}
+
+	issueComment := &cobra.Command{
+		Use:   "comment <repo> <number>",
+		Short: "Comment on an issue",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body, set, err := readBody(cmd)
+			if err != nil {
+				return err
+			}
+			if !set {
+				return UsageError{errors.New("issue comment needs --body or --body-file")}
+			}
+			return call(cmd, http.MethodPost, issuesPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", map[string]string{"body": body})
+		},
+	}
+	addBodyFlags(issueComment)
+
+	var editTitle string
+	var addLabels, removeLabels, addAssignees, removeAssignees []string
+	issueEdit := &cobra.Command{
+		Use:   "edit <repo> <number>",
+		Short: "Change an issue's title, body, labels or assignees",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			edit := map[string]any{}
+			if cmd.Flags().Changed("title") {
+				edit["title"] = editTitle
+			}
+			body, set, err := readBody(cmd)
+			if err != nil {
+				return err
+			}
+			if set {
+				edit["body"] = body
+			}
+			for key, values := range map[string][]string{"add_labels": addLabels, "remove_labels": removeLabels, "add_assignees": addAssignees, "remove_assignees": removeAssignees} {
+				if len(values) > 0 {
+					edit[key] = values
+				}
+			}
+			if len(edit) == 0 {
+				return UsageError{errors.New("issue edit needs at least one change; see lyra issue edit --help")}
+			}
+			return call(cmd, http.MethodPatch, issuesPath(args[0])+"/"+url.PathEscape(args[1]), edit)
+		},
+	}
+	issueEdit.Flags().StringVar(&editTitle, "title", "", "new title")
+	addBodyFlags(issueEdit)
+	issueEdit.Flags().StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
+	issueEdit.Flags().StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")
+	issueEdit.Flags().StringArrayVar(&addAssignees, "add-assignee", nil, "assign a login or agent name, or @me (repeatable)")
+	issueEdit.Flags().StringArrayVar(&removeAssignees, "remove-assignee", nil, "unassign a login or agent name, or @me (repeatable)")
+
+	for _, change := range []struct{ use, short, state string }{
+		{"close <repo> <number>", "Close an issue", "closed"},
+		{"reopen <repo> <number>", "Reopen a closed issue", "open"},
+	} {
+		issue.AddCommand(&cobra.Command{
+			Use:   change.use,
+			Short: change.short,
+			Args:  exactArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return call(cmd, http.MethodPatch, issuesPath(args[0])+"/"+url.PathEscape(args[1]), map[string]string{"state": change.state})
+			},
+		})
+	}
+	issue.AddCommand(issueCreate, issueList, issueView, issueComment, issueEdit)
+
+	label := &cobra.Command{Use: "label", Short: "Manage a repository's labels"}
+	labelsPath := func(repo string) string {
+		return "/api/repos/" + url.PathEscape(repo) + "/labels"
+	}
+	var color, labelDescription string
+	labelCreate := &cobra.Command{
+		Use:   "create <repo> <name>",
+		Short: "Create a label",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, labelsPath(args[0]), map[string]string{"name": args[1], "color": color, "description": labelDescription})
+		},
+	}
+	labelCreate.Flags().StringVar(&color, "color", "", "six hex digits, such as d73a4a")
+	labelCreate.Flags().StringVar(&labelDescription, "description", "", "label description")
+	labelList := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List labels",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, labelsPath(args[0]), nil)
+		},
+	}
+	labelDelete := &cobra.Command{
+		Use:   "delete <repo> <name>",
+		Short: "Delete a label and remove it from every issue",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, labelsPath(args[0])+"/"+url.PathEscape(args[1]), nil)
+		},
+	}
+	label.AddCommand(labelCreate, labelList, labelDelete)
+
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, label)
 	return root
+}
+
+func addBodyFlags(cmd *cobra.Command) {
+	cmd.Flags().String("body", "", "body text in Markdown")
+	cmd.Flags().String("body-file", "", "read the body from this file, or - for stdin")
+}
+
+func readBody(cmd *cobra.Command) (string, bool, error) {
+	flags := cmd.Flags()
+	if flags.Changed("body") && flags.Changed("body-file") {
+		return "", false, UsageError{errors.New("pass --body or --body-file, not both")}
+	}
+	if flags.Changed("body-file") {
+		file, _ := flags.GetString("body-file")
+		var data []byte
+		var err error
+		if file == "-" {
+			data, err = io.ReadAll(cmd.InOrStdin())
+		} else {
+			data, err = os.ReadFile(file)
+		}
+		return string(data), true, err
+	}
+	body, _ := flags.GetString("body")
+	return body, flags.Changed("body"), nil
 }
 
 func filter(out io.Writer, output []byte, expression string) error {

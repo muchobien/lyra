@@ -61,12 +61,13 @@ type Event struct {
 	At     time.Time       `json:"at"`
 	Action string          `json:"action"`
 	Repo   string          `json:"repo,omitempty"`
+	Item   int64           `json:"item,omitempty"`
 	Actor  Actor           `json:"actor"`
 	Data   json.RawMessage `json:"data"`
 }
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_time_format=sqlite")
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_time_format=sqlite&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
@@ -135,19 +136,39 @@ func (s *Store) Notify() {
 	s.changed = make(chan struct{})
 }
 
-func (s *Store) AddEvent(action, repo string, actor Actor, data any) (int64, error) {
+func addEvent(q *queries.Queries, action, repo string, item int64, actor Actor, data any) (int64, error) {
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		return 0, err
 	}
-	id, err := s.queries.CreateEvent(context.Background(), queries.CreateEventParams{
-		At: now(), Action: action, Repo: repo, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, Data: string(encoded),
+	return q.CreateEvent(context.Background(), queries.CreateEventParams{
+		At: now(), Action: action, Repo: repo, Item: item, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, Data: string(encoded),
 	})
+}
+
+func (s *Store) AddEvent(action, repo string, actor Actor, data any) (int64, error) {
+	id, err := addEvent(s.queries, action, repo, 0, actor, data)
 	if err != nil {
 		return 0, err
 	}
 	s.Notify()
 	return id, nil
+}
+
+func (s *Store) inTx(run func(q *queries.Queries) error) error {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := run(s.queries.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.Notify()
+	return nil
 }
 
 func eventsFromRows(rows []queries.Event) []Event {
@@ -158,6 +179,7 @@ func eventsFromRows(rows []queries.Event) []Event {
 			At:     row.At,
 			Action: row.Action,
 			Repo:   row.Repo,
+			Item:   row.Item,
 			Actor:  Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
 			Data:   json.RawMessage(row.Data),
 		})

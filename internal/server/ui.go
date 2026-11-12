@@ -108,7 +108,15 @@ func init() {
 		return codeCSS
 	}
 
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "error"} {
+	templateFuncs["markdown"] = func(source string) template.HTML {
+		var rendered bytes.Buffer
+		if markdown.Convert([]byte(source), &rendered) != nil {
+			return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+		}
+		return template.HTML(rendered.String())
+	}
+
+	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "issues", "issue", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }
