@@ -7,11 +7,12 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
@@ -394,25 +395,17 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "only signing keys are supported; set signing to true")
 		return
 	}
-	fields := strings.Fields(body.PublicKey)
-	if len(fields) < 2 || strings.Contains(strings.TrimSpace(body.PublicKey), "\n") {
+	parsed, comment, options, rest, err := ssh.ParseAuthorizedKey([]byte(body.PublicKey))
+	if err != nil || len(options) > 0 || strings.TrimSpace(string(rest)) != "" {
 		writeError(w, http.StatusBadRequest, "public_key must be one OpenSSH public key line")
 		return
 	}
-	publicKey := fields[0] + " " + fields[1]
-	cmd := exec.Command("ssh-keygen", "-l", "-E", "sha256", "-f", "-")
-	cmd.Stdin = strings.NewReader(publicKey + "\n")
-	output, err := cmd.Output()
-	parts := strings.Fields(string(output))
-	if err != nil || len(parts) < 2 || !strings.HasPrefix(parts[1], "SHA256:") {
-		writeError(w, http.StatusBadRequest, "public_key is not a valid OpenSSH public key")
-		return
-	}
 	title := body.Title
-	if title == "" && len(fields) > 2 {
-		title = strings.Join(fields[2:], " ")
+	if title == "" {
+		title = comment
 	}
-	key, err := s.store.CreateKey(store.Key{User: id.actor.User, Title: title, Agent: body.Agent, PublicKey: publicKey, Fingerprint: parts[1], Signing: true})
+	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(parsed)))
+	key, err := s.store.CreateKey(store.Key{User: id.actor.User, Title: title, Agent: body.Agent, PublicKey: publicKey, Fingerprint: ssh.FingerprintSHA256(parsed), Signing: true})
 	if store.IsUniqueViolation(err) {
 		writeError(w, http.StatusConflict, "key already registered")
 		return

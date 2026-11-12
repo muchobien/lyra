@@ -13,7 +13,7 @@ lyra serve --listen :8080 --data /var/lib/lyra \
 ```
 
 Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY` and `LYRA_ALLOW_LOGIN`.
-The server needs `git` and `ssh-keygen` on `PATH`.
+The server needs `git` and `ssh-keygen` (used by git to check signatures) on `PATH`.
 
 The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/post-receive` (written
 at startup, applied through `core.hooksPath`) and `allowed_signers` (rebuilt when
