@@ -61,6 +61,15 @@ func (s *Server) planMerge(repo string, pull store.Pull) (mergePlan, error) {
 	}
 	policy := policyFor(rules, pull.Base)
 	plan.Methods = policy.methods
+	if policy.requireApproval {
+		reviews, err := s.store.Reviews(pull.Item)
+		if err != nil {
+			return plan, err
+		}
+		for _, problem := range approvalProblems(pull, reviews, plan.HeadSHA) {
+			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+": "+problem)
+		}
+	}
 	if len(policy.methods) == 0 {
 		plan.Blocked = append(plan.Blocked, "branch rules "+strings.Join(policy.rules, ", ")+" allow no merge method")
 	}

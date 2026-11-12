@@ -36,10 +36,20 @@ type Item struct {
 	id           int64
 }
 
+type LineRef struct {
+	CommitSHA string `json:"commit_sha,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Side      string `json:"side,omitempty"`
+	Line      int64  `json:"line,omitempty"`
+}
+
 type Comment struct {
-	ID        int64     `json:"id"`
-	Body      string    `json:"body"`
-	Author    Actor     `json:"author"`
+	ID       int64  `json:"id"`
+	Body     string `json:"body"`
+	Author   Actor  `json:"author"`
+	ReviewID int64  `json:"review_id,omitempty"`
+	LineRef
+	Outdated  bool      `json:"outdated,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -137,7 +147,17 @@ func applyAssignee(q *queries.Queries, item queries.Item, assignee string, add b
 }
 
 func commentFromRow(row queries.Comment) Comment {
-	return Comment{ID: row.ID, Body: row.Body, Author: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, CreatedAt: row.CreatedAt}
+	return Comment{
+		ID: row.ID, Body: row.Body, Author: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, ReviewID: row.ReviewID.Int64,
+		LineRef: LineRef{CommitSHA: row.CommitSha, Path: row.Path, Side: row.Side, Line: row.Line}, CreatedAt: row.CreatedAt,
+	}
+}
+
+func createComment(q *queries.Queries, itemID int64, actor Actor, body string, reviewID int64, line LineRef, at time.Time) (queries.Comment, error) {
+	return q.CreateComment(context.Background(), queries.CreateCommentParams{
+		ItemID: itemID, Body: body, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: at,
+		ReviewID: sql.NullInt64{Int64: reviewID, Valid: reviewID != 0}, CommitSha: line.CommitSHA, Path: line.Path, Side: line.Side, Line: line.Line,
+	})
 }
 
 func createItem(q *queries.Queries, kind, repo string, actor Actor, title, body string, labels, assignees []string) (queries.Item, error) {
@@ -295,26 +315,27 @@ func (s *Store) EditItem(kind, repo string, number int64, actor Actor, edit Item
 	return item, lastEvent, err
 }
 
-func (s *Store) AddComment(kind, repo string, number int64, actor Actor, body string) (Comment, int64, error) {
+func (s *Store) AddComment(kind, repo string, number int64, actor Actor, body string, line LineRef) (Comment, int64, error) {
 	var comment Comment
 	var eventID int64
 	err := s.inTx(func(q *queries.Queries) error {
-		ctx := context.Background()
 		row, err := getItem(q, kind, repo, number)
 		if err != nil {
 			return err
 		}
-		created, err := q.CreateComment(ctx, queries.CreateCommentParams{
-			ItemID: row.ID, Body: body, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: now(),
-		})
+		created, err := createComment(q, row.ID, actor, body, 0, line, now())
 		if err != nil {
 			return err
 		}
-		if err := q.TouchItem(ctx, queries.TouchItemParams{UpdatedAt: created.CreatedAt, ID: row.ID}); err != nil {
+		if err := q.TouchItem(context.Background(), queries.TouchItemParams{UpdatedAt: created.CreatedAt, ID: row.ID}); err != nil {
 			return err
 		}
 		comment = commentFromRow(created)
-		eventID, err = addEvent(q, kind+".comment", repo, number, actor, map[string]any{"number": number, "comment": created.ID, "body": body})
+		data := map[string]any{"number": number, "comment": created.ID, "body": body}
+		if line.Path != "" {
+			data["path"], data["side"], data["line"] = line.Path, line.Side, line.Line
+		}
+		eventID, err = addEvent(q, kind+".comment", repo, number, actor, data)
 		return err
 	})
 	return comment, eventID, err

@@ -371,6 +371,8 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 			},
 		}
 
+		var commentPath, commentSide string
+		var commentLine int64
 		commentCommand := &cobra.Command{
 			Use:   "comment <repo> <number>",
 			Short: "Comment on a " + noun,
@@ -383,10 +385,20 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 				if !set {
 					return UsageError{errors.New(use + " comment needs --body or --body-file")}
 				}
-				return call(cmd, http.MethodPost, itemsPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", map[string]string{"body": body})
+				comment := map[string]any{"body": body}
+				if commentPath != "" || commentLine != 0 {
+					comment["path"], comment["line"], comment["side"] = commentPath, commentLine, commentSide
+				}
+				return call(cmd, http.MethodPost, itemsPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", comment)
 			},
 		}
 		addBodyFlags(commentCommand)
+		if segment == "pulls" {
+			commentCommand.Long = "Comment on a pull request, or with --path and --line on one line of its diff."
+			commentCommand.Flags().StringVar(&commentPath, "path", "", "file the comment is on")
+			commentCommand.Flags().Int64Var(&commentLine, "line", 0, "line number in the file, as shown in the diff")
+			commentCommand.Flags().StringVar(&commentSide, "side", "new", "new for the head version of the line, old for the base version")
+		}
 
 		var editTitle string
 		var addLabels, removeLabels, addAssignees, removeAssignees []string
@@ -502,7 +514,60 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 	prMerge.Flags().StringVar(&mergeHead, "head", "", "merge only if the head branch is at this commit")
 	prMerge.Flags().StringVar(&mergeTitle, "title", "", "squash commit title (default: the pull request title and number)")
 	addBodyFlags(prMerge)
-	pr.AddCommand(prCommits, prDiff, prMerge)
+	var approve, requestChanges, commentOnly bool
+	var commentsFile string
+	prReview := &cobra.Command{
+		Use:   "review <repo> <number>",
+		Short: "Approve a pull request, request changes, or comment on it",
+		Long: `Submit a review of the pull request's current head commit.
+
+--approve and --request-changes count toward branch rules that require approval;
+the author can't use them on their own pull request. --request-changes needs a body.
+--comments-file reads line comments as JSON: [{"path": "main.go", "line": 12, "side":
+"new", "body": "..."}], with lines as numbered in the diff (side defaults to new).`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var state string
+			switch {
+			case approve && !requestChanges && !commentOnly:
+				state = "approve"
+			case requestChanges && !approve && !commentOnly:
+				state = "request_changes"
+			case commentOnly && !approve && !requestChanges:
+				state = "comment"
+			default:
+				return UsageError{errors.New("pr review needs exactly one of --approve, --request-changes or --comment")}
+			}
+			body, _, err := readBody(cmd)
+			if err != nil {
+				return err
+			}
+			review := map[string]any{"state": state, "body": body}
+			if commentsFile != "" {
+				var data []byte
+				if commentsFile == "-" {
+					data, err = io.ReadAll(cmd.InOrStdin())
+				} else {
+					data, err = os.ReadFile(commentsFile)
+				}
+				if err != nil {
+					return err
+				}
+				var comments []map[string]any
+				if err := json.Unmarshal(data, &comments); err != nil {
+					return UsageError{fmt.Errorf("--comments-file: %w", err)}
+				}
+				review["comments"] = comments
+			}
+			return call(cmd, http.MethodPost, pullPath(args)+"/reviews", review)
+		},
+	}
+	prReview.Flags().BoolVar(&approve, "approve", false, "approve the changes")
+	prReview.Flags().BoolVar(&requestChanges, "request-changes", false, "request changes before merging")
+	prReview.Flags().BoolVar(&commentOnly, "comment", false, "comment without approving")
+	prReview.Flags().StringVar(&commentsFile, "comments-file", "", "JSON file with line comments, or - for stdin")
+	addBodyFlags(prReview)
+	pr.AddCommand(prCommits, prDiff, prMerge, prReview)
 
 	signingKey := &cobra.Command{
 		Use:   "signing-key",
@@ -552,7 +617,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 	rulesPath := func(repo string) string {
 		return "/api/repos/" + url.PathEscape(repo) + "/rules"
 	}
-	var requireSigned bool
+	var requireSigned, requireApproval bool
 	var allowedMethods []string
 	ruleSet := &cobra.Command{
 		Use:   "set <repo> <pattern>",
@@ -561,14 +626,19 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 
 --require-signed refuses pushes that add commits without a verified signature to a
 matching branch, and merges of pull requests with such commits (squash merges too).
---merge-methods limits how pull requests into a matching branch can be merged.
-Rules apply to admins as well. Setting a pattern again replaces its rule.`,
+--require-approval refuses merges until someone other than the author approves the
+pull request's current head commit, and while a reviewer's latest review requests
+changes. --merge-methods limits how pull requests into a matching branch can be
+merged. Rules apply to admins as well. Setting a pattern again replaces its rule.`,
 		Args: exactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{"pattern": args[1], "require_signed": requireSigned, "merge_methods": allowedMethods})
+			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{
+				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "merge_methods": allowedMethods,
+			})
 		},
 	}
 	ruleSet.Flags().BoolVar(&requireSigned, "require-signed", false, "require verified signatures on every commit")
+	ruleSet.Flags().BoolVar(&requireApproval, "require-approval", false, "require an approving review by someone other than the author")
 	ruleSet.Flags().StringSliceVar(&allowedMethods, "merge-methods", nil, "allowed merge methods, ff and/or squash (default: both)")
 	ruleList := &cobra.Command{
 		Use:   "list <repo>",

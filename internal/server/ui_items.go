@@ -3,13 +3,14 @@ package server
 import (
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/bluekeyes/go-gitdiff/gitdiff"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
@@ -17,9 +18,32 @@ import (
 
 var itemPaths = map[string]string{"issue": "issues", "pr": "pulls"}
 
+var lineKinds = map[gitdiff.LineOp]string{gitdiff.OpContext: "context", gitdiff.OpAdd: "add", gitdiff.OpDelete: "delete"}
+
 type itemRow struct {
 	Item store.Item
 	Pull *store.Pull
+}
+
+type timelineEntry struct {
+	At      time.Time
+	Comment *store.Comment
+	Review  *store.Review
+}
+
+type diffLine struct {
+	Kind     string
+	Old      int64
+	New      int64
+	Text     string
+	Comments []store.Comment
+}
+
+type diffFile struct {
+	Path    string
+	OldPath string
+	Binary  bool
+	Lines   []diffLine
 }
 
 type itemPage struct {
@@ -28,14 +52,15 @@ type itemPage struct {
 	Noun       string
 	Item       store.Item
 	Pull       *store.Pull
-	Comments   []store.Comment
+	Timeline   []timelineEntry
 	CanWrite   bool
+	IsAuthor   bool
 	Labels     string
 	Assignees  string
 	Tab        string
 	Commits    []repos.Commit
 	Files      []repos.FileChange
-	Diff       template.HTML
+	DiffFiles  []diffFile
 	Merge      *mergePlan
 	MergeError string
 }
@@ -176,36 +201,93 @@ func (s *Server) uiItemPage(kind string) http.HandlerFunc {
 			Kind: kind, Path: itemPaths[kind], Noun: nouns[kind], Item: item, CanWrite: identityFrom(r).can("write", repo.Name),
 			Labels: strings.Join(item.Labels, ", "), Assignees: strings.Join(item.Assignees, ", "), Tab: r.URL.Query().Get("tab"),
 		}
-		var err error
+		if view.Tab != "commits" && view.Tab != "files" {
+			view.Tab = ""
+		}
+		comments, err := s.store.Comments(item)
+		if err != nil {
+			s.renderError(w, r, http.StatusInternalServerError, err.Error())
+			return
+		}
+		reviews := []store.Review{}
 		if kind == "pr" {
-			pull, pullErr := s.store.Pull(repo.Name, item.Number)
-			if pullErr != nil {
-				s.renderError(w, r, http.StatusInternalServerError, pullErr.Error())
+			pull, err := s.store.Pull(repo.Name, item.Number)
+			if err == nil {
+				reviews, err = s.store.Reviews(item)
+			}
+			if err != nil {
+				s.renderError(w, r, http.StatusInternalServerError, err.Error())
 				return
 			}
 			view.Pull = &pull
+			view.IsAuthor = isAuthor(pull, identityFrom(r).actor)
 			view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
+			s.markOutdated(repo.Name, pull, comments)
+			for index := range reviews {
+				s.markOutdated(repo.Name, pull, reviews[index].Comments)
+			}
 			base, head := s.pullRange(repo.Name, pull)
 			switch view.Tab {
 			case "commits":
 				view.Commits, err = s.commits(repo.Name, head, 250, base)
 			case "files":
-				dir := s.repoDir(repo.Name)
-				if view.Files, err = s.git.DiffFiles(dir, base, head); err == nil {
-					var diff string
-					diff, err = s.git.Diff(dir, base, head)
-					view.Diff = highlight(patchFormatter, lexers.Get("diff"), diff)
+				view.Files, err = s.git.DiffFiles(s.repoDir(repo.Name), base, head)
+				if err != nil {
+					break
+				}
+				files, err := s.pullDiff(repo.Name, pull)
+				if err != nil {
+					s.renderError(w, r, http.StatusInternalServerError, err.Error())
+					return
+				}
+				for _, file := range files {
+					shown := diffFile{Path: file.NewName, Binary: file.IsBinary}
+					if file.IsDelete {
+						shown.Path = file.OldName
+					}
+					if file.IsRename {
+						shown.OldPath = file.OldName
+					}
+					for _, fragment := range file.TextFragments {
+						shown.Lines = append(shown.Lines, diffLine{Kind: "hunk", Text: fmt.Sprintf("@@ -%d,%d +%d,%d @@ %s", fragment.OldPosition, fragment.OldLines, fragment.NewPosition, fragment.NewLines, fragment.Comment)})
+						oldNumber, newNumber := fragment.OldPosition, fragment.NewPosition
+						for _, line := range fragment.Lines {
+							shown.Lines = append(shown.Lines, diffLine{Kind: lineKinds[line.Op], Text: strings.TrimSuffix(line.Line, "\n")})
+							current := &shown.Lines[len(shown.Lines)-1]
+							if line.Old() {
+								current.Old = oldNumber
+								oldNumber++
+							}
+							if line.New() {
+								current.New = newNumber
+								newNumber++
+							}
+							for _, comment := range comments {
+								onOld := comment.Side == "old" && current.Old == comment.Line && comment.Path == file.OldName && current.Kind != "add"
+								onNew := comment.Side == "new" && current.New == comment.Line && comment.Path == file.NewName && current.Kind != "delete"
+								if !comment.Outdated && (onOld || onNew) {
+									current.Comments = append(current.Comments, comment)
+								}
+							}
+						}
+					}
+					view.DiffFiles = append(view.DiffFiles, shown)
 				}
 			}
+			if err != nil {
+				s.renderError(w, r, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
-		if view.Tab != "commits" && view.Tab != "files" {
-			view.Tab = ""
-			view.Comments, err = s.store.Comments(item)
+		for index := range comments {
+			if comments[index].ReviewID == 0 {
+				view.Timeline = append(view.Timeline, timelineEntry{At: comments[index].CreatedAt, Comment: &comments[index]})
+			}
 		}
-		if err != nil {
-			s.renderError(w, r, http.StatusInternalServerError, err.Error())
-			return
+		for index := range reviews {
+			view.Timeline = append(view.Timeline, timelineEntry{At: reviews[index].CreatedAt, Review: &reviews[index]})
 		}
+		sort.SliceStable(view.Timeline, func(first, second int) bool { return view.Timeline[first].At.Before(view.Timeline[second].At) })
 		s.render(w, r, http.StatusOK, "item", page{Title: fmt.Sprintf("%s · #%d · %s", item.Title, item.Number, repo.Name), Repo: &repo, Ref: s.git.DefaultBranch(s.repoDir(repo.Name)), CloneURL: cloneURL(r, repo.Name), Data: view})
 	}
 }
@@ -225,11 +307,22 @@ func (s *Server) uiCommentItem(kind string) http.HandlerFunc {
 			s.renderError(w, r, http.StatusBadRequest, problem)
 			return
 		}
-		if _, _, err := s.store.AddComment(kind, repo.Name, item.Number, identityFrom(r).actor, body); err != nil {
+		lineNumber, _ := strconv.ParseInt(r.FormValue("line"), 10, 64)
+		line, err := s.commentLine(repo.Name, kind, item.Number, r.FormValue("path"), lineNumber, r.FormValue("side"))
+		if err != nil {
 			s.renderStoreError(w, r, err, "Not found.")
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/%s/%s/%d", repo.Name, itemPaths[kind], item.Number), http.StatusSeeOther)
+		comment, _, err := s.store.AddComment(kind, repo.Name, item.Number, identityFrom(r).actor, body, line)
+		if err != nil {
+			s.renderStoreError(w, r, err, "Not found.")
+			return
+		}
+		target := fmt.Sprintf("/%s/%s/%d", repo.Name, itemPaths[kind], item.Number)
+		if line.Path != "" {
+			target += fmt.Sprintf("?tab=files#comment-%d", comment.ID)
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
 	}
 }
 

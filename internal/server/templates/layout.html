@@ -59,7 +59,22 @@ form.inline { display: inline; }
 details { margin: 12px 0; }
 .added { color: var(--ok); }
 .removed { color: var(--bad); }
-.diff { margin-top: 16px; }
+.badge.approved { color: var(--ok); }
+.badge.changes_requested { color: var(--bad); }
+.badge.commented { color: var(--muted); }
+.file { border: 1px solid var(--line); border-radius: 6px; margin: 16px 0; overflow-x: auto; }
+.file > .meta { background: var(--panel); border-bottom: 1px solid var(--line); padding: 6px 12px; }
+.file > p { padding: 0 12px; }
+table.diff-table { border: 0; border-radius: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+table.diff-table td { border: 0; padding: 0 8px; }
+table.diff-table td.num { color: var(--muted); text-align: right; width: 1%; white-space: nowrap; user-select: none; }
+table.diff-table td.num[data-line] { cursor: pointer; }
+table.diff-table td.num[data-line]:hover { color: var(--link); }
+table.diff-table td.code { white-space: pre-wrap; word-break: break-all; }
+table.diff-table tr.add { background: color-mix(in srgb, var(--ok) 15%, transparent); }
+table.diff-table tr.delete { background: color-mix(in srgb, var(--bad) 15%, transparent); }
+table.diff-table tr.hunk td { background: var(--panel); color: var(--muted); padding: 2px 8px; }
+table.diff-table tr.line-comments td, table.diff-table tr#line-form-row td { padding: 4px 12px; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .comment { border: 1px solid var(--line); border-radius: 6px; margin: 16px 0; }
 .comment .meta { background: var(--panel); border-bottom: 1px solid var(--line); padding: 6px 12px; border-radius: 6px 6px 0 0; }
 .comment .body { padding: 0 16px; overflow-x: auto; }

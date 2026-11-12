@@ -333,6 +333,18 @@ func (g Git) Diff(dir, base, head string) (string, error) {
 	return string(stdout), nil
 }
 
+func (g Git) Changed(dir, from, to, path string) (bool, error) {
+	_, stderr, err := g.run(dir, "diff", "--quiet", from, to, "--", path)
+	var exitError *exec.ExitError
+	if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("git diff --quiet: %v: %s", err, stderr)
+	}
+	return false, nil
+}
+
 type FileChange struct {
 	Path      string `json:"path"`
 	OldPath   string `json:"old_path,omitempty"`

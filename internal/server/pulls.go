@@ -11,6 +11,7 @@ type pullView struct {
 	store.Pull
 	Merge      *mergePlan      `json:"merge,omitempty"`
 	MergeError string          `json:"merge_error,omitempty"`
+	Reviews    []store.Review  `json:"reviews"`
 	Comments   []store.Comment `json:"comments"`
 }
 
@@ -149,7 +150,16 @@ func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	view := pullView{Pull: pull, Comments: comments}
+	reviews, err := s.store.Reviews(pull.Item)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.markOutdated(repo.Name, pull, comments)
+	for index := range reviews {
+		s.markOutdated(repo.Name, pull, reviews[index].Comments)
+	}
+	view := pullView{Pull: pull, Reviews: reviews, Comments: comments}
 	view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
 	writeJSON(w, http.StatusOK, view)
 }

@@ -181,6 +181,7 @@ func (s *Server) Handler() http.Handler {
 					pulls.Get("/{number}/diff", s.handlePullDiff)
 					pulls.Get("/{number}/files", s.handlePullFiles)
 					pulls.Post("/{number}/merge", s.handleMergePull)
+					pulls.Post("/{number}/reviews", s.handleReviewPull)
 				})
 				repo.Route("/rules", func(rules chi.Router) {
 					rules.Get("/", s.handleListRules)
@@ -224,6 +225,7 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/tags", s.uiTags)
 		repo.Post("/issues", s.uiCreateIssue)
 		repo.Post("/pulls/{number}/merge", s.uiMergePull)
+		repo.Post("/pulls/{number}/reviews", s.uiReviewPull)
 		for kind, path := range itemPaths {
 			repo.Get("/"+path, s.uiItems(kind))
 			repo.Get("/"+path+"/{number}", s.uiItemPage(kind))

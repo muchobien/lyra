@@ -126,8 +126,8 @@ SELECT * FROM labels WHERE repo = ? ORDER BY name;
 DELETE FROM labels WHERE repo = ? AND name = ?;
 
 -- name: CreateComment :one
-INSERT INTO comments (item_id, body, user, via, agent, session, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO comments (item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListComments :many
@@ -154,9 +154,12 @@ UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;
 
 -- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (repo, pattern) DO UPDATE SET require_signed = excluded.require_signed, merge_methods = excluded.merge_methods
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (repo, pattern) DO UPDATE SET
+	require_signed = excluded.require_signed,
+	require_approval = excluded.require_approval,
+	merge_methods = excluded.merge_methods
 RETURNING *;
 
 -- name: ListRules :many
@@ -164,3 +167,11 @@ SELECT * FROM branch_rules WHERE repo = ? ORDER BY pattern;
 
 -- name: DeleteRule :execrows
 DELETE FROM branch_rules WHERE repo = ? AND pattern = ?;
+
+-- name: CreateReview :one
+INSERT INTO reviews (item_id, state, body, commit_sha, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListReviews :many
+SELECT * FROM reviews WHERE item_id = ? ORDER BY id;

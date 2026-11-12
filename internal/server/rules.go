@@ -14,9 +14,10 @@ import (
 var mergeMethods = []string{"ff", "squash"}
 
 type branchPolicy struct {
-	rules         []string
-	requireSigned bool
-	methods       []string
+	rules           []string
+	requireSigned   bool
+	requireApproval bool
+	methods         []string
 }
 
 func policyFor(rules []store.Rule, branch string) branchPolicy {
@@ -27,6 +28,7 @@ func policyFor(rules []store.Rule, branch string) branchPolicy {
 		}
 		policy.rules = append(policy.rules, rule.Pattern)
 		policy.requireSigned = policy.requireSigned || rule.RequireSigned
+		policy.requireApproval = policy.requireApproval || rule.RequireApproval
 		policy.methods = slices.DeleteFunc(policy.methods, func(method string) bool { return !slices.Contains(rule.MergeMethods, method) })
 	}
 	return policy
@@ -105,9 +107,10 @@ func (s *Server) handleSetRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Pattern       string   `json:"pattern"`
-		RequireSigned bool     `json:"require_signed"`
-		MergeMethods  []string `json:"merge_methods"`
+		Pattern         string   `json:"pattern"`
+		RequireSigned   bool     `json:"require_signed"`
+		RequireApproval bool     `json:"require_approval"`
+		MergeMethods    []string `json:"merge_methods"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -125,7 +128,9 @@ func (s *Server) handleSetRule(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	rule, eventID, err := s.store.SetRule(repo.Name, identityFrom(r).actor, body.Pattern, body.RequireSigned, body.MergeMethods)
+	rule, eventID, err := s.store.SetRule(repo.Name, identityFrom(r).actor, store.Rule{
+		Pattern: body.Pattern, RequireSigned: body.RequireSigned, RequireApproval: body.RequireApproval, MergeMethods: body.MergeMethods,
+	})
 	if err != nil {
 		writeStoreError(w, err, "repository not found")
 		return

@@ -57,19 +57,24 @@ func (q *Queries) CountComments(ctx context.Context, itemID int64) (int64, error
 }
 
 const createComment = `-- name: CreateComment :one
-INSERT INTO comments (item_id, body, user, via, agent, session, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, item_id, body, user, via, agent, session, created_at
+INSERT INTO comments (item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line
 `
 
 type CreateCommentParams struct {
-	ItemID    int64     `json:"item_id"`
-	Body      string    `json:"body"`
-	User      string    `json:"user"`
-	Via       string    `json:"via"`
-	Agent     string    `json:"agent"`
-	Session   string    `json:"session"`
-	CreatedAt time.Time `json:"created_at"`
+	ItemID    int64         `json:"item_id"`
+	Body      string        `json:"body"`
+	User      string        `json:"user"`
+	Via       string        `json:"via"`
+	Agent     string        `json:"agent"`
+	Session   string        `json:"session"`
+	CreatedAt time.Time     `json:"created_at"`
+	ReviewID  sql.NullInt64 `json:"review_id"`
+	CommitSha string        `json:"commit_sha"`
+	Path      string        `json:"path"`
+	Side      string        `json:"side"`
+	Line      int64         `json:"line"`
 }
 
 func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error) {
@@ -81,6 +86,11 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (C
 		arg.Agent,
 		arg.Session,
 		arg.CreatedAt,
+		arg.ReviewID,
+		arg.CommitSha,
+		arg.Path,
+		arg.Side,
+		arg.Line,
 	)
 	var i Comment
 	err := row.Scan(
@@ -92,6 +102,11 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (C
 		&i.Agent,
 		&i.Session,
 		&i.CreatedAt,
+		&i.ReviewID,
+		&i.CommitSha,
+		&i.Path,
+		&i.Side,
+		&i.Line,
 	)
 	return i, err
 }
@@ -306,6 +321,52 @@ func (q *Queries) CreateRepo(ctx context.Context, arg CreateRepoParams) (Repo, e
 		&i.Description,
 		&i.CreatedAt,
 		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const createReview = `-- name: CreateReview :one
+INSERT INTO reviews (item_id, state, body, commit_sha, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, item_id, state, body, commit_sha, user, via, agent, session, created_at
+`
+
+type CreateReviewParams struct {
+	ItemID    int64     `json:"item_id"`
+	State     string    `json:"state"`
+	Body      string    `json:"body"`
+	CommitSha string    `json:"commit_sha"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error) {
+	row := q.db.QueryRowContext(ctx, createReview,
+		arg.ItemID,
+		arg.State,
+		arg.Body,
+		arg.CommitSha,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i Review
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.State,
+		&i.Body,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -560,7 +621,7 @@ func (q *Queries) LatestEventID(ctx context.Context) (int64, error) {
 }
 
 const listComments = `-- name: ListComments :many
-SELECT id, item_id, body, user, via, agent, session, created_at FROM comments WHERE item_id = ? ORDER BY id
+SELECT id, item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line FROM comments WHERE item_id = ? ORDER BY id
 `
 
 func (q *Queries) ListComments(ctx context.Context, itemID int64) ([]Comment, error) {
@@ -581,6 +642,11 @@ func (q *Queries) ListComments(ctx context.Context, itemID int64) ([]Comment, er
 			&i.Agent,
 			&i.Session,
 			&i.CreatedAt,
+			&i.ReviewID,
+			&i.CommitSha,
+			&i.Path,
+			&i.Side,
+			&i.Line,
 		); err != nil {
 			return nil, err
 		}
@@ -990,8 +1056,46 @@ func (q *Queries) ListRepos(ctx context.Context) ([]Repo, error) {
 	return items, nil
 }
 
+const listReviews = `-- name: ListReviews :many
+SELECT id, item_id, state, body, commit_sha, user, via, agent, session, created_at FROM reviews WHERE item_id = ? ORDER BY id
+`
+
+func (q *Queries) ListReviews(ctx context.Context, itemID int64) ([]Review, error) {
+	rows, err := q.db.QueryContext(ctx, listReviews, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Review
+	for rows.Next() {
+		var i Review
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.State,
+			&i.Body,
+			&i.CommitSha,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRules = `-- name: ListRules :many
-SELECT id, repo, pattern, require_signed, merge_methods, created_at FROM branch_rules WHERE repo = ? ORDER BY pattern
+SELECT id, repo, pattern, require_signed, merge_methods, created_at, require_approval FROM branch_rules WHERE repo = ? ORDER BY pattern
 `
 
 func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, error) {
@@ -1010,6 +1114,7 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 			&i.RequireSigned,
 			&i.MergeMethods,
 			&i.CreatedAt,
+			&i.RequireApproval,
 		); err != nil {
 			return nil, err
 		}
@@ -1154,18 +1259,22 @@ func (q *Queries) RemoveItemLabel(ctx context.Context, arg RemoveItemLabelParams
 }
 
 const setRule = `-- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (repo, pattern) DO UPDATE SET require_signed = excluded.require_signed, merge_methods = excluded.merge_methods
-RETURNING id, repo, pattern, require_signed, merge_methods, created_at
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (repo, pattern) DO UPDATE SET
+	require_signed = excluded.require_signed,
+	require_approval = excluded.require_approval,
+	merge_methods = excluded.merge_methods
+RETURNING id, repo, pattern, require_signed, merge_methods, created_at, require_approval
 `
 
 type SetRuleParams struct {
-	Repo          string    `json:"repo"`
-	Pattern       string    `json:"pattern"`
-	RequireSigned bool      `json:"require_signed"`
-	MergeMethods  string    `json:"merge_methods"`
-	CreatedAt     time.Time `json:"created_at"`
+	Repo            string    `json:"repo"`
+	Pattern         string    `json:"pattern"`
+	RequireSigned   bool      `json:"require_signed"`
+	RequireApproval bool      `json:"require_approval"`
+	MergeMethods    string    `json:"merge_methods"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, error) {
@@ -1173,6 +1282,7 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		arg.Repo,
 		arg.Pattern,
 		arg.RequireSigned,
+		arg.RequireApproval,
 		arg.MergeMethods,
 		arg.CreatedAt,
 	)
@@ -1184,6 +1294,7 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		&i.RequireSigned,
 		&i.MergeMethods,
 		&i.CreatedAt,
+		&i.RequireApproval,
 	)
 	return i, err
 }

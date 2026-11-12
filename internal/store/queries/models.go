@@ -10,23 +10,29 @@ import (
 )
 
 type BranchRule struct {
-	ID            int64     `json:"id"`
-	Repo          string    `json:"repo"`
-	Pattern       string    `json:"pattern"`
-	RequireSigned bool      `json:"require_signed"`
-	MergeMethods  string    `json:"merge_methods"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	Repo            string    `json:"repo"`
+	Pattern         string    `json:"pattern"`
+	RequireSigned   bool      `json:"require_signed"`
+	MergeMethods    string    `json:"merge_methods"`
+	CreatedAt       time.Time `json:"created_at"`
+	RequireApproval bool      `json:"require_approval"`
 }
 
 type Comment struct {
-	ID        int64     `json:"id"`
-	ItemID    int64     `json:"item_id"`
-	Body      string    `json:"body"`
-	User      string    `json:"user"`
-	Via       string    `json:"via"`
-	Agent     string    `json:"agent"`
-	Session   string    `json:"session"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64         `json:"id"`
+	ItemID    int64         `json:"item_id"`
+	Body      string        `json:"body"`
+	User      string        `json:"user"`
+	Via       string        `json:"via"`
+	Agent     string        `json:"agent"`
+	Session   string        `json:"session"`
+	CreatedAt time.Time     `json:"created_at"`
+	ReviewID  sql.NullInt64 `json:"review_id"`
+	CommitSha string        `json:"commit_sha"`
+	Path      string        `json:"path"`
+	Side      string        `json:"side"`
+	Line      int64         `json:"line"`
 }
 
 type Event struct {
@@ -103,6 +109,19 @@ type Repo struct {
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	CreatedBy   string    `json:"created_by"`
+}
+
+type Review struct {
+	ID        int64     `json:"id"`
+	ItemID    int64     `json:"item_id"`
+	State     string    `json:"state"`
+	Body      string    `json:"body"`
+	CommitSha string    `json:"commit_sha"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Token struct {

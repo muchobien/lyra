@@ -117,7 +117,9 @@ lyra pr view|commits <repo> <number>
 lyra pr diff <repo> <number> [--files]
 lyra pr merge <repo> <number> --squash|--ff [--head SHA] [--delete-branch] [--title TEXT] [--body ...]
 lyra signing-key
-lyra rule set <repo> <pattern> [--require-signed] [--merge-methods ff,squash]
+lyra pr review <repo> <number> --approve|--request-changes|--comment [--body ...] [--comments-file F|-]
+lyra pr comment <repo> <number> --body ... [--path FILE --line N [--side new|old]]
+lyra rule set <repo> <pattern> [--require-signed] [--require-approval] [--merge-methods ff,squash]
 lyra rule list <repo>
 lyra rule delete <repo> <pattern>
 lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
@@ -185,7 +187,27 @@ tailnet identity too.
   - Merges into a matching branch are refused while the pull request has an
     unverified commit, with squash too, so Lyra's signature can't stand in for an
     unsigned commit.
+- `--require-approval`: a pull request into a matching branch can be merged only
+  after someone other than its author approves its current head commit. A new push
+  needs a new approval, and no reviewer's latest review may request changes. The
+  author is the same login and agent name, so the human user approving an agent's
+  pull request counts.
 - `--merge-methods`: limits how pull requests into a matching branch can be merged.
+
+**Reviews and line comments:**
+
+- **What a review is:** `lyra pr review` records `approved`, `changes_requested` or
+  `commented` against the pull request's current head commit, with optional line
+  comments.
+- **Pointing at a line:** a line comment names a file and a line number in the
+  head version (`side` `new`) or the base version (`old`). The line must be in the
+  pull request's diff.
+- **Outdated comments:** when a later push changes the file, its `new`-side comments
+  are marked `outdated`.
+- **Where they show up:** `lyra pr view` lists `reviews`, each with its line
+  comments, and every comment with its `path`, `line`, `side` and `commit_sha`.
+- **Events:** each review is recorded as `pr.review`, and each line comment as
+  `pr.comment` with its position.
 
 Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.delete`.
 
@@ -227,7 +249,10 @@ the server restarts.
 | `POST /api/repos/{name}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
 | `GET /api/signing-key` | any |
 | `GET /api/repos/{name}/rules` | read |
-| `POST /api/repos/{name}/rules` (`pattern`, `require_signed`, `merge_methods`) | admin |
+| `POST /api/repos/{name}/rules` (`pattern`, `require_signed`, `require_approval`, `merge_methods`) | admin |
+| `POST /api/repos/{name}/pulls/{number}/reviews` (`state`: `approve`, `request_changes` or `comment`; `body`; `comments`) | write |
+
+Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{name}/rules?pattern=` | admin |
 
 `PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
@@ -252,9 +277,16 @@ open one. `/{name}/issues/{number}` shows the issue and its comments, rendered a
 Markdown with raw HTML removed, with forms to comment, close or reopen, and set labels
 and assignees. `/{name}/pulls` and `/{name}/pulls/{number}` do the same for pull
 requests, with `?tab=commits` (signature status) and `?tab=files` (changed files and
-the diff). An open pull request's page has a merge form: squash or fast-forward,
-optionally deleting the branch. If the branches conflict, it lists the conflicting
-files instead.
+the diff). An open pull request's page has:
+
+- a merge form: squash or fast-forward, optionally deleting the branch. If the
+  branches conflict, or a branch rule blocks the merge, it shows why instead;
+- a review form: approve, request changes or comment;
+- a timeline of comments and reviews.
+
+The files tab shows each diff line with its old and new numbers, and line comments
+under their lines. Clicking a line number opens a form to comment on that line, which
+is the only script on the page.
 
 Requests that change data and come from another site are rejected, using Go's
 `http.CrossOriginProtection` (`Sec-Fetch-Site` and `Origin`). Without this, any page
@@ -296,3 +328,9 @@ with `git` and the CLI. They cover:
     tailnet identity, and a new branch whose history has unsigned commits.
   - Merges blocked by unsigned commits or a disallowed method.
   - Setting, listing and deleting rules, and the permissions to do so.
+- Reviews:
+  - Approving or requesting changes, refused for the author, and validation.
+  - Line comments on both sides of the diff, refused outside it, and outdated after a
+    push.
+  - `--require-approval`, including an approval that a new push makes stale, and
+    reviewing and commenting from the UI.

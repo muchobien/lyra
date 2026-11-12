@@ -249,6 +249,9 @@ func (s *Server) handleCommentItem(kind string) http.HandlerFunc {
 		}
 		var body struct {
 			Body string `json:"body"`
+			Path string `json:"path"`
+			Line int64  `json:"line"`
+			Side string `json:"side"`
 		}
 		if !decodeBody(w, r, &body) {
 			return
@@ -261,7 +264,12 @@ func (s *Server) handleCommentItem(kind string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, problem)
 			return
 		}
-		comment, eventID, err := s.store.AddComment(kind, repo.Name, number, identityFrom(r).actor, body.Body)
+		line, err := s.commentLine(repo.Name, kind, number, body.Path, body.Line, body.Side)
+		if err != nil {
+			writeStoreError(w, err, nouns[kind]+" not found")
+			return
+		}
+		comment, eventID, err := s.store.AddComment(kind, repo.Name, number, identityFrom(r).actor, body.Body, line)
 		if err != nil {
 			writeStoreError(w, err, nouns[kind]+" not found")
 			return
