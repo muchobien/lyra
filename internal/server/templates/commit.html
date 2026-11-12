@@ -10,5 +10,5 @@
 <tr><th>Parents</th><td>{{range .Parents}}<a class="mono" href="/{{esc $.Repo.Name}}/commit/{{.}}">{{short .}}</a> {{else}}<span class="muted">none</span>{{end}}</td></tr>
 </table>
 {{end}}
-<pre>{{.Data.Patch}}</pre>
+{{.Data.Patch}}
 {{end}}

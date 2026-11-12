@@ -11,6 +11,6 @@ git push -u origin main</pre>
 {{range .Data.Entries}}<tr><td>{{if eq .Type "tree"}}📁 <a href="/{{esc $.Repo.Name}}/tree/{{esc $.Ref}}/{{pathesc (join $.Data.Path .Name)}}">{{.Name}}/</a>{{else if eq .Type "blob"}}<a href="/{{esc $.Repo.Name}}/blob/{{esc $.Ref}}/{{pathesc (join $.Data.Path .Name)}}">{{.Name}}</a>{{else}}{{.Name}} <span class="muted">({{.Type}})</span>{{end}}</td><td class="right muted">{{if eq .Type "blob"}}{{.Size}} B{{end}}</td></tr>
 {{end}}
 </table>
-{{with .Data.Readme}}<pre>{{.}}</pre>{{end}}
+{{.Data.Readme}}
 {{end}}
 {{end}}

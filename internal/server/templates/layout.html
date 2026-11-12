@@ -35,6 +35,20 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 select { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
 .right { text-align: right; }
 @media (max-width: 640px) { .hide-sm { display: none; } }
+.chroma { background: var(--panel) !important; }
+pre.chroma { padding: 12px; }
+.chroma .lntable { border: 0; width: auto; }
+.chroma .lntable td { border: 0; padding: 0; }
+.chroma .lntable { margin: 12px; }
+.chroma .lntd pre { border: 0; background: none; margin: 0; padding: 0; }
+.chroma .lntd:first-child pre { padding-right: 12px; color: var(--muted); user-select: none; }
+div.chroma { border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; }
+.markdown { border: 1px solid var(--line); border-radius: 6px; padding: 8px 24px; margin-top: 16px; }
+.markdown img { max-width: 100%; }
+.markdown table { width: auto; }
+.markdown code { background: var(--panel); padding: 1px 4px; border-radius: 4px; }
+.markdown pre code { padding: 0; background: none; }
+{{codeCSS}}
 </style>
 </head>
 <body>

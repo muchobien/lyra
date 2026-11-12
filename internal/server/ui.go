@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"html/template"
@@ -9,6 +10,13 @@ import (
 	"net/url"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/alecthomas/chroma/v2"
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
@@ -64,7 +72,38 @@ var templateFuncs = template.FuncMap{
 
 var pages = map[string]*template.Template{}
 
+var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
+
+var codeFormatter = chromahtml.New(chromahtml.WithClasses(true), chromahtml.WithLineNumbers(true), chromahtml.LineNumbersInTable(true))
+
+var patchFormatter = chromahtml.New(chromahtml.WithClasses(true))
+
+var codeCSS template.CSS
+
+func highlight(formatter *chromahtml.Formatter, lexer chroma.Lexer, source string) template.HTML {
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	iterator, err := chroma.Coalesce(lexer).Tokenise(nil, source)
+	if err != nil {
+		return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+	}
+	var output strings.Builder
+	if err := formatter.Format(&output, styles.Get("github"), iterator); err != nil {
+		return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+	}
+	return template.HTML(output.String())
+}
+
 func init() {
+	var light, dark strings.Builder
+	codeFormatter.WriteCSS(&light, styles.Get("github"))
+	codeFormatter.WriteCSS(&dark, styles.Get("github-dark"))
+	codeCSS = template.CSS(light.String() + "\n@media (prefers-color-scheme: dark) {\n" + dark.String() + "}\n")
+	templateFuncs["codeCSS"] = func() template.CSS {
+		return codeCSS
+	}
+
 	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
@@ -146,7 +185,7 @@ func (s *Server) showTree(w http.ResponseWriter, r *http.Request, ref, path stri
 		Entries  []repos.Entry
 		Branches []repos.Ref
 		Last     *repos.Commit
-		Readme   string
+		Readme   template.HTML
 	}{Path: path, Branches: branches}
 	base := page{Title: repo.Name, Repo: &repo, Ref: ref, CloneURL: cloneURL(r, repo.Name)}
 	sha, err := s.git.ResolveCommit(dir, ref)
@@ -179,8 +218,13 @@ func (s *Server) showTree(w http.ResponseWriter, r *http.Request, ref, path stri
 	for _, entry := range entries {
 		if entry.Type == "blob" && strings.EqualFold(strings.TrimSuffix(entry.Name, ".md"), "readme") && entry.Size < 256<<10 {
 			content, err := s.git.Blob(dir, sha, strings.TrimPrefix(path+"/"+entry.Name, "/"))
-			if err == nil && utf8.Valid(content) {
-				view.Readme = string(content)
+			if err != nil || !utf8.Valid(content) {
+				continue
+			}
+			view.Readme = template.HTML("<pre>" + template.HTMLEscapeString(string(content)) + "</pre>")
+			var rendered bytes.Buffer
+			if strings.HasSuffix(strings.ToLower(entry.Name), ".md") && markdown.Convert(content, &rendered) == nil {
+				view.Readme = template.HTML(`<article class="markdown">` + rendered.String() + `</article>`)
 			}
 		}
 	}
@@ -236,11 +280,15 @@ func (s *Server) uiBlob(w http.ResponseWriter, r *http.Request) {
 		Path   string
 		Crumbs []crumb
 		Size   int
-		Text   string
+		Code   template.HTML
 		Binary bool
 	}{Path: path, Crumbs: crumbs, Size: len(content)}
 	if utf8.Valid(content) && len(content) <= 1<<20 {
-		view.Text = string(content)
+		lexer := lexers.Match(path)
+		if lexer == nil {
+			lexer = lexers.Analyse(string(content))
+		}
+		view.Code = highlight(codeFormatter, lexer, string(content))
 	} else {
 		view.Binary = true
 	}
@@ -297,8 +345,8 @@ func (s *Server) uiCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	view := struct {
 		Commit repos.Commit
-		Patch  string
-	}{Commit: commit, Patch: patch}
+		Patch  template.HTML
+	}{Commit: commit, Patch: highlight(patchFormatter, lexers.Get("diff"), patch)}
 	s.render(w, r, http.StatusOK, "commit", page{Title: commit.Subject + " · " + repo.Name, Repo: &repo, Ref: commit.SHA, CloneURL: cloneURL(r, repo.Name), Data: view})
 }
 

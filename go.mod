@@ -3,12 +3,15 @@ module github.com/muchobien/lyra
 go 1.27.3
 
 require (
+	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/spf13/cobra v1.10.2
+	github.com/yuin/goldmark v1.8.7
 	modernc.org/sqlite v1.61.1
 )
 
 require (
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
