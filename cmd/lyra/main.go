@@ -41,13 +41,15 @@ func main() {
 	serveCommand.Flags().StringSliceVar(&logins, "allow-login", splitEnv("LYRA_ALLOW_LOGIN"), "Tailscale logins allowed in (LYRA_ALLOW_LOGIN, comma-separated)")
 
 	hookCommand := &cobra.Command{Use: "hook", Short: "Git hooks run by the server", Hidden: true}
-	hookCommand.AddCommand(&cobra.Command{
-		Use:  "post-receive",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return postReceive()
-		},
-	})
+	for _, name := range []string{"pre-receive", "post-receive"} {
+		hookCommand.AddCommand(&cobra.Command{
+			Use:  name,
+			Args: cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runHook(name)
+			},
+		})
+	}
 	root.AddCommand(serveCommand, hookCommand)
 
 	if err := root.Execute(); err != nil {
@@ -118,7 +120,7 @@ func serve(listen, dataDir, signingKey string, proxies, logins []string) error {
 	return httpServer.ListenAndServe()
 }
 
-func postReceive() error {
+func runHook(name string) error {
 	db, err := store.Open(os.Getenv("LYRA_DB"))
 	if err != nil {
 		return err
@@ -136,6 +138,14 @@ func postReceive() error {
 		return err
 	}
 	repo := os.Getenv("LYRA_REPO")
+	if name == "pre-receive" {
+		if err := server.CheckPush(db, repos.Git{}, ".", repo, updates); err != nil {
+			fmt.Fprintln(os.Stderr, "lyra: "+err.Error())
+			db.Close()
+			os.Exit(1)
+		}
+		return nil
+	}
 	actor := store.Actor{User: os.Getenv("LYRA_USER"), Via: os.Getenv("LYRA_VIA"), Agent: os.Getenv("LYRA_AGENT"), Session: os.Getenv("LYRA_SESSION")}
 	if _, err := db.AddEvent("push", repo, actor, map[string]any{"refs": updates}); err != nil {
 		return err

@@ -400,6 +400,23 @@ func (q *Queries) DeleteRepo(ctx context.Context, name string) (int64, error) {
 	return result.RowsAffected()
 }
 
+const deleteRule = `-- name: DeleteRule :execrows
+DELETE FROM branch_rules WHERE repo = ? AND pattern = ?
+`
+
+type DeleteRuleParams struct {
+	Repo    string `json:"repo"`
+	Pattern string `json:"pattern"`
+}
+
+func (q *Queries) DeleteRule(ctx context.Context, arg DeleteRuleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteRule, arg.Repo, arg.Pattern)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteToken = `-- name: DeleteToken :execrows
 DELETE FROM tokens WHERE user = ? AND id = ?
 `
@@ -973,6 +990,40 @@ func (q *Queries) ListRepos(ctx context.Context) ([]Repo, error) {
 	return items, nil
 }
 
+const listRules = `-- name: ListRules :many
+SELECT id, repo, pattern, require_signed, merge_methods, created_at FROM branch_rules WHERE repo = ? ORDER BY pattern
+`
+
+func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, error) {
+	rows, err := q.db.QueryContext(ctx, listRules, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BranchRule
+	for rows.Next() {
+		var i BranchRule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Pattern,
+			&i.RequireSigned,
+			&i.MergeMethods,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokens = `-- name: ListTokens :many
 SELECT id, name, user, hash, prefix, scope, repos, created_at, expires_at, last_used_at FROM tokens WHERE user = ? ORDER BY id
 `
@@ -1100,6 +1151,41 @@ func (q *Queries) RemoveItemLabel(ctx context.Context, arg RemoveItemLabelParams
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setRule = `-- name: SetRule :one
+INSERT INTO branch_rules (repo, pattern, require_signed, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, pattern) DO UPDATE SET require_signed = excluded.require_signed, merge_methods = excluded.merge_methods
+RETURNING id, repo, pattern, require_signed, merge_methods, created_at
+`
+
+type SetRuleParams struct {
+	Repo          string    `json:"repo"`
+	Pattern       string    `json:"pattern"`
+	RequireSigned bool      `json:"require_signed"`
+	MergeMethods  string    `json:"merge_methods"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, error) {
+	row := q.db.QueryRowContext(ctx, setRule,
+		arg.Repo,
+		arg.Pattern,
+		arg.RequireSigned,
+		arg.MergeMethods,
+		arg.CreatedAt,
+	)
+	var i BranchRule
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Pattern,
+		&i.RequireSigned,
+		&i.MergeMethods,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const tokenActive = `-- name: TokenActive :one

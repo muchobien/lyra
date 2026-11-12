@@ -27,7 +27,7 @@ docker run -p 8080:8080 -v lyra-data:/data \
   ghcr.io/muchobien/lyra:main
 ```
 
-The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/post-receive`
+The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/pre-receive` and `hooks/post-receive`
 (written at startup, applied through `core.hooksPath`) and, unless
 `--signing-key-file` is set, the generated `lyra_signing_key`.
 
@@ -117,6 +117,9 @@ lyra pr view|commits <repo> <number>
 lyra pr diff <repo> <number> [--files]
 lyra pr merge <repo> <number> --squash|--ff [--head SHA] [--delete-branch] [--title TEXT] [--body ...]
 lyra signing-key
+lyra rule set <repo> <pattern> [--require-signed] [--merge-methods ff,squash]
+lyra rule list <repo>
+lyra rule delete <repo> <pattern>
 lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
 lyra label create <repo> <name> [--color d73a4a] [--description TEXT]
 lyra label list <repo>
@@ -163,8 +166,28 @@ Git prints what changed as `remote: lyra: …` lines.
 - **Afterwards:** a merge records the same events as a push, and closes issues
   referenced in the pull request or the squash message.
 
-`lyra pr view` includes `merge`, with the current head and base commits,
-`fast_forward` and the `conflicts`.
+`lyra pr view` includes `merge`, with:
+
+- the current head and base commits;
+- `fast_forward`;
+- the `conflicts`;
+- the `methods` the branch rules allow;
+- the reasons the merge is `blocked`.
+
+Branch rules apply to branches whose name matches a glob (`main`, `release/*`). When
+several match, the strictest combination applies. Rules apply to admins and the
+tailnet identity too.
+
+- `--require-signed`: every commit a push adds to a matching branch must have a
+  `verified` signature, or the push is refused by the `pre-receive` hook.
+  - On an existing branch, the added commits are those not reachable from the old tip.
+  - A push that creates a matching branch checks its whole history.
+  - Merges into a matching branch are refused while the pull request has an
+    unverified commit, with squash too, so Lyra's signature can't stand in for an
+    unsigned commit.
+- `--merge-methods`: limits how pull requests into a matching branch can be merged.
+
+Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.delete`.
 
 `lyra event wait` blocks until a matching event happens and prints it. Actions are glob
 patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
@@ -203,6 +226,9 @@ the server restarts.
 | `GET /api/repos/{name}/pulls/{number}/files` | read |
 | `POST /api/repos/{name}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
 | `GET /api/signing-key` | any |
+| `GET /api/repos/{name}/rules` | read |
+| `POST /api/repos/{name}/rules` (`pattern`, `require_signed`, `merge_methods`) | admin |
+| `DELETE /api/repos/{name}/rules?pattern=` | admin |
 
 `PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
 `remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as
@@ -265,3 +291,8 @@ with `git` and the CLI. They cover:
   - Squash merges by several authors, checked with `git verify-commit`.
   - Fast-forward, conflicts, a stale `--head`, and merging from the UI.
   - The signing key surviving a restart, and a key set with `--signing-key-file`.
+- Branch rules:
+  - Pushes refused for unsigned or unregistered-key commits, including with the
+    tailnet identity, and a new branch whose history has unsigned commits.
+  - Merges blocked by unsigned commits or a disallowed method.
+  - Setting, listing and deleting rules, and the permissions to do so.

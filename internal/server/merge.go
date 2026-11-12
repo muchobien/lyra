@@ -26,6 +26,8 @@ type mergePlan struct {
 	BaseSHA     string   `json:"base_sha"`
 	FastForward bool     `json:"fast_forward"`
 	Conflicts   []string `json:"conflicts"`
+	Methods     []string `json:"methods"`
+	Blocked     []string `json:"blocked"`
 	tree        string
 }
 
@@ -37,8 +39,9 @@ type mergeRequest struct {
 	DeleteBranch bool   `json:"delete_branch"`
 }
 
-func (s *Server) planMerge(dir string, pull store.Pull) (mergePlan, error) {
-	plan := mergePlan{}
+func (s *Server) planMerge(repo string, pull store.Pull) (mergePlan, error) {
+	dir := s.repoDir(repo)
+	plan := mergePlan{Blocked: []string{}}
 	var err error
 	if plan.HeadSHA, err = s.git.ResolveCommit(dir, "refs/heads/"+pull.Head); err != nil {
 		return plan, store.InvalidError("branch " + pull.Head + " no longer exists")
@@ -49,8 +52,36 @@ func (s *Server) planMerge(dir string, pull store.Pull) (mergePlan, error) {
 	if plan.FastForward, err = s.git.IsAncestor(dir, plan.BaseSHA, plan.HeadSHA); err != nil {
 		return plan, err
 	}
-	plan.tree, plan.Conflicts, err = s.git.MergeTree(dir, plan.BaseSHA, plan.HeadSHA)
-	return plan, err
+	if plan.tree, plan.Conflicts, err = s.git.MergeTree(dir, plan.BaseSHA, plan.HeadSHA); err != nil {
+		return plan, err
+	}
+	rules, err := s.store.Rules(repo)
+	if err != nil {
+		return plan, err
+	}
+	policy := policyFor(rules, pull.Base)
+	plan.Methods = policy.methods
+	if len(policy.methods) == 0 {
+		plan.Blocked = append(plan.Blocked, "branch rules "+strings.Join(policy.rules, ", ")+" allow no merge method")
+	}
+	if policy.requireSigned {
+		commits, err := s.git.Log(dir, plan.HeadSHA, 10000, plan.BaseSHA)
+		if err != nil {
+			return plan, err
+		}
+		keys, err := s.store.Keys("")
+		if err != nil {
+			return plan, err
+		}
+		problems, err := unverifiedCommits(keys, commits)
+		if err != nil {
+			return plan, err
+		}
+		for _, problem := range problems {
+			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+" requires verified signatures: "+problem)
+		}
+	}
+	return plan, nil
 }
 
 func gitIdentity(name, email string, when time.Time) string {
@@ -70,9 +101,15 @@ func (s *Server) mergePull(r *http.Request, repo string, number int64, request m
 	if request.Method != "ff" && request.Method != "squash" {
 		return pull, 0, store.InvalidError("method must be ff or squash")
 	}
-	plan, err := s.planMerge(dir, pull)
+	plan, err := s.planMerge(repo, pull)
 	if err != nil {
 		return pull, 0, err
+	}
+	if len(plan.Blocked) > 0 {
+		return pull, 0, conflictError(strings.Join(plan.Blocked, "; "))
+	}
+	if !slices.Contains(plan.Methods, request.Method) {
+		return pull, 0, conflictError("branch rules for " + pull.Base + " allow only " + strings.Join(plan.Methods, ", "))
 	}
 	if request.HeadSHA != "" && request.HeadSHA != plan.HeadSHA {
 		return pull, 0, conflictError(fmt.Sprintf("%s is at %s, not %s", pull.Head, plan.HeadSHA, request.HeadSHA))

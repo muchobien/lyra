@@ -31,13 +31,18 @@
 {{end}}
 {{if and .Data.CanWrite .Data.Pull (eq $item.State "open")}}
 <div class="comment"><div class="meta"><strong>Merge</strong></div><div class="body">
-{{with .Data.MergeError}}<p>{{.}}</p>{{else}}{{with .Data.Merge}}{{if .Conflicts}}
+{{with .Data.MergeError}}<p>{{.}}</p>{{else}}{{with .Data.Merge}}{{if .Blocked}}
+<p>This pull request can't be merged:</p>
+<ul>{{range .Blocked}}<li>{{.}}</li>{{end}}</ul>
+{{else if .Conflicts}}
 <p>Merging conflicts with {{$.Data.Pull.Base}} in <span class="mono">{{range $index, $path := .Conflicts}}{{if $index}}, {{end}}{{$path}}{{end}}</span>. Resolve them on {{$.Data.Pull.Head}} and push.</p>
 {{else}}
 <form class="stack" method="post" action="{{$base}}/merge">
 <input type="hidden" name="head_sha" value="{{.HeadSHA}}">
-<label><input type="radio" name="method" value="squash" checked> Squash into one commit signed by Lyra</label>
-<label><input type="radio" name="method" value="ff"{{if not .FastForward}} disabled{{end}}> Fast-forward{{if not .FastForward}} <span class="muted">(not possible: {{$.Data.Pull.Base}} has moved)</span>{{end}}</label>
+{{$squash := false}}{{range .Methods}}{{if eq . "squash"}}{{$squash = true}}{{end}}{{end}}
+{{$ff := false}}{{range .Methods}}{{if eq . "ff"}}{{$ff = true}}{{end}}{{end}}
+{{if $squash}}<label><input type="radio" name="method" value="squash" checked> Squash into one commit signed by Lyra</label>{{end}}
+{{if $ff}}<label><input type="radio" name="method" value="ff"{{if not .FastForward}} disabled{{else if not $squash}} checked{{end}}> Fast-forward{{if not .FastForward}} <span class="muted">(not possible: {{$.Data.Pull.Base}} has moved)</span>{{end}}</label>{{end}}
 <label><input type="checkbox" name="delete_branch" value="1"> Delete {{$.Data.Pull.Head}} after merging</label>
 <div><button type="submit">Merge pull request</button></div>
 </form>

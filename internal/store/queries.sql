@@ -152,3 +152,15 @@ UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
 
 -- name: MergePull :exec
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;
+
+-- name: SetRule :one
+INSERT INTO branch_rules (repo, pattern, require_signed, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, pattern) DO UPDATE SET require_signed = excluded.require_signed, merge_methods = excluded.merge_methods
+RETURNING *;
+
+-- name: ListRules :many
+SELECT * FROM branch_rules WHERE repo = ? ORDER BY pattern;
+
+-- name: DeleteRule :execrows
+DELETE FROM branch_rules WHERE repo = ? AND pattern = ?;

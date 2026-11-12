@@ -122,9 +122,11 @@ func New(config Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	hook := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", `'\''`) + "' hook post-receive\n"
-	if err := os.WriteFile(filepath.Join(config.DataDir, "hooks", "post-receive"), []byte(hook), 0o755); err != nil {
-		return nil, err
+	for _, name := range []string{"pre-receive", "post-receive"} {
+		hook := "#!/bin/sh\nexec '" + strings.ReplaceAll(executable, "'", `'\''`) + "' hook " + name + "\n"
+		if err := os.WriteFile(filepath.Join(config.DataDir, "hooks", name), []byte(hook), 0o755); err != nil {
+			return nil, err
+		}
 	}
 	return server, nil
 }
@@ -179,6 +181,11 @@ func (s *Server) Handler() http.Handler {
 					pulls.Get("/{number}/diff", s.handlePullDiff)
 					pulls.Get("/{number}/files", s.handlePullFiles)
 					pulls.Post("/{number}/merge", s.handleMergePull)
+				})
+				repo.Route("/rules", func(rules chi.Router) {
+					rules.Get("/", s.handleListRules)
+					rules.Post("/", s.handleSetRule)
+					rules.Delete("/", s.handleDeleteRule)
 				})
 				repo.Route("/labels", func(labels chi.Router) {
 					labels.Get("/", s.handleListLabels)

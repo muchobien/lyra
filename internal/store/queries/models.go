@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+type BranchRule struct {
+	ID            int64     `json:"id"`
+	Repo          string    `json:"repo"`
+	Pattern       string    `json:"pattern"`
+	RequireSigned bool      `json:"require_signed"`
+	MergeMethods  string    `json:"merge_methods"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type Comment struct {
 	ID        int64     `json:"id"`
 	ItemID    int64     `json:"item_id"`

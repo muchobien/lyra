@@ -548,7 +548,47 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 	}
 	label.AddCommand(labelCreate, labelList, labelDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label)
+	rule := &cobra.Command{Use: "rule", Short: "Manage branch rules"}
+	rulesPath := func(repo string) string {
+		return "/api/repos/" + url.PathEscape(repo) + "/rules"
+	}
+	var requireSigned bool
+	var allowedMethods []string
+	ruleSet := &cobra.Command{
+		Use:   "set <repo> <pattern>",
+		Short: "Create or replace the rule for branches matching a pattern",
+		Long: `Create or replace the rule for branches matching a pattern, such as main or release/*.
+
+--require-signed refuses pushes that add commits without a verified signature to a
+matching branch, and merges of pull requests with such commits (squash merges too).
+--merge-methods limits how pull requests into a matching branch can be merged.
+Rules apply to admins as well. Setting a pattern again replaces its rule.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{"pattern": args[1], "require_signed": requireSigned, "merge_methods": allowedMethods})
+		},
+	}
+	ruleSet.Flags().BoolVar(&requireSigned, "require-signed", false, "require verified signatures on every commit")
+	ruleSet.Flags().StringSliceVar(&allowedMethods, "merge-methods", nil, "allowed merge methods, ff and/or squash (default: both)")
+	ruleList := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List branch rules",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, rulesPath(args[0]), nil)
+		},
+	}
+	ruleDelete := &cobra.Command{
+		Use:   "delete <repo> <pattern>",
+		Short: "Delete the rule for a pattern",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, rulesPath(args[0])+"?"+url.Values{"pattern": {args[1]}}.Encode(), nil)
+		},
+	}
+	rule.AddCommand(ruleSet, ruleList, ruleDelete)
+
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule)
 	return root
 }
 

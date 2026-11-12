@@ -180,6 +180,10 @@ func (s *Server) verifySignatures(signatures ...*repos.Signature) error {
 	if err != nil {
 		return err
 	}
+	return verifyWithKeys(keys, signatures...)
+}
+
+func verifyWithKeys(keys []store.Key, signatures ...*repos.Signature) error {
 	for _, signature := range signatures {
 		if signature.Armored == nil {
 			continue

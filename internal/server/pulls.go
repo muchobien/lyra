@@ -18,7 +18,7 @@ func (s *Server) mergeStatus(repo string, pull store.Pull) (*mergePlan, string) 
 	if pull.State != "open" {
 		return nil, ""
 	}
-	plan, err := s.planMerge(s.repoDir(repo), pull)
+	plan, err := s.planMerge(repo, pull)
 	if err != nil {
 		return nil, err.Error()
 	}
