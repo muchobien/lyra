@@ -16,15 +16,18 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
-)
 
-var ErrNotFound = errors.New("not found")
+	"github.com/muchobien/lyra/internal/store/queries"
+)
 
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+var ErrNotFound = errors.New("not found")
+
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *queries.Queries
 }
 
 type Actor struct {
@@ -34,12 +37,9 @@ type Actor struct {
 	Session string `json:"session,omitempty"`
 }
 
-type Repo struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	CreatedBy   string    `json:"created_by"`
-}
+type Repo = queries.Repo
+
+type Key = queries.Key
 
 type Token struct {
 	ID         int64      `json:"id"`
@@ -53,17 +53,6 @@ type Token struct {
 	LastUsedAt *time.Time `json:"last_used_at"`
 }
 
-type Key struct {
-	ID          int64     `json:"id"`
-	User        string    `json:"user"`
-	Title       string    `json:"title"`
-	Agent       string    `json:"agent,omitempty"`
-	PublicKey   string    `json:"public_key"`
-	Fingerprint string    `json:"fingerprint"`
-	Signing     bool      `json:"signing"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
 type Event struct {
 	ID     int64           `json:"id"`
 	At     time.Time       `json:"at"`
@@ -74,11 +63,11 @@ type Event struct {
 }
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_time_format=sqlite")
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, queries: queries.New(db)}, nil
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -104,21 +93,25 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func now() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
+func now() time.Time {
+	return time.Now().UTC()
 }
 
-func parseTime(value string) time.Time {
-	parsed, _ := time.Parse(time.RFC3339Nano, value)
-	return parsed
-}
-
-func parseNullTime(value sql.NullString) *time.Time {
-	if !value.Valid {
-		return nil
+func notFound(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
 	}
-	parsed := parseTime(value.String)
-	return &parsed
+	return err
+}
+
+func deleted(count int64, err error) error {
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func HashToken(secret string) string {
@@ -131,105 +124,68 @@ func (s *Store) AddEvent(action, repo string, actor Actor, data any) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO events (at, action, repo, user, via, agent, session, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		now(), action, repo, actor.User, actor.Via, actor.Agent, actor.Session, string(encoded))
-	return err
+	return s.queries.CreateEvent(context.Background(), queries.CreateEventParams{
+		At: now(), Action: action, Repo: repo, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, Data: string(encoded),
+	})
 }
 
 func (s *Store) Events(repo string, limit int) ([]Event, error) {
-	query := `SELECT id, at, action, repo, user, via, agent, session, data FROM events`
-	args := []any{}
-	if repo != "" {
-		query += ` WHERE repo = ?`
-		args = append(args, repo)
+	var rows []queries.Event
+	var err error
+	if repo == "" {
+		rows, err = s.queries.ListEvents(context.Background(), int64(limit))
+	} else {
+		rows, err = s.queries.ListRepoEvents(context.Background(), queries.ListRepoEventsParams{Repo: repo, Limit: int64(limit)})
 	}
-	query += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, limit)
-	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	events := []Event{}
-	for rows.Next() {
-		var event Event
-		var at, data string
-		if err := rows.Scan(&event.ID, &at, &event.Action, &event.Repo, &event.Actor.User, &event.Actor.Via, &event.Actor.Agent, &event.Actor.Session, &data); err != nil {
-			return nil, err
-		}
-		event.At = parseTime(at)
-		event.Data = json.RawMessage(data)
-		events = append(events, event)
+	for _, row := range rows {
+		events = append(events, Event{
+			ID:     row.ID,
+			At:     row.At,
+			Action: row.Action,
+			Repo:   row.Repo,
+			Actor:  Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
+			Data:   json.RawMessage(row.Data),
+		})
 	}
-	return events, rows.Err()
+	return events, nil
 }
 
 func (s *Store) CreateRepo(name, description, createdBy string) (Repo, error) {
-	repo := Repo{Name: name, Description: description, CreatedBy: createdBy}
-	at := now()
-	if _, err := s.db.Exec(`INSERT INTO repos (name, description, created_at, created_by) VALUES (?, ?, ?, ?)`, name, description, at, createdBy); err != nil {
-		return repo, err
-	}
-	repo.CreatedAt = parseTime(at)
-	return repo, nil
+	return s.queries.CreateRepo(context.Background(), queries.CreateRepoParams{Name: name, Description: description, CreatedAt: now(), CreatedBy: createdBy})
 }
 
 func (s *Store) Repo(name string) (Repo, error) {
-	var repo Repo
-	var at string
-	err := s.db.QueryRow(`SELECT name, description, created_at, created_by FROM repos WHERE name = ?`, name).Scan(&repo.Name, &repo.Description, &at, &repo.CreatedBy)
-	if errors.Is(err, sql.ErrNoRows) {
-		return repo, ErrNotFound
-	}
-	repo.CreatedAt = parseTime(at)
-	return repo, err
+	repo, err := s.queries.GetRepo(context.Background(), name)
+	return repo, notFound(err)
 }
 
 func (s *Store) Repos() ([]Repo, error) {
-	rows, err := s.db.Query(`SELECT name, description, created_at, created_by FROM repos ORDER BY name`)
-	if err != nil {
-		return nil, err
+	repos, err := s.queries.ListRepos(context.Background())
+	if repos == nil {
+		repos = []Repo{}
 	}
-	defer rows.Close()
-	repos := []Repo{}
-	for rows.Next() {
-		var repo Repo
-		var at string
-		if err := rows.Scan(&repo.Name, &repo.Description, &at, &repo.CreatedBy); err != nil {
-			return nil, err
-		}
-		repo.CreatedAt = parseTime(at)
-		repos = append(repos, repo)
-	}
-	return repos, rows.Err()
+	return repos, err
 }
 
 func (s *Store) DeleteRepo(name string) error {
-	result, err := s.db.Exec(`DELETE FROM repos WHERE name = ?`, name)
-	if err != nil {
-		return err
-	}
-	if count, _ := result.RowsAffected(); count == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleted(s.queries.DeleteRepo(context.Background(), name))
 }
 
-const tokenColumns = `id, name, user, prefix, scope, repos, created_at, expires_at, last_used_at`
-
-func scanToken(row interface{ Scan(...any) error }) (Token, error) {
-	var token Token
-	var repos, at string
-	var expires, used sql.NullString
-	if err := row.Scan(&token.ID, &token.Name, &token.User, &token.Prefix, &token.Scope, &repos, &at, &expires, &used); err != nil {
+func tokenFromRow(row queries.Token) (Token, error) {
+	token := Token{ID: row.ID, Name: row.Name, User: row.User, Prefix: row.Prefix, Scope: row.Scope, CreatedAt: row.CreatedAt}
+	if err := json.Unmarshal([]byte(row.Repos), &token.Repos); err != nil {
 		return token, err
 	}
-	if err := json.Unmarshal([]byte(repos), &token.Repos); err != nil {
-		return token, err
+	if row.ExpiresAt.Valid {
+		token.ExpiresAt = &row.ExpiresAt.Time
 	}
-	token.CreatedAt = parseTime(at)
-	token.ExpiresAt = parseNullTime(expires)
-	token.LastUsedAt = parseNullTime(used)
+	if row.LastUsedAt.Valid {
+		token.LastUsedAt = &row.LastUsedAt.Time
+	}
 	return token, nil
 }
 
@@ -238,100 +194,69 @@ func (s *Store) CreateToken(name, user, secret, scope string, repos []string, ex
 	if err != nil {
 		return Token{}, err
 	}
-	var expires sql.NullString
+	expires := sql.NullTime{}
 	if expiresAt != nil {
-		expires = sql.NullString{String: expiresAt.UTC().Format(time.RFC3339Nano), Valid: true}
+		expires = sql.NullTime{Time: expiresAt.UTC(), Valid: true}
 	}
-	row := s.db.QueryRow(`INSERT INTO tokens (name, user, hash, prefix, scope, repos, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING `+tokenColumns,
-		name, user, HashToken(secret), secret[:12], scope, string(encodedRepos), now(), expires)
-	return scanToken(row)
+	row, err := s.queries.CreateToken(context.Background(), queries.CreateTokenParams{
+		Name: name, User: user, Hash: HashToken(secret), Prefix: secret[:12], Scope: scope, Repos: string(encodedRepos), CreatedAt: now(), ExpiresAt: expires,
+	})
+	if err != nil {
+		return Token{}, err
+	}
+	return tokenFromRow(row)
 }
 
 func (s *Store) TokenBySecret(secret string) (Token, error) {
-	token, err := scanToken(s.db.QueryRow(`UPDATE tokens SET last_used_at = ? WHERE hash = ? RETURNING `+tokenColumns, now(), HashToken(secret)))
-	if errors.Is(err, sql.ErrNoRows) {
-		return token, ErrNotFound
+	row, err := s.queries.UseToken(context.Background(), queries.UseTokenParams{LastUsedAt: sql.NullTime{Time: now(), Valid: true}, Hash: HashToken(secret)})
+	if err != nil {
+		return Token{}, notFound(err)
 	}
-	return token, err
+	return tokenFromRow(row)
 }
 
 func (s *Store) Tokens(user string) ([]Token, error) {
-	rows, err := s.db.Query(`SELECT `+tokenColumns+` FROM tokens WHERE user = ? ORDER BY id`, user)
+	rows, err := s.queries.ListTokens(context.Background(), user)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	tokens := []Token{}
-	for rows.Next() {
-		token, err := scanToken(rows)
+	for _, row := range rows {
+		token, err := tokenFromRow(row)
 		if err != nil {
 			return nil, err
 		}
 		tokens = append(tokens, token)
 	}
-	return tokens, rows.Err()
+	return tokens, nil
 }
 
 func (s *Store) DeleteToken(user string, id int64) error {
-	result, err := s.db.Exec(`DELETE FROM tokens WHERE user = ? AND id = ?`, user, id)
-	if err != nil {
-		return err
-	}
-	if count, _ := result.RowsAffected(); count == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-const keyColumns = `id, user, title, agent, public_key, fingerprint, signing, created_at`
-
-func scanKey(row interface{ Scan(...any) error }) (Key, error) {
-	var key Key
-	var at string
-	if err := row.Scan(&key.ID, &key.User, &key.Title, &key.Agent, &key.PublicKey, &key.Fingerprint, &key.Signing, &at); err != nil {
-		return key, err
-	}
-	key.CreatedAt = parseTime(at)
-	return key, nil
+	return deleted(s.queries.DeleteToken(context.Background(), queries.DeleteTokenParams{User: user, ID: id}))
 }
 
 func (s *Store) CreateKey(key Key) (Key, error) {
-	return scanKey(s.db.QueryRow(`INSERT INTO keys (user, title, agent, public_key, fingerprint, signing, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING `+keyColumns,
-		key.User, key.Title, key.Agent, key.PublicKey, key.Fingerprint, key.Signing, now()))
+	return s.queries.CreateKey(context.Background(), queries.CreateKeyParams{
+		User: key.User, Title: key.Title, Agent: key.Agent, PublicKey: key.PublicKey, Fingerprint: key.Fingerprint, Signing: key.Signing, CreatedAt: now(),
+	})
 }
 
 func (s *Store) Keys(user string) ([]Key, error) {
-	query := `SELECT ` + keyColumns + ` FROM keys`
-	args := []any{}
-	if user != "" {
-		query += ` WHERE user = ?`
-		args = append(args, user)
+	var keys []Key
+	var err error
+	if user == "" {
+		keys, err = s.queries.ListKeys(context.Background())
+	} else {
+		keys, err = s.queries.ListUserKeys(context.Background(), user)
 	}
-	rows, err := s.db.Query(query+` ORDER BY id`, args...)
-	if err != nil {
-		return nil, err
+	if keys == nil {
+		keys = []Key{}
 	}
-	defer rows.Close()
-	keys := []Key{}
-	for rows.Next() {
-		key, err := scanKey(rows)
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, key)
-	}
-	return keys, rows.Err()
+	return keys, err
 }
 
 func (s *Store) DeleteKey(user string, id int64) error {
-	result, err := s.db.Exec(`DELETE FROM keys WHERE user = ? AND id = ?`, user, id)
-	if err != nil {
-		return err
-	}
-	if count, _ := result.RowsAffected(); count == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleted(s.queries.DeleteKey(context.Background(), queries.DeleteKeyParams{User: user, ID: id}))
 }
 
 func IsUniqueViolation(err error) bool {

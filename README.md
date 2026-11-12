@@ -99,3 +99,10 @@ lyra event list [--repo NAME] [--limit N]
 `/` lists repositories; `/{name}` browses files at the default branch,
 `/{name}/tree/{ref}/{path}`, `/{name}/blob/{ref}/{path}` (`?raw` for the raw file),
 `/{name}/commits/{ref}`, `/{name}/commit/{sha}` and `/{name}/tags`.
+
+## Development
+
+`mise install` provides Go and sqlc. The schema lives in goose migrations under
+`internal/store/migrations`, applied by the server at startup. Queries live in
+`internal/store/queries.sql`; run `sqlc generate` after changing either, and commit the
+generated `internal/store/queries` package.

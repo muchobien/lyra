@@ -2,7 +2,7 @@
 CREATE TABLE repos (
 	name TEXT PRIMARY KEY,
 	description TEXT NOT NULL DEFAULT '',
-	created_at TEXT NOT NULL,
+	created_at DATETIME NOT NULL,
 	created_by TEXT NOT NULL
 );
 
@@ -14,9 +14,9 @@ CREATE TABLE tokens (
 	prefix TEXT NOT NULL,
 	scope TEXT NOT NULL,
 	repos TEXT NOT NULL DEFAULT '[]',
-	created_at TEXT NOT NULL,
-	expires_at TEXT,
-	last_used_at TEXT
+	created_at DATETIME NOT NULL,
+	expires_at DATETIME,
+	last_used_at DATETIME
 );
 
 CREATE TABLE keys (
@@ -26,13 +26,13 @@ CREATE TABLE keys (
 	agent TEXT NOT NULL DEFAULT '',
 	public_key TEXT NOT NULL UNIQUE,
 	fingerprint TEXT NOT NULL UNIQUE,
-	signing INTEGER NOT NULL,
-	created_at TEXT NOT NULL
+	signing BOOLEAN NOT NULL,
+	created_at DATETIME NOT NULL
 );
 
 CREATE TABLE events (
 	id INTEGER PRIMARY KEY,
-	at TEXT NOT NULL,
+	at DATETIME NOT NULL,
 	action TEXT NOT NULL,
 	repo TEXT NOT NULL DEFAULT '',
 	user TEXT NOT NULL,
