@@ -116,7 +116,7 @@ func init() {
 		return template.HTML(rendered.String())
 	}
 
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "issues", "issue", "error"} {
+	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }

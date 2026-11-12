@@ -120,8 +120,18 @@ func (s *Server) Handler() http.Handler {
 					issues.Get("/", s.handleListIssues)
 					issues.Post("/", s.handleCreateIssue)
 					issues.Get("/{number}", s.handleGetIssue)
-					issues.Patch("/{number}", s.handleEditIssue)
-					issues.Post("/{number}/comments", s.handleCommentIssue)
+					issues.Patch("/{number}", s.handleEditItem("issue"))
+					issues.Post("/{number}/comments", s.handleCommentItem("issue"))
+				})
+				repo.Route("/pulls", func(pulls chi.Router) {
+					pulls.Get("/", s.handleListPulls)
+					pulls.Post("/", s.handleCreatePull)
+					pulls.Get("/{number}", s.handleGetPull)
+					pulls.Patch("/{number}", s.handleEditItem("pr"))
+					pulls.Post("/{number}/comments", s.handleCommentItem("pr"))
+					pulls.Get("/{number}/commits", s.handlePullCommits)
+					pulls.Get("/{number}/diff", s.handlePullDiff)
+					pulls.Get("/{number}/files", s.handlePullFiles)
 				})
 				repo.Route("/labels", func(labels chi.Router) {
 					labels.Get("/", s.handleListLabels)
@@ -157,11 +167,13 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/commits/{ref}", s.uiCommits)
 		repo.Get("/commit/{sha}", s.uiCommit)
 		repo.Get("/tags", s.uiTags)
-		repo.Get("/issues", s.uiIssues)
 		repo.Post("/issues", s.uiCreateIssue)
-		repo.Get("/issues/{number}", s.uiIssue)
-		repo.Post("/issues/{number}/comments", s.uiCommentIssue)
-		repo.Post("/issues/{number}/edit", s.uiEditIssue)
+		for kind, path := range itemPaths {
+			repo.Get("/"+path, s.uiItems(kind))
+			repo.Get("/"+path+"/{number}", s.uiItemPage(kind))
+			repo.Post("/"+path+"/{number}/comments", s.uiCommentItem(kind))
+			repo.Post("/"+path+"/{number}/edit", s.uiEditItem(kind))
+		}
 	})
 
 	return router

@@ -208,8 +208,8 @@ func (s *Server) verifySignatures(signatures ...*repos.Signature) error {
 	return nil
 }
 
-func (s *Server) commits(repo, ref string, limit int) ([]repos.Commit, error) {
-	commits, err := s.git.Log(s.repoDir(repo), ref, limit)
+func (s *Server) commits(repo, ref string, limit int, exclude ...string) ([]repos.Commit, error) {
+	commits, err := s.git.Log(s.repoDir(repo), ref, limit, exclude...)
 	if err != nil {
 		return nil, err
 	}

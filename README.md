@@ -99,14 +99,38 @@ lyra issue view <repo> <number>
 lyra issue comment <repo> <number> --body TEXT|--body-file F|-
 lyra issue edit <repo> <number> [--title TEXT] [--body ...] [--add-label L] [--remove-label L] [--add-assignee A] [--remove-assignee A]
 lyra issue close|reopen <repo> <number>
+lyra pr create <repo> --head BRANCH [--base BRANCH] --title TEXT [--body ...] [--label L]... [--assignee NAME|@me]...
+lyra pr list <repo> [--state open|closed|merged|all] [--label L]... [--assignee NAME|@me]... [--limit N]
+lyra pr view|commits <repo> <number>
+lyra pr diff <repo> <number> [--files]
+lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
 lyra label create <repo> <name> [--color d73a4a] [--description TEXT]
 lyra label list <repo>
 lyra label delete <repo> <name>
 ```
 
-Issues are numbered per repository. Assignees are logins or agent names; `@me` is the
-`Lyra-Agent` name when one is set, otherwise the login. Labels must exist before they
-are applied. Every write returns the `event_id` it recorded.
+Issues and pull requests share one number sequence per repository. Assignees are
+logins or agent names; `@me` is the `Lyra-Agent` name when one is set, otherwise the
+login. Labels must exist before they are applied. Every write returns the `event_id` it
+recorded.
+
+A pull request proposes a branch (`--head`) for another branch in the same repository
+(`--base`, by default the default branch). Lyra keeps `refs/pull/<number>/head` at its
+latest commit, so its commits stay available after the branch is deleted. `pr diff`
+prints the unified diff against the merge base, and `--files` lists changed files as
+JSON.
+
+Pushes update pull requests:
+
+- A push to an open pull request's head branch updates it (`pr.synchronized`).
+- When an open pull request's head commit becomes part of its base branch, it is marked
+  merged (`pr.merged`, method `push`).
+- Commits pushed to the default branch close the issues they reference with
+  `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or
+  `resolved` followed by `#<number>`. So does merging a pull request whose title or
+  body references them.
+
+Git prints what changed as `remote: lyra: …` lines.
 
 `lyra event wait` blocks until a matching event happens and prints it. Actions are glob
 patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
@@ -135,8 +159,16 @@ the server restarts.
 | `POST /api/repos/{name}/issues/{number}/comments` | write |
 | `GET /api/repos/{name}/labels`, `POST /api/repos/{name}/labels` | read, write |
 | `DELETE /api/repos/{name}/labels/{label}` | write |
+| `GET /api/repos/{name}/pulls?state=&label=&assignee=&limit=` | read |
+| `POST /api/repos/{name}/pulls` (`title`, `body`, `head`, `base`, `labels`, `assignees`) | write |
+| `GET /api/repos/{name}/pulls/{number}` | read |
+| `PATCH /api/repos/{name}/pulls/{number}` | write |
+| `POST /api/repos/{name}/pulls/{number}/comments` | write |
+| `GET /api/repos/{name}/pulls/{number}/commits` | read |
+| `GET /api/repos/{name}/pulls/{number}/diff` (`text/x-diff`) | read |
+| `GET /api/repos/{name}/pulls/{number}/files` | read |
 
-`PATCH` takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
+`PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
 `remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as
 its own event (`issue.edited`, `issue.closed`, `issue.labeled`, `issue.assigned`, …),
 and `event_id` is the last one.
@@ -156,7 +188,9 @@ a repository list.
 `/{name}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
 open one. `/{name}/issues/{number}` shows the issue and its comments, rendered as
 Markdown with raw HTML removed, with forms to comment, close or reopen, and set labels
-and assignees.
+and assignees. `/{name}/pulls` and `/{name}/pulls/{number}` do the same for pull
+requests, with `?tab=commits` (signature status) and `?tab=files` (changed files and
+the diff).
 
 Requests that change data and come from another site are rejected, using Go's
 `http.CrossOriginProtection` (`Sec-Fetch-Site` and `Origin`). Without this, any page
@@ -184,3 +218,8 @@ with `git` and the CLI. They cover:
   a server restart.
 - Issues, labels and comments from the CLI and the UI forms, including rejected
   cross-site posts, Markdown sanitizing, and cleanup when a repository is deleted.
+- Pull requests:
+  - Creating them, with validation; commits, diff and changed files, including a
+    rename.
+  - Updates and merges detected from pushes, and closing keywords.
+  - Closed and reopened pull requests, deleted head branches, and the UI tabs.

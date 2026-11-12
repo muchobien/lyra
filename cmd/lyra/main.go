@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/muchobien/lyra/internal/cli"
+	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/server"
 	"github.com/muchobien/lyra/internal/store"
 )
@@ -122,23 +123,25 @@ func postReceive() error {
 		return err
 	}
 	defer db.Close()
-	type update struct {
-		Ref string `json:"ref"`
-		Old string `json:"old"`
-		New string `json:"new"`
-	}
-	updates := []update{}
+	updates := []server.RefUpdate{}
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) == 3 {
-			updates = append(updates, update{Old: fields[0], New: fields[1], Ref: fields[2]})
+			updates = append(updates, server.RefUpdate{Old: fields[0], New: fields[1], Ref: fields[2]})
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
+	repo := os.Getenv("LYRA_REPO")
 	actor := store.Actor{User: os.Getenv("LYRA_USER"), Via: os.Getenv("LYRA_VIA"), Agent: os.Getenv("LYRA_AGENT"), Session: os.Getenv("LYRA_SESSION")}
-	_, err = db.AddEvent("push", os.Getenv("LYRA_REPO"), actor, map[string]any{"refs": updates})
+	if _, err := db.AddEvent("push", repo, actor, map[string]any{"refs": updates}); err != nil {
+		return err
+	}
+	messages, err := server.ProcessPush(db, repos.Git{}, ".", repo, actor, updates)
+	for _, message := range messages {
+		fmt.Println("lyra: " + message)
+	}
 	return err
 }

@@ -257,6 +257,29 @@ func (q *Queries) CreateLabel(ctx context.Context, arg CreateLabelParams) (Label
 	return i, err
 }
 
+const createPull = `-- name: CreatePull :exec
+INSERT INTO pulls (item_id, base, head, head_sha, base_sha) VALUES (?, ?, ?, ?, ?)
+`
+
+type CreatePullParams struct {
+	ItemID  int64  `json:"item_id"`
+	Base    string `json:"base"`
+	Head    string `json:"head"`
+	HeadSha string `json:"head_sha"`
+	BaseSha string `json:"base_sha"`
+}
+
+func (q *Queries) CreatePull(ctx context.Context, arg CreatePullParams) error {
+	_, err := q.db.ExecContext(ctx, createPull,
+		arg.ItemID,
+		arg.Base,
+		arg.Head,
+		arg.HeadSha,
+		arg.BaseSha,
+	)
+	return err
+}
+
 const createRepo = `-- name: CreateRepo :one
 INSERT INTO repos (name, description, created_at, created_by)
 VALUES (?, ?, ?, ?)
@@ -443,6 +466,51 @@ func (q *Queries) GetLabel(ctx context.Context, arg GetLabelParams) (Label, erro
 		&i.Name,
 		&i.Color,
 		&i.Description,
+	)
+	return i, err
+}
+
+const getPullItem = `-- name: GetPullItem :one
+SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at FROM items
+JOIN pulls ON pulls.item_id = items.id
+WHERE items.repo = ? AND items.number = ?
+`
+
+type GetPullItemParams struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+type GetPullItemRow struct {
+	Item Item `json:"item"`
+	Pull Pull `json:"pull"`
+}
+
+func (q *Queries) GetPullItem(ctx context.Context, arg GetPullItemParams) (GetPullItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getPullItem, arg.Repo, arg.Number)
+	var i GetPullItemRow
+	err := row.Scan(
+		&i.Item.ID,
+		&i.Item.Repo,
+		&i.Item.Number,
+		&i.Item.Kind,
+		&i.Item.Title,
+		&i.Item.Body,
+		&i.Item.State,
+		&i.Item.User,
+		&i.Item.Via,
+		&i.Item.Agent,
+		&i.Item.Session,
+		&i.Item.CreatedAt,
+		&i.Item.UpdatedAt,
+		&i.Item.ClosedAt,
+		&i.Pull.ItemID,
+		&i.Pull.Base,
+		&i.Pull.Head,
+		&i.Pull.HeadSha,
+		&i.Pull.BaseSha,
+		&i.Pull.MergeSha,
+		&i.Pull.MergedAt,
 	)
 	return i, err
 }
@@ -768,6 +836,68 @@ func (q *Queries) ListLabels(ctx context.Context, repo string) ([]Label, error) 
 	return items, nil
 }
 
+const listPullItems = `-- name: ListPullItems :many
+SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at FROM items
+JOIN pulls ON pulls.item_id = items.id
+WHERE items.repo = ?1 AND (?2 = 'all' OR items.state = ?2)
+ORDER BY items.number DESC
+`
+
+type ListPullItemsParams struct {
+	Repo  string      `json:"repo"`
+	State interface{} `json:"state"`
+}
+
+type ListPullItemsRow struct {
+	Item Item `json:"item"`
+	Pull Pull `json:"pull"`
+}
+
+func (q *Queries) ListPullItems(ctx context.Context, arg ListPullItemsParams) ([]ListPullItemsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPullItems, arg.Repo, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPullItemsRow
+	for rows.Next() {
+		var i ListPullItemsRow
+		if err := rows.Scan(
+			&i.Item.ID,
+			&i.Item.Repo,
+			&i.Item.Number,
+			&i.Item.Kind,
+			&i.Item.Title,
+			&i.Item.Body,
+			&i.Item.State,
+			&i.Item.User,
+			&i.Item.Via,
+			&i.Item.Agent,
+			&i.Item.Session,
+			&i.Item.CreatedAt,
+			&i.Item.UpdatedAt,
+			&i.Item.ClosedAt,
+			&i.Pull.ItemID,
+			&i.Pull.Base,
+			&i.Pull.Head,
+			&i.Pull.HeadSha,
+			&i.Pull.BaseSha,
+			&i.Pull.MergeSha,
+			&i.Pull.MergedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRepoEvents = `-- name: ListRepoEvents :many
 SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events WHERE repo = ? ORDER BY id DESC LIMIT ?
 `
@@ -917,6 +1047,27 @@ func (q *Queries) ListUserKeys(ctx context.Context, user string) ([]Key, error) 
 	return items, nil
 }
 
+const mergePull = `-- name: MergePull :exec
+UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?
+`
+
+type MergePullParams struct {
+	MergeSha string       `json:"merge_sha"`
+	BaseSha  string       `json:"base_sha"`
+	MergedAt sql.NullTime `json:"merged_at"`
+	ItemID   int64        `json:"item_id"`
+}
+
+func (q *Queries) MergePull(ctx context.Context, arg MergePullParams) error {
+	_, err := q.db.ExecContext(ctx, mergePull,
+		arg.MergeSha,
+		arg.BaseSha,
+		arg.MergedAt,
+		arg.ItemID,
+	)
+	return err
+}
+
 const removeItemAssignee = `-- name: RemoveItemAssignee :execrows
 DELETE FROM item_assignees WHERE item_id = ? AND assignee = ?
 `
@@ -1023,6 +1174,21 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		&i.ClosedAt,
 	)
 	return i, err
+}
+
+const updatePullHead = `-- name: UpdatePullHead :exec
+UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?
+`
+
+type UpdatePullHeadParams struct {
+	HeadSha string `json:"head_sha"`
+	BaseSha string `json:"base_sha"`
+	ItemID  int64  `json:"item_id"`
+}
+
+func (q *Queries) UpdatePullHead(ctx context.Context, arg UpdatePullHeadParams) error {
+	_, err := q.db.ExecContext(ctx, updatePullHead, arg.HeadSha, arg.BaseSha, arg.ItemID)
+	return err
 }
 
 const useToken = `-- name: UseToken :one

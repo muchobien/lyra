@@ -53,6 +53,7 @@ type ItemEdit struct {
 	RemoveLabels    []string
 	AddAssignees    []string
 	RemoveAssignees []string
+	Commit          string
 }
 
 var colorPattern = regexp.MustCompile(`^[0-9a-f]{6}$`)
@@ -139,25 +140,33 @@ func commentFromRow(row queries.Comment) Comment {
 	return Comment{ID: row.ID, Body: row.Body, Author: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, CreatedAt: row.CreatedAt}
 }
 
+func createItem(q *queries.Queries, kind, repo string, actor Actor, title, body string, labels, assignees []string) (queries.Item, error) {
+	row, err := q.CreateItem(context.Background(), queries.CreateItemParams{
+		Repo: repo, Kind: kind, Title: title, Body: body, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: now(),
+	})
+	if err != nil {
+		return row, err
+	}
+	for _, name := range labels {
+		if _, err := applyLabel(q, row, name, true); err != nil {
+			return row, err
+		}
+	}
+	for _, assignee := range assignees {
+		if _, err := applyAssignee(q, row, assignee, true); err != nil {
+			return row, err
+		}
+	}
+	return row, nil
+}
+
 func (s *Store) CreateItem(kind, repo string, actor Actor, title, body string, labels, assignees []string) (Item, int64, error) {
 	var item Item
 	var eventID int64
 	err := s.inTx(func(q *queries.Queries) error {
-		row, err := q.CreateItem(context.Background(), queries.CreateItemParams{
-			Repo: repo, Kind: kind, Title: title, Body: body, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: now(),
-		})
+		row, err := createItem(q, kind, repo, actor, title, body, labels, assignees)
 		if err != nil {
 			return err
-		}
-		for _, name := range labels {
-			if _, err := applyLabel(q, row, name, true); err != nil {
-				return err
-			}
-		}
-		for _, assignee := range assignees {
-			if _, err := applyAssignee(q, row, assignee, true); err != nil {
-				return err
-			}
 		}
 		if item, err = loadItem(q, row); err != nil {
 			return err
@@ -225,7 +234,11 @@ func (s *Store) EditItem(kind, repo string, number int64, actor Actor, edit Item
 			case *edit.State == "closed" && row.State == "open":
 				update.State = "closed"
 				update.ClosedAt = sql.NullTime{Time: now(), Valid: true}
-				err = record("closed", map[string]any{})
+				closedBy := map[string]any{}
+				if edit.Commit != "" {
+					closedBy["commit"] = edit.Commit
+				}
+				err = record("closed", closedBy)
 			case *edit.State == "open" && row.State == "closed":
 				update.State = "open"
 				update.ClosedAt = sql.NullTime{}

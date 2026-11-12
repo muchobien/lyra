@@ -79,6 +79,16 @@ type Label struct {
 	Description string `json:"description"`
 }
 
+type Pull struct {
+	ItemID   int64        `json:"item_id"`
+	Base     string       `json:"base"`
+	Head     string       `json:"head"`
+	HeadSha  string       `json:"head_sha"`
+	BaseSha  string       `json:"base_sha"`
+	MergeSha string       `json:"merge_sha"`
+	MergedAt sql.NullTime `json:"merged_at"`
+}
+
 type Repo struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`

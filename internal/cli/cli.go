@@ -307,125 +307,166 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 	eventWait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
 	event.AddCommand(eventList, eventWait)
 
-	issue := &cobra.Command{Use: "issue", Short: "Manage issues"}
-	issuesPath := func(repo string) string {
-		return "/api/repos/" + url.PathEscape(repo) + "/issues"
-	}
-	var issueTitle string
-	var issueLabels, issueAssignees []string
-	issueCreate := &cobra.Command{
-		Use:   "create <repo>",
-		Short: "Open an issue",
-		Args:  exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if issueTitle == "" {
-				return UsageError{errors.New("issue create needs --title")}
-			}
-			body, _, err := readBody(cmd)
-			if err != nil {
-				return err
-			}
-			return call(cmd, http.MethodPost, issuesPath(args[0]), map[string]any{"title": issueTitle, "body": body, "labels": issueLabels, "assignees": issueAssignees})
-		},
-	}
-	issueCreate.Flags().StringVar(&issueTitle, "title", "", "issue title (required)")
-	addBodyFlags(issueCreate)
-	issueCreate.Flags().StringArrayVar(&issueLabels, "label", nil, "add this label, which must exist (repeatable)")
-	issueCreate.Flags().StringArrayVar(&issueAssignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
-
-	var listState string
-	var listLabels, listAssignees []string
-	var listLimit int
-	issueList := &cobra.Command{
-		Use:   "list <repo>",
-		Short: "List issues, newest first",
-		Args:  exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{"state": {listState}, "limit": {fmt.Sprint(listLimit)}, "label": listLabels, "assignee": listAssignees}
-			return call(cmd, http.MethodGet, issuesPath(args[0])+"?"+query.Encode(), nil)
-		},
-	}
-	issueList.Flags().StringVar(&listState, "state", "open", "open, closed or all")
-	issueList.Flags().StringArrayVar(&listLabels, "label", nil, "only issues with this label (repeatable)")
-	issueList.Flags().StringArrayVar(&listAssignees, "assignee", nil, "only issues assigned to this login or agent, or @me (repeatable)")
-	issueList.Flags().IntVar(&listLimit, "limit", 30, "maximum number of issues")
-
-	issueView := &cobra.Command{
-		Use:   "view <repo> <number>",
-		Short: "Show an issue with its comments",
-		Args:  exactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodGet, issuesPath(args[0])+"/"+url.PathEscape(args[1]), nil)
-		},
-	}
-
-	issueComment := &cobra.Command{
-		Use:   "comment <repo> <number>",
-		Short: "Comment on an issue",
-		Args:  exactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body, set, err := readBody(cmd)
-			if err != nil {
-				return err
-			}
-			if !set {
-				return UsageError{errors.New("issue comment needs --body or --body-file")}
-			}
-			return call(cmd, http.MethodPost, issuesPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", map[string]string{"body": body})
-		},
-	}
-	addBodyFlags(issueComment)
-
-	var editTitle string
-	var addLabels, removeLabels, addAssignees, removeAssignees []string
-	issueEdit := &cobra.Command{
-		Use:   "edit <repo> <number>",
-		Short: "Change an issue's title, body, labels or assignees",
-		Args:  exactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			edit := map[string]any{}
-			if cmd.Flags().Changed("title") {
-				edit["title"] = editTitle
-			}
-			body, set, err := readBody(cmd)
-			if err != nil {
-				return err
-			}
-			if set {
-				edit["body"] = body
-			}
-			for key, values := range map[string][]string{"add_labels": addLabels, "remove_labels": removeLabels, "add_assignees": addAssignees, "remove_assignees": removeAssignees} {
-				if len(values) > 0 {
-					edit[key] = values
+	itemCommands := func(use, segment, noun, states string) *cobra.Command {
+		parent := &cobra.Command{Use: use, Short: "Manage " + noun + "s"}
+		itemsPath := func(repo string) string {
+			return "/api/repos/" + url.PathEscape(repo) + "/" + segment
+		}
+		var itemTitle, head, base string
+		var itemLabels, itemAssignees []string
+		createCommand := &cobra.Command{
+			Use:   "create <repo>",
+			Short: "Open a new " + noun,
+			Args:  exactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if itemTitle == "" {
+					return UsageError{errors.New(use + " create needs --title")}
 				}
-			}
-			if len(edit) == 0 {
-				return UsageError{errors.New("issue edit needs at least one change; see lyra issue edit --help")}
-			}
-			return call(cmd, http.MethodPatch, issuesPath(args[0])+"/"+url.PathEscape(args[1]), edit)
-		},
-	}
-	issueEdit.Flags().StringVar(&editTitle, "title", "", "new title")
-	addBodyFlags(issueEdit)
-	issueEdit.Flags().StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
-	issueEdit.Flags().StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")
-	issueEdit.Flags().StringArrayVar(&addAssignees, "add-assignee", nil, "assign a login or agent name, or @me (repeatable)")
-	issueEdit.Flags().StringArrayVar(&removeAssignees, "remove-assignee", nil, "unassign a login or agent name, or @me (repeatable)")
+				body, _, err := readBody(cmd)
+				if err != nil {
+					return err
+				}
+				create := map[string]any{"title": itemTitle, "body": body, "labels": itemLabels, "assignees": itemAssignees}
+				if segment == "pulls" {
+					if head == "" {
+						return UsageError{errors.New("pr create needs --head")}
+					}
+					create["head"], create["base"] = head, base
+				}
+				return call(cmd, http.MethodPost, itemsPath(args[0]), create)
+			},
+		}
+		createCommand.Flags().StringVar(&itemTitle, "title", "", "title (required)")
+		if segment == "pulls" {
+			createCommand.Flags().StringVar(&head, "head", "", "branch with the changes (required)")
+			createCommand.Flags().StringVar(&base, "base", "", "branch to merge into (default: the default branch)")
+		}
+		addBodyFlags(createCommand)
+		createCommand.Flags().StringArrayVar(&itemLabels, "label", nil, "add this label, which must exist (repeatable)")
+		createCommand.Flags().StringArrayVar(&itemAssignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
 
-	for _, change := range []struct{ use, short, state string }{
-		{"close <repo> <number>", "Close an issue", "closed"},
-		{"reopen <repo> <number>", "Reopen a closed issue", "open"},
-	} {
-		issue.AddCommand(&cobra.Command{
-			Use:   change.use,
-			Short: change.short,
+		var listState string
+		var listLabels, listAssignees []string
+		var listLimit int
+		listCommand := &cobra.Command{
+			Use:   "list <repo>",
+			Short: "List " + noun + "s, newest first",
+			Args:  exactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				query := url.Values{"state": {listState}, "limit": {fmt.Sprint(listLimit)}, "label": listLabels, "assignee": listAssignees}
+				return call(cmd, http.MethodGet, itemsPath(args[0])+"?"+query.Encode(), nil)
+			},
+		}
+		listCommand.Flags().StringVar(&listState, "state", "open", states)
+		listCommand.Flags().StringArrayVar(&listLabels, "label", nil, "only "+noun+"s with this label (repeatable)")
+		listCommand.Flags().StringArrayVar(&listAssignees, "assignee", nil, "only "+noun+"s assigned to this login or agent, or @me (repeatable)")
+		listCommand.Flags().IntVar(&listLimit, "limit", 30, "maximum number of "+noun+"s")
+
+		viewCommand := &cobra.Command{
+			Use:   "view <repo> <number>",
+			Short: "Show a " + noun + " with its comments",
 			Args:  exactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return call(cmd, http.MethodPatch, issuesPath(args[0])+"/"+url.PathEscape(args[1]), map[string]string{"state": change.state})
+				return call(cmd, http.MethodGet, itemsPath(args[0])+"/"+url.PathEscape(args[1]), nil)
 			},
-		})
+		}
+
+		commentCommand := &cobra.Command{
+			Use:   "comment <repo> <number>",
+			Short: "Comment on a " + noun,
+			Args:  exactArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				body, set, err := readBody(cmd)
+				if err != nil {
+					return err
+				}
+				if !set {
+					return UsageError{errors.New(use + " comment needs --body or --body-file")}
+				}
+				return call(cmd, http.MethodPost, itemsPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", map[string]string{"body": body})
+			},
+		}
+		addBodyFlags(commentCommand)
+
+		var editTitle string
+		var addLabels, removeLabels, addAssignees, removeAssignees []string
+		editCommand := &cobra.Command{
+			Use:   "edit <repo> <number>",
+			Short: "Change a " + noun + "'s title, body, labels or assignees",
+			Args:  exactArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				edit := map[string]any{}
+				if cmd.Flags().Changed("title") {
+					edit["title"] = editTitle
+				}
+				body, set, err := readBody(cmd)
+				if err != nil {
+					return err
+				}
+				if set {
+					edit["body"] = body
+				}
+				for key, values := range map[string][]string{"add_labels": addLabels, "remove_labels": removeLabels, "add_assignees": addAssignees, "remove_assignees": removeAssignees} {
+					if len(values) > 0 {
+						edit[key] = values
+					}
+				}
+				if len(edit) == 0 {
+					return UsageError{errors.New(use + " edit needs at least one change; see lyra " + use + " edit --help")}
+				}
+				return call(cmd, http.MethodPatch, itemsPath(args[0])+"/"+url.PathEscape(args[1]), edit)
+			},
+		}
+		editCommand.Flags().StringVar(&editTitle, "title", "", "new title")
+		addBodyFlags(editCommand)
+		editCommand.Flags().StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
+		editCommand.Flags().StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")
+		editCommand.Flags().StringArrayVar(&addAssignees, "add-assignee", nil, "assign a login or agent name, or @me (repeatable)")
+		editCommand.Flags().StringArrayVar(&removeAssignees, "remove-assignee", nil, "unassign a login or agent name, or @me (repeatable)")
+
+		for _, change := range []struct{ use, short, state string }{
+			{"close <repo> <number>", "Close a " + noun, "closed"},
+			{"reopen <repo> <number>", "Reopen a closed " + noun, "open"},
+		} {
+			parent.AddCommand(&cobra.Command{
+				Use:   change.use,
+				Short: change.short,
+				Args:  exactArgs(2),
+				RunE: func(cmd *cobra.Command, args []string) error {
+					return call(cmd, http.MethodPatch, itemsPath(args[0])+"/"+url.PathEscape(args[1]), map[string]string{"state": change.state})
+				},
+			})
+		}
+		parent.AddCommand(createCommand, listCommand, viewCommand, commentCommand, editCommand)
+		return parent
 	}
-	issue.AddCommand(issueCreate, issueList, issueView, issueComment, issueEdit)
+	issue := itemCommands("issue", "issues", "issue", "open, closed or all")
+	pr := itemCommands("pr", "pulls", "pull request", "open, closed, merged or all")
+	pullPath := func(args []string) string {
+		return "/api/repos/" + url.PathEscape(args[0]) + "/pulls/" + url.PathEscape(args[1])
+	}
+	prCommits := &cobra.Command{
+		Use:   "commits <repo> <number>",
+		Short: "List a pull request's commits with signature status",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, pullPath(args)+"/commits", nil)
+		},
+	}
+	var filesOnly bool
+	prDiff := &cobra.Command{
+		Use:   "diff <repo> <number>",
+		Short: "Print a pull request's diff, or its changed files with --files",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if filesOnly {
+				return call(cmd, http.MethodGet, pullPath(args)+"/files", nil)
+			}
+			return call(cmd, http.MethodGet, pullPath(args)+"/diff", nil)
+		},
+	}
+	prDiff.Flags().BoolVar(&filesOnly, "files", false, "list changed files as JSON instead")
+	pr.AddCommand(prCommits, prDiff)
 
 	label := &cobra.Command{Use: "label", Short: "Manage a repository's labels"}
 	labelsPath := func(repo string) string {
@@ -460,7 +501,7 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 	}
 	label.AddCommand(labelCreate, labelList, labelDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, label)
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label)
 	return root
 }
 

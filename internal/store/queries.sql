@@ -132,3 +132,23 @@ RETURNING *;
 
 -- name: ListComments :many
 SELECT * FROM comments WHERE item_id = ? ORDER BY id;
+
+-- name: CreatePull :exec
+INSERT INTO pulls (item_id, base, head, head_sha, base_sha) VALUES (?, ?, ?, ?, ?);
+
+-- name: GetPullItem :one
+SELECT sqlc.embed(items), sqlc.embed(pulls) FROM items
+JOIN pulls ON pulls.item_id = items.id
+WHERE items.repo = ? AND items.number = ?;
+
+-- name: ListPullItems :many
+SELECT sqlc.embed(items), sqlc.embed(pulls) FROM items
+JOIN pulls ON pulls.item_id = items.id
+WHERE items.repo = sqlc.arg(repo) AND (sqlc.arg(state) = 'all' OR items.state = sqlc.arg(state))
+ORDER BY items.number DESC;
+
+-- name: UpdatePullHead :exec
+UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
+
+-- name: MergePull :exec
+UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;

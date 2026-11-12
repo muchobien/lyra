@@ -203,12 +203,16 @@ func (g Git) Branches(dir string) ([]Ref, error) {
 
 const logFormat = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%b%x1e"
 
-func (g Git) Log(dir, rev string, limit int) ([]Commit, error) {
+func (g Git) Log(dir, rev string, limit int, exclude ...string) ([]Commit, error) {
 	sha, err := g.ResolveCommit(dir, rev)
 	if err != nil {
 		return nil, err
 	}
-	stdout, stderr, err := g.run(dir, "log", "--max-count="+strconv.Itoa(limit), "--format="+logFormat, sha, "--")
+	args := []string{"log", "--max-count=" + strconv.Itoa(limit), "--format=" + logFormat, sha}
+	for _, excluded := range exclude {
+		args = append(args, "^"+excluded)
+	}
+	stdout, stderr, err := g.run(dir, append(args, "--")...)
 	if err != nil {
 		return nil, fmt.Errorf("git log: %v: %s", err, stderr)
 	}
@@ -260,6 +264,92 @@ func (g Git) Patch(dir, sha string) (string, error) {
 		return "", fmt.Errorf("git show: %v: %s", err, stderr)
 	}
 	return string(stdout), nil
+}
+
+func (g Git) MergeBase(dir, first, second string) (string, error) {
+	stdout, _, err := g.run(dir, "merge-base", first, second)
+	if err != nil {
+		return "", ErrNotFound
+	}
+	return strings.TrimSpace(string(stdout)), nil
+}
+
+func (g Git) IsAncestor(dir, ancestor, descendant string) (bool, error) {
+	_, stderr, err := g.run(dir, "merge-base", "--is-ancestor", ancestor, descendant)
+	var exitError *exec.ExitError
+	if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("merge-base --is-ancestor: %v: %s", err, stderr)
+	}
+	return true, nil
+}
+
+func (g Git) UpdateRef(dir, ref, sha string) error {
+	if _, stderr, err := g.run(dir, "update-ref", ref, sha); err != nil {
+		return fmt.Errorf("update-ref %s: %v: %s", ref, err, stderr)
+	}
+	return nil
+}
+
+func (g Git) Diff(dir, base, head string) (string, error) {
+	stdout, stderr, err := g.run(dir, "diff", "--no-color", "--find-renames", base, head, "--")
+	if err != nil {
+		return "", fmt.Errorf("git diff: %v: %s", err, stderr)
+	}
+	return string(stdout), nil
+}
+
+type FileChange struct {
+	Path      string `json:"path"`
+	OldPath   string `json:"old_path,omitempty"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Binary    bool   `json:"binary,omitempty"`
+}
+
+var fileStatuses = map[byte]string{'A': "added", 'D': "deleted", 'M': "modified", 'R': "renamed", 'C': "copied", 'T': "type-changed"}
+
+func (g Git) DiffFiles(dir, base, head string) ([]FileChange, error) {
+	stdout, stderr, err := g.run(dir, "diff", "--find-renames", "--name-status", "-z", base, head, "--")
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-status: %v: %s", err, stderr)
+	}
+	files := []FileChange{}
+	fields := strings.Split(strings.TrimSuffix(string(stdout), "\x00"), "\x00")
+	for index := 0; index+1 < len(fields); index += 2 {
+		change := FileChange{Status: fileStatuses[fields[index][0]], Path: fields[index+1]}
+		if fields[index][0] == 'R' || fields[index][0] == 'C' {
+			change.OldPath = fields[index+1]
+			change.Path = fields[index+2]
+			index++
+		}
+		files = append(files, change)
+	}
+	stdout, stderr, err = g.run(dir, "diff", "--find-renames", "--numstat", "-z", base, head, "--")
+	if err != nil {
+		return nil, fmt.Errorf("git diff --numstat: %v: %s", err, stderr)
+	}
+	counts := strings.Split(strings.TrimSuffix(string(stdout), "\x00"), "\x00")
+	for index, file := 0, 0; index < len(counts) && file < len(files); file++ {
+		numbers := strings.Split(counts[index], "\t")
+		index++
+		if len(numbers) == 3 && numbers[2] == "" {
+			index += 2
+		}
+		if len(numbers) < 2 {
+			continue
+		}
+		if numbers[0] == "-" {
+			files[file].Binary = true
+			continue
+		}
+		files[file].Additions, _ = strconv.Atoi(numbers[0])
+		files[file].Deletions, _ = strconv.Atoi(numbers[1])
+	}
+	return files, nil
 }
 
 func (g Git) Tags(dir string) ([]Tag, error) {
