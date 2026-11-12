@@ -120,3 +120,19 @@ lyra event list [--repo NAME] [--limit N]
 `internal/store/migrations`, applied by the server at startup. Queries live in
 `internal/store/queries.sql`; run `sqlc generate` after changing either, and commit the
 generated `internal/store/queries` package.
+
+`scripts/e2e.zsh` runs the end-to-end check that CI runs. It needs zsh, `git`,
+`ssh-keygen`, `jq` and `curl`, and uses ports 18080 and 18081:
+
+```sh
+go build -o bin/lyra ./cmd/lyra && scripts/e2e.zsh
+```
+
+It starts two servers on a temporary data directory with generated SSH keys and
+covers:
+
+- Auth through the Tailscale header and through tokens.
+- Clone and push, including chunked request bodies.
+- Scoped, read-only and revoked tokens, and recorded actors.
+- Signature status of commits and tags, cross-checked against `git verify-commit`
+  and `git verify-tag`, including forged signatures.
