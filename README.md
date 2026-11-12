@@ -104,7 +104,9 @@ lyra key add --signing [--agent NAME] [--title TEXT] <public-key-file|->
 lyra key list
 lyra key delete <id>
 lyra event list [--repo NAME] [--limit N]
-lyra event wait [--repo NAME] [--action PATTERN]... [--since ID] [--timeout 30m]
+lyra event wait [--repo NAME] [--action PATTERN]... [--assignee NAME|me] [--since ID] [--timeout 30m]
+lyra issue wait <repo> <number> [--for comment,closed,...] [--since ID] [--timeout 30m]
+lyra pr wait <repo> <number> [--for review,comment,merged,closed,push,...] [--since ID] [--timeout 30m]
 lyra issue create <repo> --title TEXT [--body TEXT|--body-file F|-] [--label L]... [--assignee NAME|@me]...
 lyra issue list <repo> [--state open|closed|all] [--label L]... [--assignee NAME|@me]... [--limit N]
 lyra issue view <repo> <number>
@@ -211,6 +213,26 @@ tailnet identity too.
 
 Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.delete`.
 
+`lyra pr wait` and `lyra issue wait` block until someone other than the caller acts on
+that pull request or issue, then print the event, with the review or comment it
+carries.
+
+- **Default actions:** pull requests wait for a review, comment, merge or close; issues
+  wait for anything but their opening. `--for` narrows it.
+- **Who "the caller" is:** the token, or the agent and session when `LYRA_SESSION` is
+  set, so another session of the same agent counts as someone else.
+- **Where the wait starts:** without `--since`, after the later of the caller's last
+  action on the item and the last event a wait returned to the caller. So:
+  - a reply that arrived between pushing a fix and starting to wait returns at once;
+  - waiting again doesn't return the same event twice.
+
+Lyra keeps that last returned event per caller and item. With `--since ID`, the wait
+starts after that event instead.
+
+`lyra event wait --assignee me` returns when an issue or pull request is assigned to
+the caller (the agent name, or the login without one). This is a work queue; check
+`lyra issue list --assignee @me` first for work assigned earlier.
+
 `lyra event wait` blocks until a matching event happens and prints it. Actions are glob
 patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
 `--since ID` it also returns events since that one, so an agent that saved the id of the
@@ -230,7 +252,7 @@ the server restarts.
 | `GET /api/tokens`, `POST /api/tokens`, `DELETE /api/tokens/{id}` | admin |
 | `GET /api/keys`, `POST /api/keys`, `DELETE /api/keys/{id}` | read, admin |
 | `GET /api/events?repo=&limit=` | read |
-| `GET /api/events/stream?repo=&action=&since=` | read |
+| `GET /api/events/stream?repo=&item=&action=&assignee=&exclude_self=&since=` | read |
 | `GET /api/repos/{name}/issues?state=&label=&assignee=&limit=` | read |
 | `POST /api/repos/{name}/issues` | write |
 | `GET /api/repos/{name}/issues/{number}` | read |
@@ -265,6 +287,14 @@ and the stream accepts `Last-Event-ID` to resume. It starts with an `id` line ho
 the current position, and sends a keepalive every 25 seconds. Tokens see only events
 for the repositories they can read; account events (tokens, keys) need a token without
 a repository list.
+
+The stream's filters:
+
+- `item`: one issue or pull request number, together with `repo`.
+- `exclude_self=true`: leaves out the caller's own events.
+- `assignee`: only `*.assigned` events for that name, where `me` is the caller.
+- `since=mine`, with `item`: starts where `lyra pr wait` does. Every event delivered on
+  an `item` stream moves that position forward.
 
 ## Web UI
 
@@ -312,6 +342,11 @@ with `git` and the CLI. They cover:
   and `git verify-tag`, including forged signatures.
 - Waiting for events: filters, `--since`, timeouts, scoped tokens, and resuming across
   a server restart.
+- Waiting for other people:
+  - A reply that arrived before the wait.
+  - The caller's own actions ignored, and another session's not.
+  - Not returning the same event twice.
+  - `--for`, issue waits, and the `--assignee me` work queue.
 - Issues, labels and comments from the CLI and the UI forms, including rejected
   cross-site posts, Markdown sanitizing, and cleanup when a repository is deleted.
 - Pull requests:

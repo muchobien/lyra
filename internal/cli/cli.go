@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -261,9 +262,28 @@ Environment:
 	}
 	eventList.Flags().StringVar(&eventRepo, "repo", "", "only events for this repository")
 	eventList.Flags().IntVar(&eventLimit, "limit", 50, "maximum number of events")
-	var waitRepo string
+	waitAndEmit := func(cmd *cobra.Command, query url.Values, timeout time.Duration) error {
+		flags := cmd.Flags()
+		if flags.Changed("since") {
+			since, _ := flags.GetInt64("since")
+			if since < 0 {
+				return UsageError{errors.New("--since must be an event id")}
+			}
+			query.Set("since", fmt.Sprint(since))
+		}
+		output, err := waitForEvent("/api/events/stream?"+query.Encode(), timeout)
+		if err != nil {
+			return err
+		}
+		var indented bytes.Buffer
+		if err := json.Indent(&indented, output, "", "  "); err != nil {
+			return err
+		}
+		indented.WriteByte('\n')
+		return emit(cmd, indented.Bytes())
+	}
+	var waitRepo, waitAssignee string
 	var waitActions []string
-	var since int64
 	var timeout time.Duration
 	eventWait := &cobra.Command{
 		Use:   "wait",
@@ -273,37 +293,27 @@ Environment:
 Without --since, only events after the command starts match. Pass the id of an
 event you have already seen as --since to also match anything that happened
 since then. The command reconnects if the connection drops, without missing
-events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
+events. It exits 3 with {"error":"timeout"} when --timeout passes.
+
+--assignee me waits until an issue or pull request is assigned to you (your
+LYRA_AGENT name, or your login without one): a work queue. Check
+lyra issue list --assignee @me first for work assigned before you started waiting.`,
 		Args: exactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{}
+			query := url.Values{"action": waitActions}
 			if waitRepo != "" {
 				query.Set("repo", waitRepo)
 			}
-			for _, action := range waitActions {
-				query.Add("action", action)
+			if waitAssignee != "" {
+				query.Set("assignee", waitAssignee)
 			}
-			if cmd.Flags().Changed("since") {
-				if since < 0 {
-					return UsageError{errors.New("--since must be an event id")}
-				}
-				query.Set("since", fmt.Sprint(since))
-			}
-			output, err := waitForEvent("/api/events/stream?"+query.Encode(), timeout)
-			if err != nil {
-				return err
-			}
-			var indented bytes.Buffer
-			if err := json.Indent(&indented, output, "", "  "); err != nil {
-				return err
-			}
-			indented.WriteByte('\n')
-			return emit(cmd, indented.Bytes())
+			return waitAndEmit(cmd, query, timeout)
 		},
 	}
 	eventWait.Flags().StringVar(&waitRepo, "repo", "", "only events for this repository")
 	eventWait.Flags().StringArrayVar(&waitActions, "action", nil, "only these actions, as glob patterns such as push or repo.* (repeatable)")
-	eventWait.Flags().Int64Var(&since, "since", 0, "match events after this event id (default: from now)")
+	eventWait.Flags().StringVar(&waitAssignee, "assignee", "", "only assignments to this login or agent name, or me")
+	eventWait.Flags().Int64("since", 0, "match events after this event id (default: from now)")
 	eventWait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
 	event.AddCommand(eventList, eventWait)
 
@@ -449,7 +459,54 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
 				},
 			})
 		}
-		parent.AddCommand(createCommand, listCommand, viewCommand, commentCommand, editCommand)
+		prefix := "issue."
+		kinds := []string{"comment", "closed", "reopened", "edited", "labeled", "unlabeled", "assigned", "unassigned"}
+		defaults := kinds
+		if segment == "pulls" {
+			prefix = "pr."
+			kinds = append([]string{"review", "merged", "push"}, kinds...)
+			defaults = []string{"review", "comment", "merged", "closed"}
+		}
+		var waitFor []string
+		var waitTimeout time.Duration
+		waitCommand := &cobra.Command{
+			Use:   "wait <repo> <number>",
+			Short: "Wait until someone else acts on a " + noun,
+			Long: `Wait until someone other than you acts on the ` + noun + `, then print that event as JSON,
+with the comment or review it carries.
+
+You are the same token, or the same LYRA_AGENT and LYRA_SESSION when a session is
+set, so another session of the same agent counts as someone else. Without --since,
+the wait starts after your own last action on the ` + noun + `, or after the last event a
+wait already returned to you, whichever is later: a reply that arrived since you
+last acted returns at once, and waiting again doesn't return it twice. With --since
+ID it starts after that event instead. It reconnects if the connection drops, and
+exits 3 with {"error":"timeout"} when --timeout passes.
+
+--for chooses the actions, from ` + strings.Join(kinds, ", ") + ` (default: ` + strings.Join(defaults, ", ") + `).`,
+			Args: exactArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				chosen := waitFor
+				if len(chosen) == 0 {
+					chosen = defaults
+				}
+				query := url.Values{"repo": {args[0]}, "item": {args[1]}, "exclude_self": {"true"}, "since": {"mine"}}
+				for _, kind := range chosen {
+					if !slices.Contains(kinds, kind) {
+						return UsageError{fmt.Errorf("--for %s: choose from %s", kind, strings.Join(kinds, ", "))}
+					}
+					if kind == "push" {
+						kind = "synchronized"
+					}
+					query.Add("action", prefix+kind)
+				}
+				return waitAndEmit(cmd, query, waitTimeout)
+			},
+		}
+		waitCommand.Flags().StringSliceVar(&waitFor, "for", nil, "actions to wait for, comma-separated or repeated")
+		waitCommand.Flags().Int64("since", 0, "start after this event id (default: after your last action on it)")
+		waitCommand.Flags().DurationVar(&waitTimeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
+		parent.AddCommand(createCommand, listCommand, viewCommand, commentCommand, editCommand, waitCommand)
 		return parent
 	}
 	issue := itemCommands("issue", "issues", "issue", "open, closed or all")

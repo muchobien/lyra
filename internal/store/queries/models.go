@@ -136,3 +136,13 @@ type Token struct {
 	ExpiresAt  sql.NullTime `json:"expires_at"`
 	LastUsedAt sql.NullTime `json:"last_used_at"`
 }
+
+type WaitCursor struct {
+	Repo    string `json:"repo"`
+	Item    int64  `json:"item"`
+	User    string `json:"user"`
+	Via     string `json:"via"`
+	Agent   string `json:"agent"`
+	Session string `json:"session"`
+	EventID int64  `json:"event_id"`
+}

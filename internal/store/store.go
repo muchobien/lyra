@@ -195,6 +195,37 @@ func (s *Store) EventsAfter(id int64, limit int) ([]Event, error) {
 	return eventsFromRows(rows), nil
 }
 
+func (s *Store) ItemEvents(repo string, item int64) ([]Event, error) {
+	rows, err := s.queries.ListItemEvents(context.Background(), queries.ListItemEventsParams{Repo: repo, Item: item})
+	if err != nil {
+		return nil, err
+	}
+	return eventsFromRows(rows), nil
+}
+
+type WaitCursor struct {
+	Actor   Actor
+	EventID int64
+}
+
+func (s *Store) WaitCursors(repo string, item int64) ([]WaitCursor, error) {
+	rows, err := s.queries.ListWaitCursors(context.Background(), queries.ListWaitCursorsParams{Repo: repo, Item: item})
+	if err != nil {
+		return nil, err
+	}
+	cursors := []WaitCursor{}
+	for _, row := range rows {
+		cursors = append(cursors, WaitCursor{Actor: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, EventID: row.EventID})
+	}
+	return cursors, nil
+}
+
+func (s *Store) SetWaitCursor(repo string, item int64, actor Actor, eventID int64) error {
+	return s.queries.SetWaitCursor(context.Background(), queries.SetWaitCursorParams{
+		Repo: repo, Item: item, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, EventID: eventID,
+	})
+}
+
 func (s *Store) LatestEventID() (int64, error) {
 	return s.queries.LatestEventID(context.Background())
 }

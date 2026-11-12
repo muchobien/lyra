@@ -769,6 +769,49 @@ func (q *Queries) ListItemAssignees(ctx context.Context, itemID int64) ([]string
 	return items, nil
 }
 
+const listItemEvents = `-- name: ListItemEvents :many
+SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events WHERE repo = ? AND item = ? ORDER BY id
+`
+
+type ListItemEventsParams struct {
+	Repo string `json:"repo"`
+	Item int64  `json:"item"`
+}
+
+func (q *Queries) ListItemEvents(ctx context.Context, arg ListItemEventsParams) ([]Event, error) {
+	rows, err := q.db.QueryContext(ctx, listItemEvents, arg.Repo, arg.Item)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.Action,
+			&i.Repo,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.Data,
+			&i.Item,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItemLabels = `-- name: ListItemLabels :many
 SELECT labels.name FROM item_labels
 JOIN labels ON labels.id = item_labels.label_id
@@ -1203,6 +1246,46 @@ func (q *Queries) ListUserKeys(ctx context.Context, user string) ([]Key, error) 
 	return items, nil
 }
 
+const listWaitCursors = `-- name: ListWaitCursors :many
+SELECT repo, item, user, via, agent, session, event_id FROM wait_cursors WHERE repo = ? AND item = ?
+`
+
+type ListWaitCursorsParams struct {
+	Repo string `json:"repo"`
+	Item int64  `json:"item"`
+}
+
+func (q *Queries) ListWaitCursors(ctx context.Context, arg ListWaitCursorsParams) ([]WaitCursor, error) {
+	rows, err := q.db.QueryContext(ctx, listWaitCursors, arg.Repo, arg.Item)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaitCursor
+	for rows.Next() {
+		var i WaitCursor
+		if err := rows.Scan(
+			&i.Repo,
+			&i.Item,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.EventID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergePull = `-- name: MergePull :exec
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?
 `
@@ -1297,6 +1380,35 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		&i.RequireApproval,
 	)
 	return i, err
+}
+
+const setWaitCursor = `-- name: SetWaitCursor :exec
+INSERT INTO wait_cursors (repo, item, user, via, agent, session, event_id)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (repo, item, user, via, agent, session) DO UPDATE SET event_id = MAX(event_id, excluded.event_id)
+`
+
+type SetWaitCursorParams struct {
+	Repo    string `json:"repo"`
+	Item    int64  `json:"item"`
+	User    string `json:"user"`
+	Via     string `json:"via"`
+	Agent   string `json:"agent"`
+	Session string `json:"session"`
+	EventID int64  `json:"event_id"`
+}
+
+func (q *Queries) SetWaitCursor(ctx context.Context, arg SetWaitCursorParams) error {
+	_, err := q.db.ExecContext(ctx, setWaitCursor,
+		arg.Repo,
+		arg.Item,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.EventID,
+	)
+	return err
 }
 
 const tokenActive = `-- name: TokenActive :one

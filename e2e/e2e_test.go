@@ -171,8 +171,13 @@ func adminToken(test *testing.T, srv server) string {
 
 func startLyra(test *testing.T, srv server, token string, args ...string) func() cliResult {
 	test.Helper()
+	return startLyraWith(test, srv, token, nil, args...)
+}
+
+func startLyraWith(test *testing.T, srv server, token string, env []string, args ...string) func() cliResult {
+	test.Helper()
 	cmd := exec.Command(lyraBinary, args...)
-	cmd.Env = append(os.Environ(), "LYRA_URL="+srv.url, "LYRA_TOKEN="+token, "LYRA_AGENT=e2e-agent", "LYRA_SESSION=session-123")
+	cmd.Env = append(append(os.Environ(), "LYRA_URL="+srv.url, "LYRA_TOKEN="+token, "LYRA_AGENT=e2e-agent", "LYRA_SESSION=session-123"), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

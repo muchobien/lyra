@@ -175,3 +175,14 @@ RETURNING *;
 
 -- name: ListReviews :many
 SELECT * FROM reviews WHERE item_id = ? ORDER BY id;
+
+-- name: ListItemEvents :many
+SELECT * FROM events WHERE repo = ? AND item = ? ORDER BY id;
+
+-- name: SetWaitCursor :exec
+INSERT INTO wait_cursors (repo, item, user, via, agent, session, event_id)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (repo, item, user, via, agent, session) DO UPDATE SET event_id = MAX(event_id, excluded.event_id);
+
+-- name: ListWaitCursors :many
+SELECT * FROM wait_cursors WHERE repo = ? AND item = ?;
