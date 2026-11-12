@@ -8,19 +8,30 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-      - uses: sqlc-dev/setup-sqlc@v5
+      - uses: sqlc-dev/setup-sqlc@v5.0.0
         with:
           sqlc-version: 1.31.1
-      - name: actionlint
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: jactionlint
+        run: go run github.com/jdx/jactionlint/v2/cmd/jactionlint@v2.5.0
+      - name: Actions lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.4.1
+          gh actions-lock --verify
       - name: Generated queries are current
         run: sqlc diff
       - name: gofmt
