@@ -15,6 +15,18 @@ lyra serve --listen :8080 --data /var/lib/lyra \
 Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY` and `LYRA_ALLOW_LOGIN`.
 The server needs `git` on `PATH`.
 
+### Container image
+
+`ghcr.io/muchobien/lyra` is built for `linux/amd64` and `linux/arm64`, tagged `main` and
+`sha-<short>` from `main`, and `X.Y.Z`, `X.Y` and `latest` from version tags. It runs
+`lyra serve` as a non-root user with data in the `/data` volume:
+
+```sh
+docker run -p 8080:8080 -v lyra-data:/data \
+  -e LYRA_TRUSTED_PROXY=10.42.0.0/16 -e LYRA_ALLOW_LOGIN=you@example.com \
+  ghcr.io/muchobien/lyra:main
+```
+
 The data directory holds `lyra.db`, `repos/<name>.git` and `hooks/post-receive`
 (written at startup, applied through `core.hooksPath`).
 
