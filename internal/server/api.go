@@ -130,7 +130,7 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("repo.create", repo.Name, id.actor, map[string]string{"description": repo.Description}); err != nil {
+	if _, err := s.store.AddEvent("repo.create", repo.Name, id.actor, map[string]string{"description": repo.Description}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -168,7 +168,7 @@ func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("repo.delete", repo.Name, identityFrom(r).actor, map[string]string{}); err != nil {
+	if _, err := s.store.AddEvent("repo.delete", repo.Name, identityFrom(r).actor, map[string]string{}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -348,7 +348,7 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("token.create", "", id.actor, map[string]any{"id": token.ID, "name": token.Name, "scope": token.Scope, "repos": token.Repos}); err != nil {
+	if _, err := s.store.AddEvent("token.create", "", id.actor, map[string]any{"id": token.ID, "name": token.Name, "scope": token.Scope, "repos": token.Repos}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -373,7 +373,7 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("token.revoke", "", id.actor, map[string]any{"id": tokenID}); err != nil {
+	if _, err := s.store.AddEvent("token.revoke", "", id.actor, map[string]any{"id": tokenID}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -432,7 +432,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("key.add", "", id.actor, map[string]any{"id": key.ID, "fingerprint": key.Fingerprint, "agent": key.Agent}); err != nil {
+	if _, err := s.store.AddEvent("key.add", "", id.actor, map[string]any{"id": key.ID, "fingerprint": key.Fingerprint, "agent": key.Agent}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -457,7 +457,7 @@ func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.store.AddEvent("key.delete", "", id.actor, map[string]any{"id": keyID}); err != nil {
+	if _, err := s.store.AddEvent("key.delete", "", id.actor, map[string]any{"id": keyID}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

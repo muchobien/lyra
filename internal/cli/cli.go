@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,8 @@ import (
 	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
 )
+
+var ErrTimeout = errors.New("timeout")
 
 type UsageError struct {
 	err error
@@ -53,16 +57,19 @@ Environment:
 		return UsageError{err}
 	})
 
+	emit := func(cmd *cobra.Command, output []byte) error {
+		if jq == "" {
+			_, err := cmd.OutOrStdout().Write(output)
+			return err
+		}
+		return filter(cmd.OutOrStdout(), output, jq)
+	}
 	call := func(cmd *cobra.Command, method, path string, body any) error {
 		output, err := request(method, path, body)
 		if err != nil {
 			return err
 		}
-		if jq == "" {
-			_, err = cmd.OutOrStdout().Write(output)
-			return err
-		}
-		return filter(cmd.OutOrStdout(), output, jq)
+		return emit(cmd, output)
 	}
 
 	me := &cobra.Command{
@@ -254,7 +261,51 @@ Environment:
 	}
 	eventList.Flags().StringVar(&eventRepo, "repo", "", "only events for this repository")
 	eventList.Flags().IntVar(&eventLimit, "limit", 50, "maximum number of events")
-	event.AddCommand(eventList)
+	var waitRepo string
+	var waitActions []string
+	var since int64
+	var timeout time.Duration
+	eventWait := &cobra.Command{
+		Use:   "wait",
+		Short: "Wait for the next matching event and print it",
+		Long: `Wait for the next event that matches the filters and print it as JSON.
+
+Without --since, only events after the command starts match. Pass the id of an
+event you have already seen as --since to also match anything that happened
+since then. The command reconnects if the connection drops, without missing
+events. It exits 3 with {"error":"timeout"} when --timeout passes.`,
+		Args: exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query := url.Values{}
+			if waitRepo != "" {
+				query.Set("repo", waitRepo)
+			}
+			for _, action := range waitActions {
+				query.Add("action", action)
+			}
+			if cmd.Flags().Changed("since") {
+				if since < 0 {
+					return UsageError{errors.New("--since must be an event id")}
+				}
+				query.Set("since", fmt.Sprint(since))
+			}
+			output, err := waitForEvent("/api/events/stream?"+query.Encode(), timeout)
+			if err != nil {
+				return err
+			}
+			var indented bytes.Buffer
+			if err := json.Indent(&indented, output, "", "  "); err != nil {
+				return err
+			}
+			indented.WriteByte('\n')
+			return emit(cmd, indented.Bytes())
+		},
+	}
+	eventWait.Flags().StringVar(&waitRepo, "repo", "", "only events for this repository")
+	eventWait.Flags().StringArrayVar(&waitActions, "action", nil, "only these actions, as glob patterns such as push or repo.* (repeatable)")
+	eventWait.Flags().Int64Var(&since, "since", 0, "match events after this event id (default: from now)")
+	eventWait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
+	event.AddCommand(eventList, eventWait)
 
 	root.AddCommand(me, repo, commit, tag, token, key, event)
 	return root
@@ -290,7 +341,7 @@ func filter(out io.Writer, output []byte, expression string) error {
 	}
 }
 
-func request(method, path string, body any) ([]byte, error) {
+func newRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	base := strings.TrimRight(os.Getenv("LYRA_URL"), "/")
 	if base == "" {
 		base = "http://localhost:8080"
@@ -303,7 +354,7 @@ func request(method, path string, body any) ([]byte, error) {
 		}
 		reader = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequest(method, base+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -320,24 +371,86 @@ func request(method, path string, body any) ([]byte, error) {
 	if session := os.Getenv("LYRA_SESSION"); session != "" {
 		req.Header.Set("Lyra-Session", session)
 	}
+	return req, nil
+}
+
+func responseError(response *http.Response) error {
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
+	var apiError struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(data, &apiError) == nil && apiError.Error != "" {
+		return fmt.Errorf("%s (HTTP %d)", apiError.Error, response.StatusCode)
+	}
+	return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
+}
+
+func request(method, path string, body any) ([]byte, error) {
+	req, err := newRequest(context.Background(), method, path, body)
+	if err != nil {
+		return nil, err
+	}
 	client := &http.Client{Timeout: 60 * time.Second}
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
 	if response.StatusCode >= 400 {
-		var apiError struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(data, &apiError) == nil && apiError.Error != "" {
-			return nil, fmt.Errorf("%s (HTTP %d)", apiError.Error, response.StatusCode)
-		}
-		return nil, fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
+		return nil, responseError(response)
 	}
-	return data, nil
+	return io.ReadAll(response.Body)
+}
+
+func waitForEvent(path string, timeout time.Duration) ([]byte, error) {
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	lastID := ""
+	for {
+		req, err := newRequest(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		if lastID != "" {
+			req.Header.Set("Last-Event-ID", lastID)
+		}
+		response, err := http.DefaultClient.Do(req)
+		if err == nil {
+			if response.StatusCode >= 400 && response.StatusCode < 500 {
+				defer response.Body.Close()
+				return nil, responseError(response)
+			}
+			reader := bufio.NewReader(response.Body)
+			data := []byte{}
+			for response.StatusCode == http.StatusOK {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					break
+				}
+				line = strings.TrimRight(line, "\r\n")
+				if value, found := strings.CutPrefix(line, "id:"); found {
+					lastID = strings.TrimSpace(value)
+				} else if value, found := strings.CutPrefix(line, "data:"); found {
+					data = append(data, strings.TrimPrefix(value, " ")...)
+				} else if line == "" && len(data) > 0 {
+					response.Body.Close()
+					return data, nil
+				}
+			}
+			response.Body.Close()
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ErrTimeout
+		case <-time.After(time.Second):
+		}
+	}
 }

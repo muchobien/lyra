@@ -84,4 +84,7 @@ func (s *Server) handleGit(w http.ResponseWriter, r *http.Request) {
 		request.TransferEncoding = nil
 	}
 	handler.ServeHTTP(w, request)
+	if scope == "write" {
+		s.store.Notify()
+	}
 }

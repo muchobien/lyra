@@ -1,6 +1,7 @@
--- name: CreateEvent :exec
+-- name: CreateEvent :one
 INSERT INTO events (at, action, repo, user, via, agent, session, data)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id;
 
 -- name: ListEvents :many
 SELECT * FROM events ORDER BY id DESC LIMIT ?;
@@ -49,3 +50,12 @@ SELECT * FROM keys WHERE user = ? ORDER BY id;
 
 -- name: DeleteKey :execrows
 DELETE FROM keys WHERE user = ? AND id = ?;
+
+-- name: ListEventsAfter :many
+SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?;
+
+-- name: LatestEventID :one
+SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) AS id FROM events;
+
+-- name: TokenActive :one
+SELECT COUNT(*) FROM tokens WHERE id = ? AND (expires_at IS NULL OR expires_at > ?);

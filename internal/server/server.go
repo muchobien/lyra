@@ -34,9 +34,10 @@ type Server struct {
 }
 
 type identity struct {
-	actor store.Actor
-	scope string
-	repos []string
+	actor   store.Actor
+	scope   string
+	repos   []string
+	tokenID int64
 }
 
 type contextKey struct{}
@@ -128,6 +129,7 @@ func (s *Server) Handler() http.Handler {
 			keys.Delete("/{id}", s.handleDeleteKey)
 		})
 		api.Get("/events", s.handleListEvents)
+		api.Get("/events/stream", s.handleEventStream)
 	})
 
 	router.Get("/", s.uiRepoList)
@@ -195,7 +197,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 					return
 				}
 				if err == nil && (token.ExpiresAt == nil || token.ExpiresAt.After(time.Now())) {
-					id = &identity{actor: store.Actor{User: token.User, Via: "token:" + token.Name}, scope: token.Scope, repos: token.Repos}
+					id = &identity{actor: store.Actor{User: token.User, Via: "token:" + token.Name}, scope: token.Scope, repos: token.Repos, tokenID: token.ID}
 				}
 			}
 		}

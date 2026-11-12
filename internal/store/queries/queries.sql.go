@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-const createEvent = `-- name: CreateEvent :exec
+const createEvent = `-- name: CreateEvent :one
 INSERT INTO events (at, action, repo, user, via, agent, session, data)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id
 `
 
 type CreateEventParams struct {
@@ -27,8 +28,8 @@ type CreateEventParams struct {
 	Data    string    `json:"data"`
 }
 
-func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error {
-	_, err := q.db.ExecContext(ctx, createEvent,
+func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, createEvent,
 		arg.At,
 		arg.Action,
 		arg.Repo,
@@ -38,7 +39,9 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error 
 		arg.Session,
 		arg.Data,
 	)
-	return err
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const createKey = `-- name: CreateKey :one
@@ -217,12 +220,65 @@ func (q *Queries) GetRepo(ctx context.Context, name string) (Repo, error) {
 	return i, err
 }
 
+const latestEventID = `-- name: LatestEventID :one
+SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) AS id FROM events
+`
+
+func (q *Queries) LatestEventID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, latestEventID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listEvents = `-- name: ListEvents :many
 SELECT id, at, "action", repo, user, via, agent, session, data FROM events ORDER BY id DESC LIMIT ?
 `
 
 func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]Event, error) {
 	rows, err := q.db.QueryContext(ctx, listEvents, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.Action,
+			&i.Repo,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.Data,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventsAfter = `-- name: ListEventsAfter :many
+SELECT id, at, "action", repo, user, via, agent, session, data FROM events WHERE id > ? ORDER BY id LIMIT ?
+`
+
+type ListEventsAfterParams struct {
+	ID    int64 `json:"id"`
+	Limit int64 `json:"limit"`
+}
+
+func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams) ([]Event, error) {
+	rows, err := q.db.QueryContext(ctx, listEventsAfter, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -436,6 +492,22 @@ func (q *Queries) ListUserKeys(ctx context.Context, user string) ([]Key, error) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const tokenActive = `-- name: TokenActive :one
+SELECT COUNT(*) FROM tokens WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
+`
+
+type TokenActiveParams struct {
+	ID        int64        `json:"id"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+}
+
+func (q *Queries) TokenActive(ctx context.Context, arg TokenActiveParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, tokenActive, arg.ID, arg.ExpiresAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const useToken = `-- name: UseToken :one

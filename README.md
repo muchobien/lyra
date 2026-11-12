@@ -70,7 +70,7 @@ it for existing commits.
 ## CLI
 
 Output is JSON on stdout. Errors are `{"error": "..."}` on stderr with exit code 1
-(2 for usage errors). Every command takes `--help` and `--jq <expression>`, which
+(2 for usage errors, 3 when a wait times out). Every command takes `--help` and `--jq <expression>`, which
 prints strings raw and other values as JSON. `lyra completion <shell>` prints shell
 completion.
 
@@ -92,7 +92,14 @@ lyra key add --signing [--agent NAME] [--title TEXT] <public-key-file|->
 lyra key list
 lyra key delete <id>
 lyra event list [--repo NAME] [--limit N]
+lyra event wait [--repo NAME] [--action PATTERN]... [--since ID] [--timeout 30m]
 ```
+
+`lyra event wait` blocks until a matching event happens and prints it. Actions are glob
+patterns (`push`, `repo.*`). Without `--since` it waits for events after it starts; with
+`--since ID` it also returns events since that one, so an agent that saved the id of the
+last event it saw can't miss one that happened in between. It reconnects on its own if
+the server restarts.
 
 ## API
 
@@ -107,6 +114,13 @@ lyra event list [--repo NAME] [--limit N]
 | `GET /api/tokens`, `POST /api/tokens`, `DELETE /api/tokens/{id}` | admin |
 | `GET /api/keys`, `POST /api/keys`, `DELETE /api/keys/{id}` | read, admin |
 | `GET /api/events?repo=&limit=` | read |
+| `GET /api/events/stream?repo=&action=&since=` | read |
+
+`/api/events/stream` is a server-sent event stream. Each event's `id` is its event id,
+and the stream accepts `Last-Event-ID` to resume. It starts with an `id` line holding
+the current position, and sends a keepalive every 25 seconds. Tokens see only events
+for the repositories they can read; account events (tokens, keys) need a token without
+a repository list.
 
 ## Web UI
 
@@ -131,3 +145,5 @@ with `git` and the CLI. They cover:
 - Scoped, read-only, revoked and expired tokens, and recorded actors.
 - Signature status of commits and tags, cross-checked against `git verify-commit`
   and `git verify-tag`, including forged signatures.
+- Waiting for events: filters, `--since`, timeouts, scoped tokens, and resuming across
+  a server restart.

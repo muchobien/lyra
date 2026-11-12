@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pressly/goose/v3"
@@ -28,6 +29,8 @@ var ErrNotFound = errors.New("not found")
 type Store struct {
 	db      *sql.DB
 	queries *queries.Queries
+	mutex   sync.Mutex
+	changed chan struct{}
 }
 
 type Actor struct {
@@ -67,7 +70,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db, queries: queries.New(db)}, nil
+	return &Store{db: db, queries: queries.New(db), changed: make(chan struct{})}, nil
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -119,14 +122,59 @@ func HashToken(secret string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Store) AddEvent(action, repo string, actor Actor, data any) error {
+func (s *Store) Changed() <-chan struct{} {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.changed
+}
+
+func (s *Store) Notify() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	close(s.changed)
+	s.changed = make(chan struct{})
+}
+
+func (s *Store) AddEvent(action, repo string, actor Actor, data any) (int64, error) {
 	encoded, err := json.Marshal(data)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return s.queries.CreateEvent(context.Background(), queries.CreateEventParams{
+	id, err := s.queries.CreateEvent(context.Background(), queries.CreateEventParams{
 		At: now(), Action: action, Repo: repo, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, Data: string(encoded),
 	})
+	if err != nil {
+		return 0, err
+	}
+	s.Notify()
+	return id, nil
+}
+
+func eventsFromRows(rows []queries.Event) []Event {
+	events := []Event{}
+	for _, row := range rows {
+		events = append(events, Event{
+			ID:     row.ID,
+			At:     row.At,
+			Action: row.Action,
+			Repo:   row.Repo,
+			Actor:  Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
+			Data:   json.RawMessage(row.Data),
+		})
+	}
+	return events
+}
+
+func (s *Store) EventsAfter(id int64, limit int) ([]Event, error) {
+	rows, err := s.queries.ListEventsAfter(context.Background(), queries.ListEventsAfterParams{ID: id, Limit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return eventsFromRows(rows), nil
+}
+
+func (s *Store) LatestEventID() (int64, error) {
+	return s.queries.LatestEventID(context.Background())
 }
 
 func (s *Store) Events(repo string, limit int) ([]Event, error) {
@@ -140,18 +188,7 @@ func (s *Store) Events(repo string, limit int) ([]Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	events := []Event{}
-	for _, row := range rows {
-		events = append(events, Event{
-			ID:     row.ID,
-			At:     row.At,
-			Action: row.Action,
-			Repo:   row.Repo,
-			Actor:  Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
-			Data:   json.RawMessage(row.Data),
-		})
-	}
-	return events, nil
+	return eventsFromRows(rows), nil
 }
 
 func (s *Store) CreateRepo(name, description, createdBy string) (Repo, error) {
@@ -229,6 +266,11 @@ func (s *Store) Tokens(user string) ([]Token, error) {
 		tokens = append(tokens, token)
 	}
 	return tokens, nil
+}
+
+func (s *Store) TokenActive(id int64) (bool, error) {
+	count, err := s.queries.TokenActive(context.Background(), queries.TokenActiveParams{ID: id, ExpiresAt: sql.NullTime{Time: now(), Valid: true}})
+	return count > 0, err
 }
 
 func (s *Store) DeleteToken(user string, id int64) error {

@@ -55,6 +55,9 @@ func main() {
 		if errors.As(err, &usage) {
 			os.Exit(2)
 		}
+		if errors.Is(err, cli.ErrTimeout) {
+			os.Exit(3)
+		}
 		os.Exit(1)
 	}
 }
@@ -136,5 +139,6 @@ func postReceive() error {
 		return err
 	}
 	actor := store.Actor{User: os.Getenv("LYRA_USER"), Via: os.Getenv("LYRA_VIA"), Agent: os.Getenv("LYRA_AGENT"), Session: os.Getenv("LYRA_SESSION")}
-	return db.AddEvent("push", os.Getenv("LYRA_REPO"), actor, map[string]any{"refs": updates})
+	_, err = db.AddEvent("push", os.Getenv("LYRA_REPO"), actor, map[string]any{"refs": updates})
+	return err
 }

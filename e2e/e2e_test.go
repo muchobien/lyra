@@ -25,8 +25,10 @@ const login = "tester@example.com"
 var lyraBinary string
 
 type server struct {
-	url  string
-	data string
+	url     string
+	address string
+	data    string
+	stop    func()
 }
 
 type lockedBuffer struct {
@@ -73,13 +75,17 @@ func TestMain(suite *testing.M) {
 
 func startServer(test *testing.T, trustedProxy string) server {
 	test.Helper()
-	data := filepath.Join(test.TempDir(), "data")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		test.Fatal(err)
 	}
 	address := listener.Addr().String()
 	listener.Close()
+	return startServerAt(test, address, filepath.Join(test.TempDir(), "data"), trustedProxy)
+}
+
+func startServerAt(test *testing.T, address, data, trustedProxy string) server {
+	test.Helper()
 	cmd := exec.Command(lyraBinary, "serve", "--listen", address, "--data", data, "--trusted-proxy", trustedProxy, "--allow-login", login)
 	logs := &lockedBuffer{}
 	cmd.Stdout = logs
@@ -87,9 +93,15 @@ func startServer(test *testing.T, trustedProxy string) server {
 	if err := cmd.Start(); err != nil {
 		test.Fatal(err)
 	}
+	var once sync.Once
+	stop := func() {
+		once.Do(func() {
+			cmd.Process.Kill()
+			cmd.Wait()
+		})
+	}
 	test.Cleanup(func() {
-		cmd.Process.Kill()
-		cmd.Wait()
+		stop()
 		if test.Failed() {
 			test.Logf("server %s log:\n%s", address, logs.String())
 		}
@@ -100,7 +112,7 @@ func startServer(test *testing.T, trustedProxy string) server {
 		if err == nil {
 			response.Body.Close()
 			if response.StatusCode == http.StatusOK {
-				return server{url: url, data: data}
+				return server{url: url, address: address, data: data, stop: stop}
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -157,21 +169,32 @@ func adminToken(test *testing.T, srv server) string {
 	return createToken(test, srv, `{"name":"admin","scope":"admin"}`)
 }
 
-func runLyra(test *testing.T, srv server, token string, args ...string) cliResult {
+func startLyra(test *testing.T, srv server, token string, args ...string) func() cliResult {
 	test.Helper()
 	cmd := exec.Command(lyraBinary, args...)
 	cmd.Env = append(os.Environ(), "LYRA_URL="+srv.url, "LYRA_TOKEN="+token, "LYRA_AGENT=e2e-agent", "LYRA_SESSION=session-123")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
-	code := 0
-	if exitError, isExit := err.(*exec.ExitError); isExit {
-		code = exitError.ExitCode()
-	} else if err != nil {
+	if err := cmd.Start(); err != nil {
 		test.Fatal(err)
 	}
-	return cliResult{stdout: stdout.String(), stderr: stderr.String(), code: code}
+	return func() cliResult {
+		test.Helper()
+		err := cmd.Wait()
+		code := 0
+		if exitError, isExit := err.(*exec.ExitError); isExit {
+			code = exitError.ExitCode()
+		} else if err != nil {
+			test.Fatal(err)
+		}
+		return cliResult{stdout: stdout.String(), stderr: stderr.String(), code: code}
+	}
+}
+
+func runLyra(test *testing.T, srv server, token string, args ...string) cliResult {
+	test.Helper()
+	return startLyra(test, srv, token, args...)()
 }
 
 func lyraJSON(test *testing.T, srv server, token string, target any, args ...string) {
@@ -606,5 +629,73 @@ func TestSignatures(test *testing.T) {
 	}
 	if result := runLyra(test, srv, token, "commit", "list", "demo", "--jq", `[.[] | select(.signature.status == "verified")] | length`); result.stdout != "0\n" {
 		test.Errorf("verified commits after deleting the key: %s", result.stdout)
+	}
+}
+
+func TestEvents(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "other")
+	auth := "http.extraHeader=Authorization: Bearer " + token
+	src := newSource(test)
+	commitFile(test, src, "README.md", "# Demo\n", "First commit")
+	latest := func() int64 {
+		test.Helper()
+		var events []store.Event
+		lyraJSON(test, srv, token, &events, "event", "list", "--limit", "1")
+		return events[0].ID
+	}
+
+	cursor := fmt.Sprint(latest())
+	waiting := startLyra(test, srv, token, "event", "wait", "--repo", "demo", "--action", "push", "--since", cursor, "--timeout", "30s")
+	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/other.git", "main")
+	createRepo(test, srv, token, "third")
+	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/demo.git", "main")
+	result := waiting()
+	var pushed store.Event
+	if err := json.Unmarshal([]byte(result.stdout), &pushed); err != nil || result.code != 0 {
+		test.Fatalf("wait for push: exit %d: %v: %s %s", result.code, err, result.stdout, result.stderr)
+	}
+	if pushed.Action != "push" || pushed.Repo != "demo" || pushed.Actor.Via != "token:admin" || !strings.Contains(string(pushed.Data), "refs/heads/main") {
+		test.Errorf("wait for push = %+v %s", pushed, pushed.Data)
+	}
+
+	var again store.Event
+	lyraJSON(test, srv, token, &again, "event", "wait", "--repo", "demo", "--action", "push", "--since", cursor, "--timeout", "5s")
+	if again.ID != pushed.ID {
+		test.Errorf("wait --since after the push returned event %d, want %d", again.ID, pushed.ID)
+	}
+	if result := runLyra(test, srv, token, "event", "wait", "--since", cursor, "--action", "repo.*", "--timeout", "5s", "--jq", ".repo"); result.stdout != "third\n" {
+		test.Errorf("wait for repo.* = %q %s", result.stdout, result.stderr)
+	}
+	if result := runLyra(test, srv, token, "event", "wait", "--action", "repo.*", "--timeout", "1s"); result.code != 3 || strings.TrimSpace(result.stderr) != `{"error":"timeout"}` {
+		test.Errorf("wait without --since matched an earlier event: exit %d stdout %s stderr %s", result.code, result.stdout, result.stderr)
+	}
+
+	scoped := createToken(test, srv, `{"name":"other-only","scope":"read","repos":["other"]}`)
+	if result := runLyra(test, srv, scoped, "event", "wait", "--repo", "demo", "--timeout", "5s"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 403") {
+		test.Errorf("scoped token waiting on demo: exit %d stderr %s", result.code, result.stderr)
+	}
+	if result := runLyra(test, srv, scoped, "event", "wait", "--since", "0", "--timeout", "5s", "--jq", `[.action, .repo] | join(" ")`); result.stdout != "repo.create other\n" {
+		test.Errorf("scoped token first visible event = %q %s", result.stdout, result.stderr)
+	}
+	if result := runLyra(test, srv, token, "event", "wait", "--since", "-1"); result.code != 2 {
+		test.Errorf("negative --since: exit %d, want 2", result.code)
+	}
+	if result := runLyra(test, srv, token, "event", "wait", "--action", "[", "--timeout", "5s"); result.code != 1 || !strings.Contains(result.stderr, "invalid action pattern") {
+		test.Errorf("bad pattern: exit %d stderr %s", result.code, result.stderr)
+	}
+
+	before := latest()
+	waiting = startLyra(test, srv, token, "event", "wait", "--repo", "demo", "--action", "push", "--timeout", "30s")
+	time.Sleep(time.Second)
+	srv.stop()
+	restarted := startServerAt(test, srv.address, srv.data, "127.0.0.1")
+	commitFile(test, src, "second.md", "second\n", "Second commit")
+	mustGit(test, src, "-c", auth, "push", "-q", restarted.url+"/demo.git", "main")
+	result = waiting()
+	if err := json.Unmarshal([]byte(result.stdout), &pushed); err != nil || result.code != 0 || pushed.Action != "push" || pushed.ID <= before {
+		test.Errorf("wait across a restart: exit %d: %s %s", result.code, result.stdout, result.stderr)
 	}
 }
