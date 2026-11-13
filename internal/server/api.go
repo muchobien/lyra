@@ -34,8 +34,8 @@ type meView struct {
 }
 
 type createRepoRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string `json:"name" doc:"owner/name"`
+	Description string `json:"description,omitzero"`
 }
 
 type repoCreated struct {
@@ -75,16 +75,16 @@ func (s *Server) lookupRepo(r *http.Request, scope string) (store.Repo, error) {
 	return repo, missing(err, "repository not found")
 }
 
-func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleMe(r *http.Request, _ *struct{}) (*body[meView], error) {
 	id := identityFrom(r)
-	return writeJSON(w, http.StatusOK, meView{Actor: id.actor, Repos: id.repos, Scope: id.scope})
+	return reply(meView{Actor: id.actor, Repos: id.repos, Scope: id.scope})
 }
 
-func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListRepos(r *http.Request, _ *struct{}) (*body[[]repoView], error) {
 	id := identityFrom(r)
 	all, err := s.store.Repos(r.Context())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	views := []repoView{}
 	for _, repo := range all {
@@ -93,11 +93,11 @@ func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) error {
 		}
 		view, err := s.repoView(r, repo)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		views = append(views, view)
 	}
-	return writeJSON(w, http.StatusOK, views)
+	return reply(views)
 }
 
 func validRepoName(full string) bool {
@@ -106,81 +106,78 @@ func validRepoName(full string) bool {
 		!strings.HasSuffix(name, ".git")
 }
 
-func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateRepo(r *http.Request, input *bodyInput[createRepoRequest]) (*body[repoView], error) {
 	ctx := r.Context()
 	id := identityFrom(r)
-	body, err := decodeBody[createRepoRequest](w, r)
-	if err != nil {
-		return err
+	request := input.Body
+	if !validRepoName(request.Name) {
+		return nil, badRequest(repoNameProblem)
 	}
-	if !validRepoName(body.Name) {
-		return badRequest(repoNameProblem)
-	}
-	owner, _, _ := strings.Cut(body.Name, "/")
+	owner, _, _ := strings.Cut(request.Name, "/")
 	if _, err := s.store.Owner(ctx, owner); err != nil {
-		return missing(err, "owner "+owner+" doesn't exist; create it with lyra owner create "+owner)
+		return nil, missing(err, "owner "+owner+" doesn't exist; create it with lyra owner create "+owner)
 	}
-	if !id.can(scopeAdmin, body.Name) {
-		return forbidden("token lacks admin access to " + body.Name)
+	if !id.can(scopeAdmin, request.Name) {
+		return nil, forbidden("token lacks admin access to " + request.Name)
 	}
-	repo, err := s.store.CreateRepo(ctx, body.Name, body.Description, id.actor.User)
+	repo, err := s.store.CreateRepo(ctx, request.Name, request.Description, id.actor.User)
 	if store.IsUniqueViolation(err) {
-		return conflict("repository already exists")
+		return nil, conflict("repository already exists")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.git.Init(ctx, s.repoDir(repo.Name)); err != nil {
 		if cleanup := s.store.DeleteRepo(ctx, repo.Name); cleanup != nil {
 			slog.Error("remove repository after a failed init", "repo", repo.Name, "error", cleanup)
 		}
-		return err
+		return nil, err
 	}
 	created := repoCreated{Description: repo.Description}
 	if _, err := s.store.AddEvent(ctx, "repo.create", repo.Name, id.actor, created); err != nil {
-		return err
+		return nil, err
 	}
 	view, err := s.repoView(r, repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, view)
+	return reply(view)
 }
 
-func (s *Server) handleGetRepo(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleGetRepo(r *http.Request, _ *RepoPath) (*body[repoView], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	view, err := s.repoView(r, repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, view)
+	return reply(view)
 }
 
-func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteRepo(r *http.Request, _ *RepoPath) (*body[deletedName], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.store.DeleteRepo(ctx, repo.Name); err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.RemoveAll(s.repoDir(repo.Name)); err != nil {
-		return err
+		return nil, err
 	}
 	for _, prefix := range []string{releasesPath(repo.Name), registryRepositories + repo.Name} {
 		err := s.storage.Delete(ctx, prefix)
 		if _, absent := errors.AsType[driver.PathNotFoundError](err); err != nil && !absent {
-			return err
+			return nil, err
 		}
 	}
 	if _, err := s.store.AddEvent(ctx, "repo.delete", repo.Name, identityFrom(r).actor, noData{}); err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, deletedName{Deleted: repo.Name})
+	return reply(deletedName{Deleted: repo.Name})
 }
 
 func (s *Server) verifySignatures(ctx context.Context, signatures ...*repos.Signature) error {
@@ -240,43 +237,54 @@ func (s *Server) commits(ctx context.Context, repo, ref string, limit int, exclu
 	return commits, s.verifySignatures(ctx, signatures...)
 }
 
-func (s *Server) handleListCommits(w http.ResponseWriter, r *http.Request) error {
+type listCommitsInput struct {
+	RepoPath
+	Ref   string `query:"ref" doc:"Defaults to the default branch."`
+	Limit int    `query:"limit" doc:"1 to 500; defaults to 30."`
+}
+
+func (s *Server) handleListCommits(r *http.Request, input *listCommitsInput) (*body[[]repos.Commit], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(ctx, s.repoDir(repo.Name))
 	}
-	commits, err := s.commits(ctx, repo.Name, ref, queryLimit(r, 30, 500))
+	commits, err := s.commits(ctx, repo.Name, ref, queryLimit(input.Limit, 30, 500))
 	if errors.Is(err, repos.ErrNotFound) {
-		return notFound("unknown ref " + ref)
+		return nil, notFound("unknown ref " + ref)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, commits)
+	return reply(commits)
 }
 
-func (s *Server) handleGetCommit(w http.ResponseWriter, r *http.Request) error {
+type commitInput struct {
+	RepoPath
+	Rev string `path:"rev"`
+}
+
+func (s *Server) handleGetCommit(r *http.Request, input *commitInput) (*body[repos.Commit], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	commit, err := s.git.Commit(ctx, s.repoDir(repo.Name), r.PathValue("rev"))
+	commit, err := s.git.Commit(ctx, s.repoDir(repo.Name), input.Rev)
 	if errors.Is(err, repos.ErrNotFound) {
-		return notFound("unknown revision")
+		return nil, notFound("unknown revision")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.verifySignatures(ctx, &commit.Signature); err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, commit)
+	return reply(commit)
 }
 
 func (s *Server) tags(ctx context.Context, repo string) ([]repos.Tag, error) {
@@ -291,14 +299,14 @@ func (s *Server) tags(ctx context.Context, repo string) ([]repos.Tag, error) {
 	return tags, s.verifySignatures(ctx, signatures...)
 }
 
-func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListTags(r *http.Request, _ *RepoPath) (*body[[]repos.Tag], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tags, err := s.tags(r.Context(), repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, tags)
+	return reply(tags)
 }

@@ -29,7 +29,11 @@ type ownerGroup struct {
 
 type createOwnerRequest struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitzero"`
+}
+
+type ownerPath struct {
+	Owner string `path:"owner"`
 }
 
 type ownerWrite struct {
@@ -62,62 +66,57 @@ func (s *Server) ownerGroups(ctx context.Context, id *identity, only string) ([]
 	return groups, nil
 }
 
-func (s *Server) handleListOwners(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListOwners(r *http.Request, _ *struct{}) (*body[[]ownerGroup], error) {
 	groups, err := s.ownerGroups(r.Context(), identityFrom(r), "")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, groups)
+	return reply(groups)
 }
 
-func (s *Server) handleGetOwner(w http.ResponseWriter, r *http.Request) error {
-	name := r.PathValue("owner")
-	groups, err := s.ownerGroups(r.Context(), identityFrom(r), name)
+func (s *Server) handleGetOwner(r *http.Request, input *ownerPath) (*body[ownerGroup], error) {
+	groups, err := s.ownerGroups(r.Context(), identityFrom(r), input.Owner)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(groups) == 0 {
-		return notFound("owner " + name + " not found")
+		return nil, notFound("owner " + input.Owner + " not found")
 	}
-	return writeJSON(w, http.StatusOK, groups[0])
+	return reply(groups[0])
 }
 
-func (s *Server) handleCreateOwner(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateOwner(r *http.Request, input *bodyInput[createOwnerRequest]) (*body[ownerWrite], error) {
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden(ownerAdminOnly)
+		return nil, forbidden(ownerAdminOnly)
 	}
-	body, err := decodeBody[createOwnerRequest](w, r)
-	if err != nil {
-		return err
+	request := input.Body
+	if !repoNamePattern.MatchString(request.Name) || slices.Contains(reservedNames, request.Name) {
+		return nil, badRequest(ownerNameProblem)
 	}
-	if !repoNamePattern.MatchString(body.Name) || slices.Contains(reservedNames, body.Name) {
-		return badRequest(ownerNameProblem)
+	if utf8.RuneCountInString(request.Description) > maxTitle {
+		return nil, badRequest("description must be at most 256 characters")
 	}
-	if utf8.RuneCountInString(body.Description) > maxTitle {
-		return badRequest("description must be at most 256 characters")
-	}
-	owner, eventID, err := s.store.CreateOwner(r.Context(), id.actor, body.Name, body.Description)
+	owner, eventID, err := s.store.CreateOwner(r.Context(), id.actor, request.Name, request.Description)
 	if errors.Is(err, store.ErrExists) {
-		return conflict("owner " + body.Name + " already exists")
+		return nil, conflict("owner " + request.Name + " already exists")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, ownerWrite{Owner: owner, EventID: eventID})
+	return reply(ownerWrite{Owner: owner, EventID: eventID})
 }
 
-func (s *Server) handleDeleteOwner(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteOwner(r *http.Request, input *ownerPath) (*body[deletedWithEvent], error) {
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden(ownerAdminOnly)
+		return nil, forbidden(ownerAdminOnly)
 	}
-	name := r.PathValue("owner")
-	eventID, err := s.store.DeleteOwner(r.Context(), id.actor, name)
+	eventID, err := s.store.DeleteOwner(r.Context(), id.actor, input.Owner)
 	if err != nil {
-		return missing(invalidAsConflict(err), "owner "+name+" not found")
+		return nil, missing(invalidAsConflict(err), "owner "+input.Owner+" not found")
 	}
-	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
+	return reply(deletedWithEvent{Deleted: input.Owner, EventID: eventID})
 }
 
 func (s *Server) uiOwner(w http.ResponseWriter, r *http.Request) error {

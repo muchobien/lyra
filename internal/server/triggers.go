@@ -18,9 +18,9 @@ import (
 )
 
 type dispatchRequest struct {
-	Workflow string            `json:"workflow"`
-	Ref      string            `json:"ref"`
-	Inputs   map[string]string `json:"inputs"`
+	Workflow string            `json:"workflow" doc:"The workflow file name."`
+	Ref      string            `json:"ref,omitzero" doc:"Defaults to the default branch."`
+	Inputs   map[string]string `json:"inputs,omitzero"`
 }
 
 func (s *Server) dispatchRef(ctx context.Context, dir, name string) (string, string, error) {
@@ -98,31 +98,33 @@ func dispatchInputs(file string, config *model.WorkflowDispatch, given map[strin
 	return inputs, nil
 }
 
-func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) error {
+type dispatchWorkflowInput struct {
+	RepoPath
+	Body dispatchRequest
+}
+
+func (s *Server) handleDispatch(r *http.Request, input *dispatchWorkflowInput) (*body[store.Run], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[dispatchRequest](w, r)
-	if err != nil {
-		return err
-	}
+	request := input.Body
 	dir := s.repoDir(repo.Name)
-	if body.Ref == "" {
-		body.Ref = s.git.DefaultBranch(ctx, dir)
+	if request.Ref == "" {
+		request.Ref = s.git.DefaultBranch(ctx, dir)
 	}
-	ref, sha, err := s.dispatchRef(ctx, dir, body.Ref)
+	ref, sha, err := s.dispatchRef(ctx, dir, request.Ref)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	file, config, err := s.dispatchWorkflow(ctx, dir, sha, body)
+	file, config, err := s.dispatchWorkflow(ctx, dir, sha, request)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	inputs, err := dispatchInputs(file, config, body.Inputs)
+	inputs, err := dispatchInputs(file, config, request.Inputs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	runs, messages := s.queue(repo.Name, identityFrom(r).actor).trigger(ctx, trigger{
 		event:   eventDispatch,
@@ -134,13 +136,13 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) error {
 		options: []jobparser.ParseOption{jobparser.WithInputs(inputs)},
 	})
 	if len(runs) == 0 {
-		return badRequest(strings.Join(messages, "; "))
+		return nil, badRequest(strings.Join(messages, "; "))
 	}
 	run, err := s.store.Run(ctx, repo.Name, runs[0].Number)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, withStepNames(run))
+	return reply(withStepNames(run))
 }
 
 func matchesRelease(event *jobparser.Event, prerelease bool) bool {

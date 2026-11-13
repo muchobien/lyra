@@ -39,6 +39,14 @@ run = "go test ./..."
 description = "Fail if the generated queries are out of date"
 run = "sqlc diff"
 
+[tasks.openapi]
+description = "Write the API's OpenAPI document to api/openapi.yaml"
+run = "go run ./cmd/lyra openapi > api/openapi.yaml"
+
+[tasks."openapi:check"]
+description = "Fail if api/openapi.yaml is out of date"
+run = "go run ./cmd/lyra openapi | diff -u api/openapi.yaml -"
+
 [tasks.dist]
 description = "Build the release archives into dist/ without publishing; pass --snapshot when HEAD is not a tag"
 run = "goreleaser release --clean --skip=publish"

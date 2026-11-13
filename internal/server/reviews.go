@@ -31,9 +31,14 @@ var reviewStates = map[string]string{
 }
 
 type reviewRequest struct {
-	State    string              `json:"state"`
-	Body     string              `json:"body"`
-	Comments []store.LineComment `json:"comments"`
+	State    string              `json:"state" enum:"approve,request_changes,comment"`
+	Body     string              `json:"body,omitzero"`
+	Comments []store.LineComment `json:"comments,omitzero" doc:"Line comments on lines in the diff."`
+}
+
+type reviewInput struct {
+	ItemPath
+	Body reviewRequest
 }
 
 type reviewWrite struct {
@@ -193,24 +198,16 @@ func approvalProblems(pull store.Pull, reviews []store.Review, head string) []st
 	return problems
 }
 
-func (s *Server) handleReviewPull(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleReviewPull(r *http.Request, input *reviewInput) (*body[reviewWrite], error) {
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	number, err := itemNumber(r)
+	review, eventID, err := s.reviewPull(r, repo.Name, input.Number, input.Body)
 	if err != nil {
-		return err
+		return nil, missing(err, "pull request not found")
 	}
-	body, err := decodeBody[reviewRequest](w, r)
-	if err != nil {
-		return err
-	}
-	review, eventID, err := s.reviewPull(r, repo.Name, number, body)
-	if err != nil {
-		return missing(err, "pull request not found")
-	}
-	return writeJSON(w, http.StatusCreated, reviewWrite{Review: review, EventID: eventID})
+	return reply(reviewWrite{Review: review, EventID: eventID})
 }
 
 func checkReview(request reviewRequest) error {

@@ -100,28 +100,33 @@ func (s *Server) generateNotes(ctx context.Context, repo, tag, commit string, pr
 	return notes, nil
 }
 
-func (s *Server) handleReleaseNotes(w http.ResponseWriter, r *http.Request) error {
+type releaseNotesInput struct {
+	RepoPath
+	Tag        string `query:"tag"`
+	Target     string `query:"target" doc:"Used when the tag doesn't exist; defaults to the default branch."`
+	Prerelease bool   `query:"prerelease"`
+}
+
+func (s *Server) handleReleaseNotes(r *http.Request, input *releaseNotesInput) (*body[releaseNotes], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	query := r.URL.Query()
 	dir := s.repoDir(repo.Name)
-	tag := query.Get("tag")
-	commit, err := s.git.ResolveCommit(ctx, dir, tagRef(tag))
-	if tag == "" || err != nil {
-		target := query.Get("target")
+	commit, err := s.git.ResolveCommit(ctx, dir, tagRef(input.Tag))
+	if input.Tag == "" || err != nil {
+		target := input.Target
 		if target == "" {
 			target = s.git.DefaultBranch(ctx, dir)
 		}
 		if commit, err = s.git.ResolveCommit(ctx, dir, target); err != nil {
-			return badRequest("target " + target + " not found")
+			return nil, badRequest("target " + target + " not found")
 		}
 	}
-	notes, err := s.generateNotes(ctx, repo.Name, tag, commit, query.Get("prerelease") == "true")
+	notes, err := s.generateNotes(ctx, repo.Name, input.Tag, commit, input.Prerelease)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, notes)
+	return reply(notes)
 }

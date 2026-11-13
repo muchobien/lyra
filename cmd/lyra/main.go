@@ -93,9 +93,25 @@ func versionCommand() *cobra.Command {
 	}
 }
 
+func openAPICommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "openapi",
+		Short: "Print the OpenAPI document of the server's API as YAML",
+		Args:  cli.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			document, err := server.OpenAPI()
+			if err != nil {
+				return err
+			}
+			_, err = cmd.OutOrStdout().Write(document)
+			return err
+		},
+	}
+}
+
 func main() {
 	root := cli.Root()
-	root.AddCommand(serveCommand(), hookCommand(), restoreCommand(), versionCommand())
+	root.AddCommand(serveCommand(), hookCommand(), restoreCommand(), versionCommand(), openAPICommand())
 
 	if err := root.Execute(); err != nil {
 		encoded, _ := json.Marshal(failure{Error: err.Error()}, escaped)
