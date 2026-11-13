@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/tar"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,10 +11,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 
 	"github.com/muchobien/lyra/internal/backup"
@@ -282,4 +285,60 @@ func (s *Server) handleStorageCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"checked": len(objects), "missing": missing})
+}
+
+func (s *Server) registryUsage(ctx context.Context) (int, int64, error) {
+	count, size := 0, int64(0)
+	err := s.storage.Walk(ctx, "/docker/registry/v2/blobs", func(info driver.FileInfo) error {
+		if !info.IsDir() && path.Base(info.Path()) == "data" {
+			count++
+			size += info.Size()
+		}
+		return nil
+	})
+	var missing driver.PathNotFoundError
+	if errors.As(err, &missing) {
+		return 0, 0, nil
+	}
+	return count, size, err
+}
+
+func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r)
+	if !id.can("admin", "") {
+		writeError(w, http.StatusForbidden, "registry garbage collection needs an unrestricted admin token")
+		return
+	}
+	ctx := r.Context()
+	wasReadOnly := s.readOnly.Swap(true)
+	defer s.readOnly.Store(wasReadOnly)
+	s.gate.Lock()
+	s.gate.Unlock()
+	start := time.Now()
+	blobsBefore, bytesBefore, err := s.registryUsage(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	namespace, err := storage.NewRegistry(ctx, s.storage, storage.EnableDelete)
+	if err == nil {
+		err = storage.MarkAndSweep(ctx, s.storage, namespace, storage.GCOpts{RemoveUntagged: true, Quiet: true})
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "garbage collection: "+err.Error())
+		return
+	}
+	blobsAfter, bytesAfter, err := s.registryUsage(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	result := map[string]any{
+		"blobs_before": blobsBefore, "blobs_after": blobsAfter, "bytes_freed": bytesBefore - bytesAfter, "ms": time.Since(start).Milliseconds(),
+	}
+	if _, err := s.store.AddEvent("registry.gc", "", id.actor, result); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }

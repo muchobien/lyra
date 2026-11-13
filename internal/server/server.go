@@ -316,6 +316,7 @@ func (s *Server) Handler() http.Handler {
 			admin.Post("/readonly", s.handleReadOnly)
 			admin.Get("/status", s.handleStatus)
 			admin.Get("/storage-check", s.handleStorageCheck)
+			admin.Post("/registry-gc", s.handleRegistryGC)
 		})
 		api.Route("/owners", func(owners chi.Router) {
 			owners.Get("/", s.handleListOwners)

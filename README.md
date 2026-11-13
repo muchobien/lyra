@@ -220,7 +220,9 @@ lyra image delete <name>:<tag>|<name>@<digest> --yes
   deletions as `image.deleted`. Manifests pushed only by digest, such as the per-platform
   manifests of a multi-arch image, aren't listed.
 - **Deleting:** `lyra image delete` removes a tag, or a manifest and every tag pointing at
-  it. Layers stay in storage; there's no garbage collection yet.
+  it. Space is freed by `lyra admin registry-gc`, which deletes layers and
+  manifests no tag refers to (directly or through a multi-arch index), including those of
+  deleted repositories. Lyra is read-only while it runs.
 - **Releases:** a release lists the images tagged with its tag, with or without a leading
   `v` (`v1.2.0` matches `1.2.0`), under `images` in its JSON and on its page.
 - **Deleting a repository** deletes its images' tags and manifests too.
@@ -445,6 +447,7 @@ lyra admin backup --output lyra.tar     # or to stdout
 lyra restore lyra.tar --data /new/data   # offline, into an empty directory
 lyra admin storage-check                # stored files the database refers to but storage lacks
 lyra admin readonly on|off|status
+lyra admin registry-gc                  # free registry space no tag uses (read-only meanwhile)
 lyra admin status                       # read-only mode and the last backup
 ```
 
@@ -472,7 +475,7 @@ lyra admin status                       # read-only mode and the last backup
 | Method and path | Scope |
 | --- | --- |
 | `GET /api/me` | any |
-| `POST /api/admin/backup` (tar stream), `POST /api/admin/readonly` (`enabled`), `GET /api/admin/status`, `GET /api/admin/storage-check` | admin, unrestricted |
+| `POST /api/admin/backup` (tar stream), `POST /api/admin/readonly` (`enabled`), `GET /api/admin/status`, `GET /api/admin/storage-check`, `POST /api/admin/registry-gc` | admin, unrestricted |
 | `GET /api/owners`, `GET /api/owners/{owner}` (with its repositories) | any |
 | `POST /api/owners` (`name`, `description`), `DELETE /api/owners/{owner}` | admin, unrestricted |
 | `GET /api/repos`, `POST /api/repos` (`name` as `owner/name`, `description`) | read, admin |

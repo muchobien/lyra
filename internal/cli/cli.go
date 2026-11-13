@@ -778,7 +778,7 @@ func imageCommands(call func(*cobra.Command, string, string, any) error, emit fu
 		Short: "Delete an image tag, or a manifest and every tag pointing at it",
 		Long: `Delete an image tag, such as lyra/runner:v1, or a manifest by digest, such as
 lyra@sha256:…, which also removes every tag pointing at it. Needs admin access. Layers stay
-in storage until registry garbage collection exists.`,
+in storage until lyra admin registry-gc frees them.`,
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
@@ -1857,6 +1857,18 @@ passes as a backup.`,
 			return nil
 		},
 	}
-	admin.AddCommand(backup, readOnly, status, storageCheck)
+	registryGC := &cobra.Command{
+		Use:   "registry-gc",
+		Short: "Delete registry layers and manifests no tag refers to",
+		Long: `Delete registry layers and manifests that no tag refers to, directly or through a
+multi-arch index, such as those left by lyra image delete, retagging or deleted repositories.
+Lyra is read-only while it runs (pushes and other writes get 503), then returns to its
+previous mode. Prints the blob count before and after, and the bytes freed.`,
+		Args: ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, "/api/admin/registry-gc", nil)
+		},
+	}
+	admin.AddCommand(backup, readOnly, status, storageCheck, registryGC)
 	return admin
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -150,5 +151,78 @@ func TestRegistry(test *testing.T) {
 	}
 	if _, err := crane.Catalog(host, as(otherWriter)...); err == nil {
 		test.Fatal("a token for one repository listed the catalog")
+	}
+}
+
+func TestRegistryGC(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	createRepo(test, srv, token, "acme/gone")
+	host := srv.address
+	auth := []crane.Option{crane.Insecure, crane.WithAuth(&authn.Basic{Username: "lyra", Password: token})}
+	push := func(image v1.Image, reference string) {
+		test.Helper()
+		if err := crane.Push(image, host+"/"+reference, auth...); err != nil {
+			test.Fatalf("push %s: %v", reference, err)
+		}
+	}
+	gc := func() map[string]float64 {
+		test.Helper()
+		var result map[string]float64
+		lyraJSON(test, srv, token, &result, "admin", "registry-gc")
+		return result
+	}
+
+	kept, _ := random.Image(2048, 2)
+	dropped, _ := random.Image(2048, 2)
+	push(kept, "acme/demo:kept")
+	push(dropped, "acme/demo:dropped")
+	push(dropped, "acme/gone:v1")
+	index, _ := random.Index(1024, 1, 2)
+	reference, _ := name.ParseReference(host+"/acme/demo:multi", name.Insecure)
+	if err := remote.WriteIndex(reference, index, remote.WithAuth(&authn.Basic{Username: "lyra", Password: token})); err != nil {
+		test.Fatal(err)
+	}
+	if first := gc(); first["blobs_after"] != first["blobs_before"] || first["bytes_freed"] != 0 {
+		test.Fatalf("collection with nothing to free: %v", first)
+	}
+
+	if result := runLyra(test, srv, token, "image", "delete", "acme/demo:dropped", "--yes"); result.code != 0 {
+		test.Fatalf("image delete: %+v", result)
+	}
+	if after := gc(); after["blobs_after"] != after["blobs_before"] {
+		test.Fatalf("acme/gone still uses the dropped image, but blobs went %v -> %v", after["blobs_before"], after["blobs_after"])
+	}
+	if result := runLyra(test, srv, token, "repo", "delete", "acme/gone", "--yes"); result.code != 0 {
+		test.Fatalf("repo delete: %+v", result)
+	}
+	freed := gc()
+	if freed["blobs_before"]-freed["blobs_after"] != 4 || freed["bytes_freed"] <= 4096 {
+		test.Fatalf("collection after dropping the last reference: %v", freed)
+	}
+
+	for _, tag := range []string{"kept", "multi"} {
+		if _, err := crane.Pull(host+"/acme/demo:"+tag, auth...); err != nil {
+			test.Fatalf("pull %s after collection: %v", tag, err)
+		}
+	}
+	manifest, _ := index.IndexManifest()
+	for _, child := range manifest.Manifests {
+		image, err := crane.Pull(host+"/acme/demo@"+child.Digest.String(), auth...)
+		if err != nil {
+			test.Fatalf("pull child %s of the index: %v", child.Digest, err)
+		}
+		layers, _ := image.Layers()
+		for _, layer := range layers {
+			reader, err := layer.Compressed()
+			if err != nil {
+				test.Fatalf("layer of %s: %v", child.Digest, err)
+			}
+			reader.Close()
+		}
+	}
+	if result := runLyra(test, srv, token, "admin", "status", "--jq", ".read_only"); strings.TrimSpace(result.stdout) != "false" {
+		test.Fatalf("read-only after collection: %+v", result)
 	}
 }
