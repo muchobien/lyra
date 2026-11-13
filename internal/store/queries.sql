@@ -362,3 +362,23 @@ DELETE FROM log_rows WHERE task_id = ?;
 
 -- name: ListRunsForSHA :many
 SELECT * FROM runs WHERE repo = ? AND sha = ? ORDER BY number;
+
+-- name: SetSecret :exec
+INSERT INTO secrets (repo, name, value, user, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, name) DO UPDATE SET value = excluded.value, user = excluded.user, updated_at = excluded.updated_at;
+
+-- name: ListSecrets :many
+SELECT * FROM secrets WHERE repo = ? ORDER BY name;
+
+-- name: DeleteSecret :execrows
+DELETE FROM secrets WHERE repo = ? AND name = ?;
+
+-- name: SetVariable :exec
+INSERT INTO variables (repo, name, value, user, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, name) DO UPDATE SET value = excluded.value, user = excluded.user, updated_at = excluded.updated_at;
+
+-- name: ListVariables :many
+SELECT * FROM variables WHERE repo = ? ORDER BY name;
+
+-- name: DeleteVariable :execrows
+DELETE FROM variables WHERE repo = ? AND name = ?;

@@ -48,16 +48,19 @@ type Config struct {
 	RegistryHost      string
 	ActionsURL        string
 	DefaultActionsURL string
+	SecretsKeyFile    string
 }
 
 type Server struct {
-	config   Config
-	store    *store.Store
-	git      repos.Git
-	dbPath   string
-	signer   ssh.Signer
-	storage  driver.StorageDriver
-	registry http.Handler
+	config     Config
+	store      *store.Store
+	git        repos.Git
+	dbPath     string
+	signer     ssh.Signer
+	storage    driver.StorageDriver
+	registry   http.Handler
+	secretsKey []byte
+	stop       context.CancelFunc
 }
 
 const lyraUser = "lyra"
@@ -130,6 +133,10 @@ func New(config Config) (*Server, error) {
 		HTTP:    configuration.HTTP{Secret: hex.EncodeToString(secret)},
 		Catalog: configuration.Catalog{MaxEntries: 1000},
 	})
+	if server.secretsKey, err = loadSecretsKey(config); err != nil {
+		db.Close()
+		return nil, err
+	}
 	keyFile := config.SigningKeyFile
 	if keyFile == "" {
 		keyFile = filepath.Join(config.DataDir, "lyra_signing_key")
@@ -176,10 +183,14 @@ func New(config Config) (*Server, error) {
 			return nil, err
 		}
 	}
+	var scheduler context.Context
+	scheduler, server.stop = context.WithCancel(context.Background())
+	go server.schedule(scheduler)
 	return server, nil
 }
 
 func (s *Server) Close() error {
+	s.stop()
 	return s.store.Close()
 }
 
@@ -233,6 +244,17 @@ func (s *Server) Handler() http.Handler {
 					pulls.Post("/{number}/reviews", s.handleReviewPull)
 				})
 				repo.Get("/images", s.handleListImages)
+				repo.Post("/workflows/dispatch", s.handleDispatch)
+				repo.Route("/secrets", func(secrets chi.Router) {
+					secrets.Get("/", s.handleListSecrets)
+					secrets.Put("/{name}", s.handleSetSecret)
+					secrets.Delete("/{name}", s.handleDeleteSecret)
+				})
+				repo.Route("/variables", func(variables chi.Router) {
+					variables.Get("/", s.handleListVariables)
+					variables.Put("/{name}", s.handleSetVariable)
+					variables.Delete("/{name}", s.handleDeleteVariable)
+				})
 				repo.Route("/runs", func(runs chi.Router) {
 					runs.Get("/", s.handleListRuns)
 					runs.Get("/{number}", s.handleGetRun)

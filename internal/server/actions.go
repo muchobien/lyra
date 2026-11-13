@@ -18,6 +18,7 @@ import (
 	"code.forgejo.org/forgejo/runner/v13/act/model"
 	"code.forgejo.org/forgejo/runner/v13/act/workflowpattern"
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/muchobien/lyra/internal/repos"
@@ -106,6 +107,8 @@ type trigger struct {
 	baseRef string
 	payload map[string]any
 	matches func(*jobparser.Event) bool
+	file    string
+	options []jobparser.ParseOption
 }
 
 func repositoryPayload(git repos.Git, dir, repo string) map[string]any {
@@ -127,19 +130,23 @@ func changedFiles(git repos.Git, dir, from, to string) []string {
 	return changed
 }
 
-func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, cause trigger) []string {
+func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, cause trigger) ([]store.Run, []string) {
 	messages := []string{}
+	runs := []store.Run{}
 	commit, err := git.Commit(dir, cause.sha)
 	if err != nil {
-		return append(messages, "actions: "+err.Error())
+		return runs, append(messages, "actions: "+err.Error())
 	}
 	cause.payload["repository"] = repositoryPayload(git, dir, repo)
 	cause.payload["sender"] = map[string]any{"login": actor.User, "username": actor.User}
 	payload, err := json.Marshal(cause.payload)
 	if err != nil {
-		return append(messages, "actions: "+err.Error())
+		return runs, append(messages, "actions: "+err.Error())
 	}
 	for _, file := range workflowFiles(git, dir, cause.sha) {
+		if cause.file != "" && file != cause.file {
+			continue
+		}
 		content, err := git.Blob(dir, cause.sha, file)
 		if err != nil {
 			messages = append(messages, file+": "+err.Error())
@@ -158,7 +165,7 @@ func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.
 		if !slices.ContainsFunc(events, cause.matches) {
 			continue
 		}
-		singles, err := jobparser.Parse(content, false)
+		singles, err := jobparser.Parse(content, false, cause.options...)
 		if err != nil {
 			messages = append(messages, file+": "+err.Error())
 			continue
@@ -168,7 +175,7 @@ func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.
 			key, job := single.Job()
 			encoded, err := single.Marshal()
 			if err != nil {
-				return append(messages, file+": "+err.Error())
+				return runs, append(messages, file+": "+err.Error())
 			}
 			jobName := job.Name
 			if jobName == "" {
@@ -191,8 +198,9 @@ func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.
 			continue
 		}
 		messages = append(messages, fmt.Sprintf("queued run #%d (%s)", run.Number, runName))
+		runs = append(runs, run)
 	}
-	return messages
+	return runs, messages
 }
 
 func QueueRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, updates []RefUpdate) []string {
@@ -210,7 +218,7 @@ func QueueRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Act
 			messages = append(messages, "actions: "+err.Error())
 			continue
 		}
-		messages = append(messages, queueTrigger(db, git, dir, repo, actor, trigger{
+		_, queued := queueTrigger(db, git, dir, repo, actor, trigger{
 			event: "push", ref: update.Ref, sha: update.New,
 			payload: map[string]any{
 				"ref": update.Ref, "before": update.Old, "after": update.New,
@@ -220,7 +228,8 @@ func QueueRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Act
 			matches: func(event *jobparser.Event) bool {
 				return event.Name == "push" && matchesPush(event, update.Ref, changed)
 			},
-		})...)
+		})
+		messages = append(messages, queued...)
 	}
 	return messages
 }
@@ -257,7 +266,7 @@ func matchesPull(event *jobparser.Event, action, base string, changed []string) 
 func QueuePullRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, pull store.Pull, action string) []string {
 	changed := changedFiles(git, dir, pull.BaseSHA, pull.HeadSHA)
 	ref := fmt.Sprintf("refs/pull/%d/head", pull.Number)
-	return queueTrigger(db, git, dir, repo, actor, trigger{
+	_, messages := queueTrigger(db, git, dir, repo, actor, trigger{
 		event: "pull_request", ref: ref, sha: pull.HeadSHA, pull: pull.Number, headRef: pull.Head, baseRef: pull.Base,
 		payload: map[string]any{
 			"action": action, "number": pull.Number,
@@ -271,6 +280,7 @@ func QueuePullRuns(db *store.Store, git repos.Git, dir, repo string, actor store
 			return event.Name == "pull_request" && matchesPull(event, action, pull.Base, changed)
 		},
 	})
+	return messages
 }
 
 func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
@@ -279,6 +289,25 @@ func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
 	if err != nil || assignment == nil {
 		return nil, err
 	}
+	task, err := service.buildTask(*assignment, token)
+	if err == nil {
+		_, err = proto.Marshal(task)
+	}
+	if err == nil {
+		return task, nil
+	}
+	slog.Error("start job", "task", assignment.Task.ID, "error", err)
+	line := store.LogLine{At: time.Now().UTC(), Content: "lyra: the job couldn't start: " + err.Error()}
+	if _, err := service.server.store.AppendLog(assignment.Task.ID, 0, []store.LogLine{line}); err != nil {
+		return nil, err
+	}
+	if _, _, err := service.server.store.UpdateTask(assignment.Task.ID, nil, nil, "failure"); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (service runnerService) buildTask(assignment store.Assignment, token string) (*runnerv1.Task, error) {
 	run, job := assignment.Run, assignment.Job
 	owner, _, _ := strings.Cut(run.Repo, "/")
 	event := map[string]any{}
@@ -307,9 +336,21 @@ func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
 	for key, need := range assignment.Needs {
 		needs[key] = &runnerv1.TaskNeed{Outputs: need.Outputs, Result: resultValue(need.Result)}
 	}
+	secrets, err := service.server.repoSecrets(run.Repo)
+	if err != nil {
+		return nil, err
+	}
+	secrets["GITHUB_TOKEN"], secrets["FORGEJO_TOKEN"] = token, token
+	stored, err := service.server.store.Variables(run.Repo)
+	if err != nil {
+		return nil, err
+	}
+	variables := map[string]string{}
+	for _, variable := range stored {
+		variables[variable.Name] = variable.Value
+	}
 	return &runnerv1.Task{
-		Id: assignment.Task.ID, WorkflowPayload: []byte(job.Payload), Context: taskContext, Needs: needs, Vars: map[string]string{},
-		Secrets: map[string]string{"GITHUB_TOKEN": token, "FORGEJO_TOKEN": token},
+		Id: assignment.Task.ID, WorkflowPayload: []byte(job.Payload), Context: taskContext, Needs: needs, Vars: variables, Secrets: secrets,
 	}, nil
 }
 

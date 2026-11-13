@@ -42,7 +42,8 @@ docker run -p 8080:8080 -v lyra-data:/data \
 
 The data directory holds `lyra.db`, `repos/<owner>/<repo>.git`, `hooks/pre-receive` and `hooks/post-receive`
 (written at startup, applied through `core.hooksPath`), `blobs` with the default storage and,
-unless `--signing-key-file` is set, the generated `lyra_signing_key`.
+unless `--signing-key-file` is set, the generated `lyra_signing_key`, and unless
+`--secrets-key-file` is set, the generated `secrets_key`.
 
 ## Authentication
 
@@ -365,7 +366,21 @@ pull_request` matches: `types` (default `opened`, `synchronize`, `reopened`), `b
 (the base branch) and `paths` (the files the pull request changes), with the workflow file
 from the pull request's head commit. The run's `github.ref` is `refs/pull/<n>/head`, with
 `head_ref`, `base_ref` and `github.event.pull_request`. `lyra pr create` and `reopen` list
-the runs they queued under `actions`. Manual and scheduled triggers come later.
+the runs they queued under `actions`.
+
+Other triggers:
+
+- **`workflow_dispatch`:** `lyra workflow run <repo> <file> [--ref R] [--input name=value]...`
+  runs the workflow file from that ref. Unknown inputs are refused, `required` ones need a
+  value or default, and `choice` and `boolean` values are checked. Jobs read
+  `${{ inputs.name }}`.
+- **`release`:** publishing a release (creating it published, or `lyra release publish`)
+  queues `on: release` workflows from the tag's commit. Without `types` any publish
+  matches; `published`, `released` (not a prerelease) and `prereleased` are understood. The
+  release commands list the queued runs under `actions`.
+- **`schedule`:** every minute, Lyra checks the default branch's workflows for `cron`
+  entries due that minute (UTC, five fields) and queues them as actor `lyra`. A restart
+  within the same minute can queue a schedule twice.
 
 **Checks:** `lyra pr view` includes `checks`: the jobs of the latest run of each workflow and
 event for the pull request's head commit, with a `state` of `none`, `pending`, `success` or
@@ -380,6 +395,11 @@ lyra run logs <repo> <number> [--job KEY|ID] [--follow]
 lyra run wait <repo> <number> [--timeout 30m]   # exit 0 success, 1 otherwise, 3 timeout
 lyra run cancel <repo> <number>
 lyra run rerun <repo> <number> [--failed]
+lyra workflow run <repo> <file> [--ref R] [--input name=value]...
+lyra secret set <repo> <NAME> < value.txt     # admin; stdin, one trailing newline dropped
+lyra secret list | delete <repo> [<NAME>]
+lyra variable set <repo> <NAME> <value>
+lyra variable list | delete <repo> [<NAME>]
 ```
 
 - **Jobs** are split and matrices expanded with the runner's own parser. A runner gets the
@@ -389,6 +409,13 @@ lyra run rerun <repo> <number> [--failed]
 - **Job token:** `github.token` (also `secrets.GITHUB_TOKEN`) works while the job runs, with
   `write` access to its own repository only: for Git over HTTPS, the API and the `lyra` CLI.
   Writes are recorded as `job:<repo>#<run>`.
+- **Secrets and variables:** jobs get the repository's secrets as `secrets.NAME` (masked in
+  logs by the runner) and variables as `vars.NAME`. Secrets are encrypted with AES-256-GCM
+  using `--secrets-key-file` (`LYRA_SECRETS_KEY_FILE`, 64 hex characters), or a key generated
+  in the data directory (`secrets_key`). Their values are never returned; managing them
+  needs `admin`. Names are upper-cased and can't start with `GITHUB_`, `FORGEJO_` or
+  `GITEA_`. Changing the key makes existing secrets unreadable: jobs that use the
+  repository then fail with `lyra: the job couldn't start`.
 - **`--default-actions-url`** (`LYRA_DEFAULT_ACTIONS_URL`, default
   `https://data.forgejo.org`) resolves short `uses:` names.
 - **Logs** are kept in the database while a job runs, then stored as one object per job
@@ -439,6 +466,9 @@ Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{owner}/{repo}/rules?pattern=` | admin |
 | `GET /api/repos/{owner}/{repo}/images` | read |
 | `GET /api/repos/{owner}/{repo}/runs?limit=`, `GET …/runs/{number}`, `GET …/runs/{number}/jobs/{id}/logs?offset=` | read |
+| `POST /api/repos/{owner}/{repo}/workflows/dispatch` (`workflow`, `ref`, `inputs`) | write |
+| `GET /api/repos/{owner}/{repo}/secrets`, `PUT …/secrets/{name}` (`value`), `DELETE …/secrets/{name}` | admin |
+| `GET /api/repos/{owner}/{repo}/variables`, `PUT …/variables/{name}` (`value`), `DELETE …/variables/{name}` | read, write |
 | `POST /api/repos/{owner}/{repo}/runs/{number}/cancel`, `POST …/runs/{number}/rerun?failed=` | write |
 | `GET /api/runners`, `POST /api/runners` (`name`), `DELETE /api/runners/{id}` | admin, unrestricted |
 | `GET /api/runners/tokens`, `POST /api/runners/tokens` (`name`), `DELETE /api/runners/tokens/{id}` | admin, unrestricted |

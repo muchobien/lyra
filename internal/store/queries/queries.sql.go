@@ -1029,6 +1029,23 @@ func (q *Queries) DeleteRunnerToken(ctx context.Context, id int64) (int64, error
 	return result.RowsAffected()
 }
 
+const deleteSecret = `-- name: DeleteSecret :execrows
+DELETE FROM secrets WHERE repo = ? AND name = ?
+`
+
+type DeleteSecretParams struct {
+	Repo string `json:"repo"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) DeleteSecret(ctx context.Context, arg DeleteSecretParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSecret, arg.Repo, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteToken = `-- name: DeleteToken :execrows
 DELETE FROM tokens WHERE user = ? AND id = ?
 `
@@ -1040,6 +1057,23 @@ type DeleteTokenParams struct {
 
 func (q *Queries) DeleteToken(ctx context.Context, arg DeleteTokenParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteToken, arg.User, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteVariable = `-- name: DeleteVariable :execrows
+DELETE FROM variables WHERE repo = ? AND name = ?
+`
+
+type DeleteVariableParams struct {
+	Repo string `json:"repo"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) DeleteVariable(ctx context.Context, arg DeleteVariableParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteVariable, arg.Repo, arg.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -2519,6 +2553,39 @@ func (q *Queries) ListRunsForSHA(ctx context.Context, arg ListRunsForSHAParams) 
 	return items, nil
 }
 
+const listSecrets = `-- name: ListSecrets :many
+SELECT repo, name, value, user, updated_at FROM secrets WHERE repo = ? ORDER BY name
+`
+
+func (q *Queries) ListSecrets(ctx context.Context, repo string) ([]Secret, error) {
+	rows, err := q.db.QueryContext(ctx, listSecrets, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Secret
+	for rows.Next() {
+		var i Secret
+		if err := rows.Scan(
+			&i.Repo,
+			&i.Name,
+			&i.Value,
+			&i.User,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokens = `-- name: ListTokens :many
 SELECT id, name, user, hash, prefix, scope, repos, created_at, expires_at, last_used_at FROM tokens WHERE user = ? ORDER BY id
 `
@@ -2579,6 +2646,39 @@ func (q *Queries) ListUserKeys(ctx context.Context, user string) ([]Key, error) 
 			&i.Fingerprint,
 			&i.Signing,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVariables = `-- name: ListVariables :many
+SELECT repo, name, value, user, updated_at FROM variables WHERE repo = ? ORDER BY name
+`
+
+func (q *Queries) ListVariables(ctx context.Context, repo string) ([]Variable, error) {
+	rows, err := q.db.QueryContext(ctx, listVariables, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Variable
+	for rows.Next() {
+		var i Variable
+		if err := rows.Scan(
+			&i.Repo,
+			&i.Name,
+			&i.Value,
+			&i.User,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -2826,6 +2926,30 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 	return i, err
 }
 
+const setSecret = `-- name: SetSecret :exec
+INSERT INTO secrets (repo, name, value, user, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, name) DO UPDATE SET value = excluded.value, user = excluded.user, updated_at = excluded.updated_at
+`
+
+type SetSecretParams struct {
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Value     []byte    `json:"value"`
+	User      string    `json:"user"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) SetSecret(ctx context.Context, arg SetSecretParams) error {
+	_, err := q.db.ExecContext(ctx, setSecret,
+		arg.Repo,
+		arg.Name,
+		arg.Value,
+		arg.User,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const setTaskLog = `-- name: SetTaskLog :exec
 UPDATE tasks SET log_length = ?, log_object = ? WHERE id = ?
 `
@@ -2838,6 +2962,30 @@ type SetTaskLogParams struct {
 
 func (q *Queries) SetTaskLog(ctx context.Context, arg SetTaskLogParams) error {
 	_, err := q.db.ExecContext(ctx, setTaskLog, arg.LogLength, arg.LogObject, arg.ID)
+	return err
+}
+
+const setVariable = `-- name: SetVariable :exec
+INSERT INTO variables (repo, name, value, user, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (repo, name) DO UPDATE SET value = excluded.value, user = excluded.user, updated_at = excluded.updated_at
+`
+
+type SetVariableParams struct {
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Value     string    `json:"value"`
+	User      string    `json:"user"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) SetVariable(ctx context.Context, arg SetVariableParams) error {
+	_, err := q.db.ExecContext(ctx, setVariable,
+		arg.Repo,
+		arg.Name,
+		arg.Value,
+		arg.User,
+		arg.UpdatedAt,
+	)
 	return err
 }
 

@@ -286,8 +286,9 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, struct {
 		store.Release
-		EventID int64 `json:"event_id"`
-	}{s.releaseLinks(r, created), eventID})
+		EventID int64    `json:"event_id"`
+		Actions []string `json:"actions,omitempty"`
+	}{s.releaseLinks(r, created), eventID, s.queueRelease(r, created)})
 }
 
 func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) {
@@ -354,10 +355,15 @@ func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) {
 		writeReleaseError(w, err, release.Tag)
 		return
 	}
+	actions := []string{}
+	if publish {
+		actions = s.queueRelease(r, updated)
+	}
 	writeJSON(w, http.StatusOK, struct {
 		store.Release
-		EventID int64 `json:"event_id"`
-	}{s.releaseLinks(r, updated), eventID})
+		EventID int64    `json:"event_id"`
+		Actions []string `json:"actions,omitempty"`
+	}{s.releaseLinks(r, updated), eventID, actions})
 }
 
 func (s *Server) deleteObject(r *http.Request, repo string, asset store.Asset) {

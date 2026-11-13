@@ -725,7 +725,7 @@ matching branch can be merged. Rules apply to admins as well. Setting a pattern 
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call), runCommands(call, emit))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call), runCommands(call, emit), workflowCommands(call), secretCommands(call), variableCommands(call))
 	return root
 }
 
@@ -1613,4 +1613,101 @@ line. --job picks one job by key or id. --follow keeps printing until the jobs f
 	rerun.Flags().BoolVar(&failedOnly, "failed", false, "only jobs that didn't succeed, and the jobs that need them")
 	run.AddCommand(list, view, logs, wait, cancel, rerun)
 	return run
+}
+
+func workflowCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	workflow := &cobra.Command{Use: "workflow", Short: "Start Actions workflows"}
+	var ref string
+	var inputs []string
+	run := &cobra.Command{
+		Use:   "run <repo> <workflow>",
+		Short: "Start a workflow that has a workflow_dispatch trigger",
+		Long: `Start a workflow that has a workflow_dispatch trigger, from the workflow file at --ref
+(default: the default branch). <workflow> is the file name, such as deploy.yml, or its
+path. Inputs are checked against the workflow's: unknown ones are refused, missing ones
+take their default, and required ones without a default must be given. Prints the run.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			values := map[string]string{}
+			for _, input := range inputs {
+				name, value, found := strings.Cut(input, "=")
+				if !found || name == "" {
+					return UsageError{fmt.Errorf("--input %q: want name=value", input)}
+				}
+				values[name] = value
+			}
+			return call(cmd, http.MethodPost, repoAPI(args[0])+"/workflows/dispatch", map[string]any{"workflow": args[1], "ref": ref, "inputs": values})
+		},
+	}
+	run.Flags().StringVar(&ref, "ref", "", "branch or tag to run the workflow from (default: the default branch)")
+	run.Flags().StringArrayVar(&inputs, "input", nil, "input as name=value (repeatable)")
+	workflow.AddCommand(run)
+	return workflow
+}
+
+func secretCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	secret := &cobra.Command{Use: "secret", Short: "Manage Actions secrets of a repository (admin)"}
+	set := &cobra.Command{
+		Use:   "set <repo> <NAME>",
+		Short: "Set a secret from stdin; one trailing newline is dropped",
+		Long: `Set a secret from stdin, so the value stays out of shell history: for example
+lyra secret set krosf/lyra DEPLOY_KEY < key.txt. One trailing newline is dropped. Names are
+upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			value, err := io.ReadAll(cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodPut, repoAPI(args[0])+"/secrets/"+url.PathEscape(args[1]), map[string]string{"value": strings.TrimSuffix(string(value), "\n")})
+		},
+	}
+	list := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List secret names, never their values",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/secrets", nil)
+		},
+	}
+	remove := &cobra.Command{
+		Use:   "delete <repo> <NAME>",
+		Short: "Delete a secret",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, repoAPI(args[0])+"/secrets/"+url.PathEscape(args[1]), nil)
+		},
+	}
+	secret.AddCommand(set, list, remove)
+	return secret
+}
+
+func variableCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	variable := &cobra.Command{Use: "variable", Short: "Manage Actions variables of a repository"}
+	set := &cobra.Command{
+		Use:   "set <repo> <NAME> <value>",
+		Short: "Set a variable; jobs read it as ${{ vars.NAME }}",
+		Args:  exactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPut, repoAPI(args[0])+"/variables/"+url.PathEscape(args[1]), map[string]string{"value": args[2]})
+		},
+	}
+	list := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List variables with their values",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/variables", nil)
+		},
+	}
+	remove := &cobra.Command{
+		Use:   "delete <repo> <NAME>",
+		Short: "Delete a variable",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, repoAPI(args[0])+"/variables/"+url.PathEscape(args[1]), nil)
+		},
+	}
+	variable.AddCommand(set, list, remove)
+	return variable
 }

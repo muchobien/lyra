@@ -15,6 +15,7 @@ require (
 	github.com/hiddeco/sshsig v0.2.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/pressly/goose/v3 v3.30.1
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
 	github.com/yuin/goldmark v1.8.7
@@ -73,7 +74,6 @@ require (
 	github.com/redis/go-redis/v9 v9.7.3 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rhysd/actionlint v1.7.12 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

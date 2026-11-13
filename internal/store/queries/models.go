@@ -249,6 +249,14 @@ type RunnerToken struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Secret struct {
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Value     []byte    `json:"value"`
+	User      string    `json:"user"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Task struct {
 	ID        int64         `json:"id"`
 	JobID     int64         `json:"job_id"`
@@ -274,6 +282,14 @@ type Token struct {
 	CreatedAt  time.Time    `json:"created_at"`
 	ExpiresAt  sql.NullTime `json:"expires_at"`
 	LastUsedAt sql.NullTime `json:"last_used_at"`
+}
+
+type Variable struct {
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Value     string    `json:"value"`
+	User      string    `json:"user"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type WaitCursor struct {
