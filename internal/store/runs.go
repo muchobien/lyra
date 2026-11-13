@@ -680,3 +680,9 @@ func announceChecks(q *queries.Queries, repo, sha string) error {
 	}
 	return nil
 }
+
+func (s *Store) AnnounceChecks(repo, sha string) error {
+	return s.inTx(func(q *queries.Queries) error {
+		return announceChecks(q, repo, sha)
+	})
+}

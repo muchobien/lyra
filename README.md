@@ -389,7 +389,9 @@ Other triggers:
 **Checks:** `lyra pr view` includes `checks`: the jobs of the latest run of each workflow and
 event for the pull request's head commit, with a `state` of `none`, `pending`, `success` or
 `failure`. When a run finishes and none is left pending for that commit, Lyra records
-`pr.checks` on the pull request (actor `lyra`), so `lyra pr wait --for checks` returns.
+`pr.checks` on the pull request (actor `lyra`), so `lyra pr wait --for checks` returns. It
+also records it right after opening, reopening or pushing to a pull request when nothing is
+pending, with state `none` if no workflow ran, so such a wait never hangs.
 The branch rule `--require-checks` blocks merging until the state is `success`.
 
 ```sh

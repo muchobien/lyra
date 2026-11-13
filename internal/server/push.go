@@ -51,6 +51,7 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 		return err
 	}
 
+	syncedHeads := []string{}
 	open, err := db.Pulls(repo, "open")
 	if err != nil {
 		return messages, err
@@ -78,6 +79,7 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 			synced := pull
 			synced.HeadSHA, synced.BaseSHA = update.New, baseSHA
 			messages = append(messages, QueuePullRuns(db, git, dir, repo, actor, synced, "synchronize")...)
+			syncedHeads = append(syncedHeads, update.New)
 		}
 	}
 
@@ -136,5 +138,11 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 			}
 		}
 	}
-	return append(messages, QueueRuns(db, git, dir, repo, actor, updates)...), nil
+	messages = append(messages, QueueRuns(db, git, dir, repo, actor, updates)...)
+	for _, sha := range syncedHeads {
+		if err := db.AnnounceChecks(repo, sha); err != nil {
+			return messages, err
+		}
+	}
+	return messages, nil
 }

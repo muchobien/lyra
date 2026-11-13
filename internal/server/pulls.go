@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/muchobien/lyra/internal/store"
@@ -139,6 +140,9 @@ func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actions := QueuePullRuns(s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
+	if err := s.store.AnnounceChecks(repo.Name, pull.HeadSHA); err != nil {
+		slog.Error("announce checks", "repo", repo.Name, "error", err)
+	}
 	writeJSON(w, http.StatusCreated, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
 }
 

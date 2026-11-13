@@ -497,7 +497,11 @@ func (s *Server) queueReopened(repo string, number int64, wasOpen bool, actor st
 		}
 		pull.HeadSHA, pull.BaseSHA = tip, base
 	}
-	return QueuePullRuns(s.store, s.git, dir, repo, actor, pull, "reopened")
+	actions := QueuePullRuns(s.store, s.git, dir, repo, actor, pull, "reopened")
+	if err := s.store.AnnounceChecks(repo, pull.HeadSHA); err != nil {
+		slog.Error("announce checks", "repo", repo, "error", err)
+	}
+	return actions
 }
 
 func (s *Server) reopenProblem(repo string, pull store.Pull, state *string) string {

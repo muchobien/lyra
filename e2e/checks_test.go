@@ -145,6 +145,9 @@ func TestPullChecks(test *testing.T) {
 	if len(docs.Actions) != 0 {
 		test.Fatalf("a docs-only pull request queued: %v", docs.Actions)
 	}
+	if state := waitChecks("2"); state != "none" {
+		test.Fatalf("pr wait --for checks on a pull request where nothing runs: %s", state)
+	}
 	if viewed := pr("view", "acme/demo", "2"); viewed.Checks.State != "none" || !strings.Contains(strings.Join(viewed.Merge.Blocked, "|"), "no checks ran for") {
 		test.Fatalf("docs pull request: %+v", viewed)
 	}
@@ -179,7 +182,33 @@ func TestPullChecks(test *testing.T) {
 			}
 		}
 	}
-	if checks != 4 {
-		test.Fatalf("%d pr.checks events, want 4", checks)
+	if checks != 5 {
+		test.Fatalf("%d pr.checks events, want 5", checks)
+	}
+}
+
+func TestChecksFromPushWorkflows(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	auth := "http.extraHeader=Authorization: Bearer " + token
+	remote := srv.url + "/acme/demo.git"
+	src := newSource(test)
+	hostRunner(test, srv, token)
+	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	commitFile(test, src, ".forgejo/workflows/ci.yml", "on: push\njobs:\n  test:\n    runs-on: test\n    steps:\n      - run: echo ok\n", "Add CI")
+	mustGit(test, src, "-c", auth, "push", "-q", remote, "main")
+	mustGit(test, src, "switch", "-q", "-c", "feature")
+	commitFile(test, src, "feature.txt", "one\n", "Feature")
+	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
+	cursor := strings.TrimSpace(runLyra(test, srv, token, "event", "list", "--repo", "acme/demo", "--limit", "1", "--jq", ".[0].id").stdout)
+	commitFile(test, src, "feature.txt", "two\n", "More feature")
+	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
+	result := runLyra(test, srv, token, "pr", "wait", "acme/demo", "1", "--for", "checks", "--since", cursor, "--timeout", "60s", "--jq", ".data.state")
+	if result.code != 0 || strings.TrimSpace(result.stdout) != "success" {
+		test.Fatalf("first pr.checks after a push to a pull request with push workflows: %+v", result)
 	}
 }
