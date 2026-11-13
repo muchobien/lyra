@@ -470,6 +470,18 @@ lyra admin status                       # read-only mode and the last backup
 - All of these need an unrestricted admin token. Each backup is recorded as
   `backup.created`.
 
+## Metrics
+
+`--metrics-listen :9090` (`LYRA_METRICS_LISTEN`) serves Prometheus metrics at `/metrics` on a
+separate listener, so they aren't reachable through the main one:
+
+- `lyra_repos`, `lyra_runs{status}`, `lyra_jobs{status}`, `lyra_runners_online` and
+  `lyra_read_only`, read from the database at each scrape;
+- `lyra_backup_last_success_timestamp_seconds`, `lyra_backup_last_bytes` and
+  `lyra_backup_last_pause_seconds`, for alerting on stale backups;
+- `lyra_http_requests_total{method,code}` and `lyra_http_request_duration_seconds{method}`;
+- Go runtime and process metrics.
+
 ## API
 
 | Method and path | Scope |

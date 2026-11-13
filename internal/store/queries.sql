@@ -416,3 +416,12 @@ SELECT tasks.log_object FROM tasks JOIN jobs ON jobs.id = tasks.job_id WHERE job
 
 -- name: DeleteRun :exec
 DELETE FROM runs WHERE id = ?;
+
+-- name: CountRunsByStatus :many
+SELECT status, COUNT(*) AS count FROM runs GROUP BY status;
+
+-- name: CountJobsByStatus :many
+SELECT status, COUNT(*) AS count FROM jobs GROUP BY status;
+
+-- name: CountRepos :one
+SELECT COUNT(*) FROM repos;

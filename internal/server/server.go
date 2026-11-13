@@ -31,6 +31,7 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
@@ -67,6 +68,9 @@ type Server struct {
 	stop       context.CancelFunc
 	gate       sync.RWMutex
 	readOnly   atomic.Bool
+	metrics    *prometheus.Registry
+	requests   *prometheus.CounterVec
+	durations  *prometheus.HistogramVec
 }
 
 const lyraUser = "lyra"
@@ -189,6 +193,7 @@ func New(config Config) (*Server, error) {
 			return nil, err
 		}
 	}
+	server.registerMetrics()
 	var scheduler context.Context
 	scheduler, server.stop = context.WithCancel(context.Background())
 	go server.schedule(scheduler)
@@ -214,7 +219,7 @@ func (s *Server) Handler() http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
-	}, s.authenticate, s.writeGate)
+	}, s.instrument, s.authenticate, s.writeGate)
 	router.Handle("/v2/*", http.HandlerFunc(s.handleRegistry))
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok\n"))

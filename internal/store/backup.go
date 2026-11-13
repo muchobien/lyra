@@ -99,3 +99,33 @@ func (s *Store) LatestEvent(action string) (Event, error) {
 	}
 	return eventsFromRows([]queries.Event{row})[0], nil
 }
+
+type Counts struct {
+	Repos int64
+	Runs  map[string]int64
+	Jobs  map[string]int64
+}
+
+func (s *Store) Counts() (Counts, error) {
+	ctx := context.Background()
+	counts := Counts{Runs: map[string]int64{}, Jobs: map[string]int64{}}
+	var err error
+	if counts.Repos, err = s.queries.CountRepos(ctx); err != nil {
+		return counts, err
+	}
+	runs, err := s.queries.CountRunsByStatus(ctx)
+	if err != nil {
+		return counts, err
+	}
+	for _, row := range runs {
+		counts.Runs[row.Status] = row.Count
+	}
+	jobs, err := s.queries.CountJobsByStatus(ctx)
+	if err != nil {
+		return counts, err
+	}
+	for _, row := range jobs {
+		counts.Jobs[row.Status] = row.Count
+	}
+	return counts, nil
+}

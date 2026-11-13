@@ -331,3 +331,47 @@ func tamper(test *testing.T, source, target string) {
 		test.Fatal(err)
 	}
 }
+
+func TestMetrics(test *testing.T) {
+	metricsAddress := "127.0.0.1:" + freePort(test)
+	srv := startServerAt(test, "127.0.0.1:"+freePort(test), filepath.Join(test.TempDir(), "data"), "127.0.0.1", "--metrics-listen", metricsAddress)
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	createRepo(test, srv, token, "acme/other")
+	scrape := func() string {
+		test.Helper()
+		var body []byte
+		eventually(test, "the metrics listener", func() bool {
+			response, err := http.Get("http://" + metricsAddress + "/metrics")
+			if err != nil {
+				return false
+			}
+			defer response.Body.Close()
+			body, _ = io.ReadAll(response.Body)
+			return response.StatusCode == http.StatusOK
+		})
+		return string(body)
+	}
+	first := scrape()
+	for _, want := range []string{"lyra_repos 2\n", "lyra_read_only 0\n", `lyra_runs{status="success"} 0`, `lyra_jobs{status="waiting"} 0`, "lyra_runners_online 0\n", `lyra_http_requests_total{code="2xx",method="POST"}`, "go_goroutines", "process_resident_memory_bytes"} {
+		if !strings.Contains(first, want) {
+			test.Fatalf("metrics lack %q:\n%s", want, first)
+		}
+	}
+	if strings.Contains(first, "lyra_backup_last_success_timestamp_seconds") {
+		test.Fatal("a backup timestamp before any backup")
+	}
+	if result := runLyra(test, srv, token, "admin", "backup", "--output", filepath.Join(test.TempDir(), "backup.tar")); result.code != 0 {
+		test.Fatalf("backup: %+v", result)
+	}
+	runLyra(test, srv, token, "admin", "readonly", "on")
+	second := scrape()
+	for _, want := range []string{"lyra_read_only 1\n", "lyra_backup_last_success_timestamp_seconds 1", "lyra_backup_last_bytes "} {
+		if !strings.Contains(second, want) {
+			test.Fatalf("metrics after a backup lack %q:\n%s", want, second)
+		}
+	}
+	if status, body := call(test, http.MethodGet, srv.url+"/metrics", tailnet(), ""); status == http.StatusOK && strings.Contains(string(body), "lyra_repos") {
+		test.Fatal("the main listener serves metrics")
+	}
+}

@@ -28,19 +28,21 @@ func main() {
 	var listen, dataDir, signingKey string
 	var storage, s3Endpoint, s3Bucket, s3Region, registryHost, actionsURL, defaultActionsURL, secretsKey string
 	var jobStaleAfter, actionsRetention time.Duration
+	var metricsListen string
 	var proxies, logins []string
 	serveCommand := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the Lyra server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return serve(listen, proxies, logins, server.Config{
+			return serve(listen, metricsListen, proxies, logins, server.Config{
 				DataDir: dataDir, SigningKeyFile: signingKey, Storage: storage, S3Endpoint: s3Endpoint, S3Bucket: s3Bucket, S3Region: s3Region, RegistryHost: registryHost, ActionsURL: actionsURL, DefaultActionsURL: defaultActionsURL, SecretsKeyFile: secretsKey, JobStaleAfter: jobStaleAfter, ActionsRetention: actionsRetention,
 			})
 		},
 	}
 	serveCommand.Flags().StringVar(&signingKey, "signing-key-file", os.Getenv("LYRA_SIGNING_KEY_FILE"), "SSH private key Lyra signs merge commits with (LYRA_SIGNING_KEY_FILE; default: generated in the data directory)")
 	serveCommand.Flags().StringVar(&listen, "listen", envOr("LYRA_LISTEN", ":8080"), "listen address (LYRA_LISTEN)")
+	serveCommand.Flags().StringVar(&metricsListen, "metrics-listen", os.Getenv("LYRA_METRICS_LISTEN"), "address to serve Prometheus metrics on, such as :9090, apart from the main listener (LYRA_METRICS_LISTEN; default: off)")
 	serveCommand.Flags().StringVar(&dataDir, "data", envOr("LYRA_DATA", "data"), "data directory (LYRA_DATA)")
 	serveCommand.Flags().StringSliceVar(&proxies, "trusted-proxy", splitEnv("LYRA_TRUSTED_PROXY"), "IPs or CIDRs allowed to set Tailscale-User-Login (LYRA_TRUSTED_PROXY, comma-separated)")
 	serveCommand.Flags().StringSliceVar(&logins, "allow-login", splitEnv("LYRA_ALLOW_LOGIN"), "Tailscale logins allowed in (LYRA_ALLOW_LOGIN, comma-separated)")
@@ -138,7 +140,7 @@ func splitEnv(name string) []string {
 	return nil
 }
 
-func serve(listen string, proxies, logins []string, config server.Config) error {
+func serve(listen, metricsListen string, proxies, logins []string, config server.Config) error {
 	absolute, err := filepath.Abs(config.DataDir)
 	if err != nil {
 		return err
@@ -173,6 +175,15 @@ func serve(listen string, proxies, logins []string, config server.Config) error 
 	}
 	defer instance.Close()
 	slog.Info("listening", "addr", listen, "data", config.DataDir, "trusted_proxies", config.TrustedProxies, "storage", config.Storage)
+	if metricsListen != "" {
+		metrics := &http.Server{Addr: metricsListen, Handler: instance.MetricsHandler(), ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			if err := metrics.ListenAndServe(); err != nil {
+				slog.Error("metrics listener", "error", err)
+			}
+		}()
+		slog.Info("serving metrics", "addr", metricsListen)
+	}
 	httpServer := &http.Server{Addr: listen, Handler: instance.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	return httpServer.ListenAndServe()
 }

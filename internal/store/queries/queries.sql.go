@@ -56,6 +56,81 @@ func (q *Queries) CountComments(ctx context.Context, itemID int64) (int64, error
 	return count, err
 }
 
+const countJobsByStatus = `-- name: CountJobsByStatus :many
+SELECT status, COUNT(*) AS count FROM jobs GROUP BY status
+`
+
+type CountJobsByStatusRow struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count"`
+}
+
+func (q *Queries) CountJobsByStatus(ctx context.Context) ([]CountJobsByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, countJobsByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountJobsByStatusRow
+	for rows.Next() {
+		var i CountJobsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countRepos = `-- name: CountRepos :one
+SELECT COUNT(*) FROM repos
+`
+
+func (q *Queries) CountRepos(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRepos)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countRunsByStatus = `-- name: CountRunsByStatus :many
+SELECT status, COUNT(*) AS count FROM runs GROUP BY status
+`
+
+type CountRunsByStatusRow struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count"`
+}
+
+func (q *Queries) CountRunsByStatus(ctx context.Context) ([]CountRunsByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, countRunsByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountRunsByStatusRow
+	for rows.Next() {
+		var i CountRunsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO release_assets (release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
