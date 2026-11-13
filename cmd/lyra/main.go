@@ -12,6 +12,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -42,9 +44,58 @@ var escaped = json.JoinOptions(
 	jsontext.AllowInvalidUTF8(true),
 )
 
+var (
+	version = ""
+	commit  = ""
+	date    = ""
+)
+
+type buildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Go      string `json:"go"`
+}
+
+func currentBuild() buildInfo {
+	build := buildInfo{Version: version, Commit: commit, Date: date, Go: runtime.Version()}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return build
+	}
+	if build.Version == "" {
+		build.Version = strings.TrimPrefix(info.Main.Version, "v")
+	}
+	for _, setting := range info.Settings {
+		switch {
+		case setting.Key == "vcs.revision" && build.Commit == "":
+			build.Commit = setting.Value
+		case setting.Key == "vcs.time" && build.Date == "":
+			build.Date = setting.Value
+		}
+	}
+	return build
+}
+
+func versionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show the version, commit and build date of this binary",
+		Args:  cli.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			encoded, err := json.Marshal(currentBuild(), escaped, jsontext.WithIndent("  "))
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
+			return err
+		},
+	}
+}
+
 func main() {
 	root := cli.Root()
-	root.AddCommand(serveCommand(), hookCommand(), restoreCommand())
+	root.AddCommand(serveCommand(), hookCommand(), restoreCommand(), versionCommand())
 
 	if err := root.Execute(); err != nil {
 		encoded, _ := json.Marshal(failure{Error: err.Error()}, escaped)
