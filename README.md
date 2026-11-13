@@ -7,10 +7,33 @@ issues in the web UI.
 ## Run
 
 ```sh
-go build -o bin/lyra ./cmd/lyra
 lyra serve --listen :8080 --data /var/lib/lyra \
   --trusted-proxy 10.42.0.0/16 --allow-login you@example.com
 ```
+
+### Install
+
+Each version tag publishes a GitHub release with one archive per platform, named
+`lyra-<version>-<os>-<arch>.tar.gz`, for `linux-amd64`, `linux-arm64` and `darwin-arm64`,
+plus `checksums.txt` and `packslip.sigstore.json`. The binaries are static.
+
+[packslip](https://packslip.dev) picks the archive for the host, checks that the release
+was signed by this repository's release workflow, and puts `lyra` in a bin directory:
+
+```sh
+packslip install github.com/muchobien/lyra
+```
+
+To check a download yourself, verify it against the signed bundle from the same release:
+
+```sh
+packslip verify packslip.sigstore.json --artifact lyra-<version>-linux-amd64.tar.gz
+```
+
+To build from source instead, run `go build -o bin/lyra ./cmd/lyra`.
+
+`lyra version` prints the version, commit, build date and Go version of the binary as
+JSON.
 
 Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY`, `LYRA_ALLOW_LOGIN` and
 `LYRA_SIGNING_KEY_FILE`. The server needs `git` on `PATH`.
@@ -118,6 +141,7 @@ completion. `<repo>` arguments are `owner/name`, such as `krosf/lyra`.
 ```
 LYRA_URL, LYRA_TOKEN, LYRA_AGENT, LYRA_SESSION
 
+lyra version
 lyra me
 lyra owner create <owner> [--description TEXT]
 lyra owner list | view <owner> | delete <owner>
@@ -599,10 +623,40 @@ request. The CLI and git send neither header and aren't affected.
 
 ## Development
 
-`mise install` provides Go and sqlc. The schema lives in goose migrations under
-`internal/store/migrations`, applied by the server at startup. Queries live in
-`internal/store/queries.sql`; run `sqlc generate` after changing either, and commit the
-generated `internal/store/queries` package.
+`mise install` provides Go, sqlc, golangci-lint, GoReleaser, packslip and the workflow
+linters. The schema lives in goose migrations under `internal/store/migrations`, applied
+by the server at startup. Queries live in `internal/store/queries.sql`; run
+`sqlc generate` after changing either, and commit the generated `internal/store/queries`
+package.
+
+CI runs the same mise tasks:
+
+| Task | What it does |
+| --- | --- |
+| `mise run fmt` | Formats Go code with gofmt and goimports. |
+| `mise run lint` | Checks formatting, then runs `go vet` and golangci-lint. |
+| `mise run build` | Compiles every package. |
+| `mise run test` | Runs the end-to-end tests. |
+| `mise run sqlc:check` | Fails if the generated queries are out of date. |
+| `mise run lint:actions` | Lints the GitHub Actions workflows. |
+| `mise run actions:lock` | Pins the actions the workflows use in `actions.lock`. |
+| `mise run actions:verify` | Fails if the workflows and `actions.lock` disagree. |
+| `mise run dist:snapshot` | Builds snapshot archives into `dist/` with GoReleaser. |
+| `mise run dist` | Builds the archives for the tag at `HEAD`, without publishing. |
+| `mise run image` | Builds the snapshot archives, then the container image as `lyra`. |
+
+The `Dockerfile` unpacks an archive from `dist/` instead of compiling, so build the image
+with `mise run image`, not a bare `docker build`.
+
+### Releases
+
+Pushing a `v*` tag runs the release workflow. GoReleaser builds the archives and the
+changelog, the container image is built from those archives and pushed, packslip signs
+and attests the archives with the workflow's identity, and the last job creates the
+GitHub release with the archives, `checksums.txt` and `packslip.sigstore.json`. Pushes to
+`main` and pull requests run the same build as a snapshot and publish no release.
+
+### Tests
 
 `go test ./...` runs the end-to-end tests in `e2e/`, which CI also runs. They need
 `git` and `ssh-keygen` on `PATH`. The tests build the `lyra` binary, start servers on

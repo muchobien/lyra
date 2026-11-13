@@ -1,0 +1,28 @@
+version: 2
+
+project_name: lyra
+
+builds:
+  - main: ./cmd/lyra
+    binary: lyra
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+      - -X main.date={{ .CommitDate }}
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_arm64
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt

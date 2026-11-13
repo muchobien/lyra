@@ -2,7 +2,9 @@
 "github:github/gh-actions-lock" = { version = "0.4.1", bin = "gh-actions-lock" }
 go = "1.27.4"
 golangci-lint = "2.15.0"
+goreleaser = "2.20.2"
 jactionlint = "2.5.0"
+packslip = { version = "1.11.4", identity_prefix = "https://github.com/jdx/packslip/.github/workflows/release.yml@", issuer = "https://token.actions.githubusercontent.com", list_identity_prefix = "https://github.com/jdx/packslip/.github/workflows/packslip-releases.yml@" }
 sqlc = "1.31.1"
 
 [tasks."actions:lock"]
@@ -36,3 +38,16 @@ run = "go test ./..."
 [tasks."sqlc:check"]
 description = "Fail if the generated queries are out of date"
 run = "sqlc diff"
+
+[tasks.dist]
+description = "Build the release archives into dist/ without publishing; pass --snapshot when HEAD is not a tag"
+run = "goreleaser release --clean --skip=publish"
+
+[tasks."dist:snapshot"]
+description = "Build snapshot archives into dist/ from the working tree"
+run = "goreleaser release --clean --skip=publish --snapshot"
+
+[tasks.image]
+description = "Build the container image from freshly built snapshot archives"
+depends = ["dist:snapshot"]
+run = "docker build -t lyra ."

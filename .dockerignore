@@ -1,3 +1,2 @@
-bin/
-data/
-.git/
+*
+!dist/*.tar.gz
