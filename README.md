@@ -455,3 +455,16 @@ with `git` and the CLI. They cover:
     push.
   - `--require-approval`, including an approval that a new push makes stale, and
     reviewing and commenting from the UI.
+- Releases:
+  - Drafts, publishing, tags created at the target or reused, and refused mismatches.
+  - Asset upload, replacement, sha256 checks on download, stable and `latest` URLs,
+    and cleanup when a release or repository is deleted.
+  - Generated notes across squash, fast-forward and push merges, with prereleases.
+  - The releases pages, with drafts hidden from read-only tokens.
+- The container registry, pushed and pulled with go-containerregistry:
+  - Access per repository for pull, push, delete, layer mounts and the catalog.
+  - Recorded tags and events, multi-arch indexes, retagging and deletes.
+  - Images linked from releases, and a repository deleted and created again.
+- S3 storage against a Garage container, the version Moonbase runs: release assets and
+  a 12 MB image, with multipart uploads. This test needs Docker and is skipped without
+  it.
