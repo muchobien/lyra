@@ -5,14 +5,16 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
+	"strings"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 
 	"github.com/muchobien/lyra/internal/store"
 )
-
-const maxRequestBody = 1 << 20
 
 type statusError struct {
 	status  int
@@ -94,47 +96,114 @@ func (s *Server) page(handle handler) http.HandlerFunc {
 }
 
 type errorBody struct {
-	Error string `json:"error"`
+	Message string `json:"error"`
+	status  int
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) error {
+func (body *errorBody) Error() string {
+	return body.Message
+}
+
+func (body *errorBody) GetStatus() int {
+	return body.status
+}
+
+func newAPIError(status int, message string, errs ...error) huma.StatusError {
+	details := []string{}
+	for _, err := range errs {
+		if detail, ok := errors.AsType[*huma.ErrorDetail](err); ok {
+			details = append(details, detail.Message+" ("+detail.Location+")")
+		} else if err != nil {
+			details = append(details, err.Error())
+		}
+	}
+	if len(details) > 0 {
+		message += ": " + strings.Join(details, "; ")
+	}
+	return &errorBody{Message: message, status: status}
+}
+
+func encodeJSON(w io.Writer, value any) error {
 	encoded, err := json.Marshal(value, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
+	_, err = w.Write(append(encoded, '\n'))
+	return err
+}
+
+var jsonFormat = huma.Format{
+	Marshal: encodeJSON,
+	Unmarshal: func(data []byte, value any) error {
+		return json.Unmarshal(data, value, json.RejectUnknownMembers(true))
+	},
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(append(encoded, '\n'))
-	return nil
+	return encodeJSON(w, value)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
-	if err := writeJSON(w, status, errorBody{Error: message}); err != nil {
+	if err := writeJSON(w, status, errorBody{Message: message}); err != nil {
 		slog.Error("write error response", "status", status, "error", err)
 	}
 }
 
-func decodeBody[T any](w http.ResponseWriter, r *http.Request) (T, error) {
-	var body T
-	reader := http.MaxBytesReader(w, r.Body, maxRequestBody)
-	if err := json.UnmarshalRead(reader, &body, json.RejectUnknownMembers(true)); err != nil {
-		return body, badRequest("invalid JSON body: " + err.Error())
-	}
-	return body, nil
+type requestKey struct{}
+
+func withRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = detached(r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestKey{}, r)))
+	})
 }
 
-func pathID(r *http.Request, name, problem string) (int64, error) {
-	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
-	if err != nil {
-		return 0, badRequest(problem)
-	}
-	return id, nil
+type body[T any] struct {
+	Body T
 }
 
-func queryLimit(r *http.Request, fallback, most int) int {
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
-	if err != nil || limit <= 0 || limit > most {
+func reply[T any](value T) (*body[T], error) {
+	return &body[T]{Body: value}, nil
+}
+
+func register[I, O any](api huma.API, operation huma.Operation, handle func(*http.Request, *I) (*O, error)) {
+	huma.Register(api, operation, func(ctx context.Context, input *I) (*O, error) {
+		output, err := handle(ctx.Value(requestKey{}).(*http.Request), input)
+		if err != nil {
+			status, message := errorStatus(err)
+			return nil, &errorBody{Message: message, status: status}
+		}
+		return output, nil
+	})
+}
+
+func stream[I any](handle handler) func(*http.Request, *I) (*huma.StreamResponse, error) {
+	return func(*http.Request, *I) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{Body: func(ctx huma.Context) {
+			r, w := humachi.Unwrap(ctx)
+			api(handle)(w, r)
+		}}, nil
+	}
+}
+
+func queryLimit(limit, fallback, most int) int {
+	if limit <= 0 || limit > most {
 		return fallback
 	}
 	return limit
+}
+
+type RepoPath struct {
+	Owner string `path:"owner"`
+	Repo  string `path:"repo"`
+}
+
+type idPath struct {
+	ID int64 `path:"id"`
+}
+
+type bodyInput[T any] struct {
+	Body T
 }

@@ -91,7 +91,7 @@ func TestReviews(test *testing.T) {
 		{[]string{"pr", "review", "acme/demo", "1", "--approve", "--comment"}, 2, "exactly one"},
 		{[]string{"pr", "comment", "acme/demo", "1", "--path", "app.txt", "--line", "15", "--body", "x"}, 1, "not in the diff"},
 		{[]string{"pr", "comment", "acme/demo", "1", "--path", "other.txt", "--line", "3", "--body", "x"}, 1, "not in the diff"},
-		{[]string{"pr", "comment", "acme/demo", "1", "--path", "app.txt", "--line", "3", "--side", "middle", "--body", "x"}, 1, "side must be"},
+		{[]string{"pr", "comment", "acme/demo", "1", "--path", "app.txt", "--line", "3", "--side", "middle", "--body", "x"}, 1, `one of \"new, old\"`},
 		{[]string{"issue", "comment", "acme/demo", "1", "--path", "app.txt", "--body", "x"}, 2, "unknown flag"},
 	} {
 		if result := runLyra(test, srv, token, check.args...); result.code != check.code || !strings.Contains(result.stderr, check.want) {

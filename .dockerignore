@@ -1,7 +1,2 @@
-bin/
-data/
-.git/
-dist/
-web/node_modules/
-web/.vite/
-internal/webui/dist/
+*
+!dist/*.tar.gz

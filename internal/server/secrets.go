@@ -16,6 +16,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/muchobien/lyra/internal/store"
 )
 
 const (
@@ -29,6 +31,16 @@ var reservedSecretPrefixes = []string{"GITHUB_", "FORGEJO_", "GITEA_"}
 
 type valueRequest struct {
 	Value string `json:"value"`
+}
+
+type SecretPath struct {
+	RepoPath
+	Name string `path:"name" doc:"Upper-cased; can't start with GITHUB_, FORGEJO_ or GITEA_."`
+}
+
+type setValueInput struct {
+	SecretPath
+	Body valueRequest
 }
 
 type secretSet struct {
@@ -117,8 +129,8 @@ func (s *Server) repoSecrets(ctx context.Context, repo string) (map[string]strin
 	return secrets, nil
 }
 
-func secretName(r *http.Request) (string, error) {
-	name := strings.ToUpper(r.PathValue("name"))
+func secretName(path string) (string, error) {
+	name := strings.ToUpper(path)
 	reserved := slices.ContainsFunc(reservedSecretPrefixes, func(prefix string) bool {
 		return strings.HasPrefix(name, prefix)
 	})
@@ -128,108 +140,102 @@ func secretName(r *http.Request) (string, error) {
 	return name, nil
 }
 
-func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListSecrets(r *http.Request, _ *RepoPath) (*body[[]store.Secret], error) {
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	secrets, err := s.store.Secrets(r.Context(), repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, secrets)
+	return reply(secrets)
 }
 
-func (s *Server) handleSetSecret(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleSetSecret(r *http.Request, input *setValueInput) (*body[secretSet], error) {
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	name, err := secretName(r)
+	name, err := secretName(input.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[valueRequest](w, r)
+	value := input.Body.Value
+	if value == "" || len(value) > maxSecret {
+		return nil, badRequest("a secret is 1 byte to 64 KiB")
+	}
+	sealed, err := s.sealSecret([]byte(value))
 	if err != nil {
-		return err
-	}
-	if body.Value == "" || len(body.Value) > maxSecret {
-		return badRequest("a secret is 1 byte to 64 KiB")
-	}
-	sealed, err := s.sealSecret([]byte(body.Value))
-	if err != nil {
-		return err
+		return nil, err
 	}
 	eventID, err := s.store.SetSecret(r.Context(), identityFrom(r).actor, repo.Name, name, sealed)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, secretSet{EventID: eventID, Name: name})
+	return reply(secretSet{EventID: eventID, Name: name})
 }
 
-func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteSecret(r *http.Request, input *SecretPath) (*body[deletedWithEvent], error) {
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	name, err := secretName(r)
+	name, err := secretName(input.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	eventID, err := s.store.DeleteSecret(r.Context(), identityFrom(r).actor, repo.Name, name)
 	if err != nil {
-		return missing(err, "no secret "+name)
+		return nil, missing(err, "no secret "+name)
 	}
-	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
+	return reply(deletedWithEvent{Deleted: name, EventID: eventID})
 }
 
-func (s *Server) handleListVariables(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListVariables(r *http.Request, _ *RepoPath) (*body[[]store.Variable], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	variables, err := s.store.Variables(r.Context(), repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, variables)
+	return reply(variables)
 }
 
-func (s *Server) handleSetVariable(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleSetVariable(r *http.Request, input *setValueInput) (*body[variableSet], error) {
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	name, err := secretName(r)
+	name, err := secretName(input.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[valueRequest](w, r)
+	value := input.Body.Value
+	if len(value) > maxSecret {
+		return nil, badRequest("a variable is at most 64 KiB")
+	}
+	eventID, err := s.store.SetVariable(r.Context(), identityFrom(r).actor, repo.Name, name, value)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(body.Value) > maxSecret {
-		return badRequest("a variable is at most 64 KiB")
-	}
-	eventID, err := s.store.SetVariable(r.Context(), identityFrom(r).actor, repo.Name, name, body.Value)
-	if err != nil {
-		return err
-	}
-	return writeJSON(w, http.StatusOK, variableSet{EventID: eventID, Name: name, Value: body.Value})
+	return reply(variableSet{EventID: eventID, Name: name, Value: value})
 }
 
-func (s *Server) handleDeleteVariable(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteVariable(r *http.Request, input *SecretPath) (*body[deletedWithEvent], error) {
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	name, err := secretName(r)
+	name, err := secretName(input.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	eventID, err := s.store.DeleteVariable(r.Context(), identityFrom(r).actor, repo.Name, name)
 	if err != nil {
-		return missing(err, "no variable "+name)
+		return nil, missing(err, "no variable "+name)
 	}
-	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
+	return reply(deletedWithEvent{Deleted: name, EventID: eventID})
 }

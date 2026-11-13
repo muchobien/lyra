@@ -155,7 +155,7 @@ export function RepositoryPage() {
     : (images.data || [])
         .toSorted((first, second) => Date.parse(second.pushed_at) - Date.parse(first.pushed_at))
         .slice(0, 1);
-  const rawURL = repositoryAPI(name, "/blob?") + blobParams + "&raw";
+  const rawURL = repositoryAPI(name, "/raw?") + blobParams;
 
   return (
     <>

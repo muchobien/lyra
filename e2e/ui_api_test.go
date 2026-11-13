@@ -62,7 +62,7 @@ func TestEmbeddedUI(test *testing.T) {
 			test.Fatalf("unrendered file %s: HTTP %d, %s, %v", path, status, body, err)
 		}
 	}
-	request, _ := http.NewRequest(http.MethodGet, srv.url+"/api/repos/acme/demo/blob?path=data.bin&raw", nil)
+	request, _ := http.NewRequest(http.MethodGet, srv.url+"/api/repos/acme/demo/raw?path=data.bin", nil)
 	request.Header.Set("Tailscale-User-Login", login)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -76,7 +76,7 @@ func TestEmbeddedUI(test *testing.T) {
 	mustGit(test, src, "checkout", "-q", "-b", "feature/nested")
 	commitFile(test, src, "branch.txt", "branch content\n", "Branch commit")
 	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "feature/nested")
-	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blob?ref="+url.QueryEscape("feature/nested")+"&path=branch.txt&raw", tailnet(), "")
+	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/raw?ref="+url.QueryEscape("feature/nested")+"&path=branch.txt", tailnet(), "")
 	if status != http.StatusOK || string(body) != "branch content\n" {
 		test.Fatalf("branch with slash: HTTP %d, %s", status, body)
 	}

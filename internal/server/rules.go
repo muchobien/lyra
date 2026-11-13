@@ -25,13 +25,23 @@ type branchPolicy struct {
 }
 
 type setRuleRequest struct {
-	Pattern         string   `json:"pattern"`
-	RequireSigned   bool     `json:"require_signed"`
-	RequireApproval bool     `json:"require_approval"`
-	RequireChecks   bool     `json:"require_checks"`
-	AllowForcePush  bool     `json:"allow_force_push"`
-	AllowDeletion   bool     `json:"allow_deletion"`
-	MergeMethods    []string `json:"merge_methods"`
+	Pattern         string   `json:"pattern" doc:"A branch name or glob, such as main or release/*."`
+	RequireSigned   bool     `json:"require_signed,omitzero"`
+	RequireApproval bool     `json:"require_approval,omitzero"`
+	RequireChecks   bool     `json:"require_checks,omitzero"`
+	AllowForcePush  bool     `json:"allow_force_push,omitzero"`
+	AllowDeletion   bool     `json:"allow_deletion,omitzero"`
+	MergeMethods    []string `json:"merge_methods,omitzero" enum:"ff,squash" doc:"Defaults to both."`
+}
+
+type setRuleInput struct {
+	RepoPath
+	Body setRuleRequest
+}
+
+type deleteRuleInput struct {
+	RepoPath
+	Pattern string `query:"pattern" required:"true"`
 }
 
 type ruleWrite struct {
@@ -148,62 +158,53 @@ func CheckPush(ctx context.Context, db *store.Store, git repos.Git, dir, repo st
 	return nil
 }
 
-func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListRules(r *http.Request, _ *RepoPath) (*body[[]store.Rule], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rules, err := s.store.Rules(r.Context(), repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, rules)
+	return reply(rules)
 }
 
-func (s *Server) handleSetRule(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleSetRule(r *http.Request, input *setRuleInput) (*body[ruleWrite], error) {
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[setRuleRequest](w, r)
-	if err != nil {
-		return err
+	request := input.Body
+	if _, err := path.Match(request.Pattern, ""); err != nil || request.Pattern == "" {
+		return nil, badRequest("pattern must be a branch name or glob, such as main or release/*")
 	}
-	if _, err := path.Match(body.Pattern, ""); err != nil || body.Pattern == "" {
-		return badRequest("pattern must be a branch name or glob, such as main or release/*")
-	}
-	if len(body.MergeMethods) == 0 {
-		body.MergeMethods = mergeMethods
-	}
-	for _, method := range body.MergeMethods {
-		if !slices.Contains(mergeMethods, method) {
-			return badRequest("merge methods must be ff or squash")
-		}
+	if len(request.MergeMethods) == 0 {
+		request.MergeMethods = mergeMethods
 	}
 	rule, eventID, err := s.store.SetRule(r.Context(), repo.Name, identityFrom(r).actor, store.Rule{
-		Pattern:         body.Pattern,
-		RequireSigned:   body.RequireSigned,
-		RequireApproval: body.RequireApproval,
-		RequireChecks:   body.RequireChecks,
-		AllowForcePush:  body.AllowForcePush,
-		AllowDeletion:   body.AllowDeletion,
-		MergeMethods:    body.MergeMethods,
+		Pattern:         request.Pattern,
+		RequireSigned:   request.RequireSigned,
+		RequireApproval: request.RequireApproval,
+		RequireChecks:   request.RequireChecks,
+		AllowForcePush:  request.AllowForcePush,
+		AllowDeletion:   request.AllowDeletion,
+		MergeMethods:    request.MergeMethods,
 	})
 	if err != nil {
-		return missing(err, "repository not found")
+		return nil, missing(err, "repository not found")
 	}
-	return writeJSON(w, http.StatusOK, ruleWrite{Rule: rule, EventID: eventID})
+	return reply(ruleWrite{Rule: rule, EventID: eventID})
 }
 
-func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteRule(r *http.Request, input *deleteRuleInput) (*body[deletedWithEvent], error) {
 	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	pattern := r.URL.Query().Get("pattern")
-	eventID, err := s.store.DeleteRule(r.Context(), repo.Name, identityFrom(r).actor, pattern)
+	eventID, err := s.store.DeleteRule(r.Context(), repo.Name, identityFrom(r).actor, input.Pattern)
 	if err != nil {
-		return missing(err, "no rule for "+pattern)
+		return nil, missing(err, "no rule for "+input.Pattern)
 	}
-	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: pattern, EventID: eventID})
+	return reply(deletedWithEvent{Deleted: input.Pattern, EventID: eventID})
 }

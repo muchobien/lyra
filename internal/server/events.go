@@ -42,16 +42,30 @@ func sameActor(first, second store.Actor) bool {
 	return first.User == second.User && first.Via == second.Via && first.Agent == second.Agent
 }
 
-func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) error {
-	repo := r.URL.Query().Get("repo")
-	if !identityFrom(r).can(scopeRead, repo) {
-		return forbidden("token lacks read access")
+type listEventsInput struct {
+	Repo  string `query:"repo"`
+	Limit int    `query:"limit" doc:"1 to 1000; defaults to 50."`
+}
+
+type eventStreamInput struct {
+	Repo        string   `query:"repo"`
+	Item        int64    `query:"item" doc:"One issue or pull request number; needs repo."`
+	Action      []string `query:"action,explode" doc:"Glob patterns, such as push or repo.*"`
+	Assignee    string   `query:"assignee" doc:"Only *.assigned events for that name; me is the caller."`
+	ExcludeSelf bool     `query:"exclude_self" doc:"Leave out the caller's own events."`
+	Since       string   `query:"since" doc:"An event id to start after, or mine with item: see lyra pr wait."`
+	LastEventID string   `header:"Last-Event-ID" doc:"Resume after this event."`
+}
+
+func (s *Server) handleListEvents(r *http.Request, input *listEventsInput) (*body[[]store.Event], error) {
+	if !identityFrom(r).can(scopeRead, input.Repo) {
+		return nil, forbidden("token lacks read access")
 	}
-	events, err := s.store.Events(r.Context(), repo, queryLimit(r, 50, 1000))
+	events, err := s.store.Events(r.Context(), input.Repo, queryLimit(input.Limit, 50, 1000))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, events)
+	return reply(events)
 }
 
 func parseEventFilter(r *http.Request) (eventFilter, error) {

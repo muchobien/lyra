@@ -12,10 +12,10 @@ import (
 const keyAdminOnly = "key management needs an unrestricted admin token"
 
 type createKeyRequest struct {
-	Title     string `json:"title"`
-	Agent     string `json:"agent"`
-	PublicKey string `json:"public_key"`
-	Signing   bool   `json:"signing"`
+	Title     string `json:"title,omitzero"`
+	Agent     string `json:"agent,omitzero"`
+	PublicKey string `json:"public_key" doc:"One OpenSSH public key line"`
+	Signing   bool   `json:"signing" doc:"Must be true: only signing keys are supported"`
 }
 
 type keyAddedEvent struct {
@@ -30,82 +30,75 @@ type signingKeyView struct {
 	PublicKey      string `json:"public_key"`
 }
 
-func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListKeys(r *http.Request, _ *struct{}) (*body[[]store.Key], error) {
 	id := identityFrom(r)
 	if !id.can(scopeRead, "") {
-		return forbidden("listing keys needs an unrestricted token")
+		return nil, forbidden("listing keys needs an unrestricted token")
 	}
 	keys, err := s.store.Keys(r.Context(), id.actor.User)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, keys)
+	return reply(keys)
 }
 
-func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateKey(r *http.Request, input *bodyInput[createKeyRequest]) (*body[store.Key], error) {
 	ctx := r.Context()
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden(keyAdminOnly)
+		return nil, forbidden(keyAdminOnly)
 	}
-	body, err := decodeBody[createKeyRequest](w, r)
-	if err != nil {
-		return err
+	request := input.Body
+	if !request.Signing {
+		return nil, badRequest("only signing keys are supported; set signing to true")
 	}
-	if !body.Signing {
-		return badRequest("only signing keys are supported; set signing to true")
-	}
-	parsed, comment, options, rest, err := ssh.ParseAuthorizedKey([]byte(body.PublicKey))
+	parsed, comment, options, rest, err := ssh.ParseAuthorizedKey([]byte(request.PublicKey))
 	if err != nil || len(options) > 0 || strings.TrimSpace(string(rest)) != "" {
-		return badRequest("public_key must be one OpenSSH public key line")
+		return nil, badRequest("public_key must be one OpenSSH public key line")
 	}
-	title := body.Title
+	title := request.Title
 	if title == "" {
 		title = comment
 	}
 	key, err := s.store.CreateKey(ctx, store.Key{
 		User:        id.actor.User,
 		Title:       title,
-		Agent:       body.Agent,
+		Agent:       request.Agent,
 		PublicKey:   strings.TrimSpace(string(ssh.MarshalAuthorizedKey(parsed))),
 		Fingerprint: ssh.FingerprintSHA256(parsed),
 		Signing:     true,
 	})
 	if store.IsUniqueViolation(err) {
-		return conflict("key already registered")
+		return nil, conflict("key already registered")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	added := keyAddedEvent{Agent: key.Agent, Fingerprint: key.Fingerprint, ID: key.ID}
 	if _, err := s.store.AddEvent(ctx, "key.add", "", id.actor, added); err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, key)
+	return reply(key)
 }
 
-func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteKey(r *http.Request, input *idPath) (*body[deletedID], error) {
 	ctx := r.Context()
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden(keyAdminOnly)
+		return nil, forbidden(keyAdminOnly)
 	}
-	keyID, err := pathID(r, "id", "invalid key id")
-	if err != nil {
-		return err
+	if err := s.store.DeleteKey(ctx, id.actor.User, input.ID); err != nil {
+		return nil, missing(err, "key not found")
 	}
-	if err := s.store.DeleteKey(ctx, id.actor.User, keyID); err != nil {
-		return missing(err, "key not found")
+	if _, err := s.store.AddEvent(ctx, "key.delete", "", id.actor, idPayload{ID: input.ID}); err != nil {
+		return nil, err
 	}
-	if _, err := s.store.AddEvent(ctx, "key.delete", "", id.actor, idPayload{ID: keyID}); err != nil {
-		return err
-	}
-	return writeJSON(w, http.StatusOK, deletedID{Deleted: keyID})
+	return reply(deletedID{Deleted: input.ID})
 }
 
-func (s *Server) handleSigningKey(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleSigningKey(_ *http.Request, _ *struct{}) (*body[signingKeyView], error) {
 	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.signer.PublicKey())))
-	return writeJSON(w, http.StatusOK, signingKeyView{
+	return reply(signingKeyView{
 		AllowedSigners: `lyra namespaces="git" ` + publicKey,
 		Fingerprint:    ssh.FingerprintSHA256(s.signer.PublicKey()),
 		PublicKey:      publicKey,

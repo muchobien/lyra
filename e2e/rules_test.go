@@ -64,7 +64,7 @@ func TestRules(test *testing.T) {
 		want  string
 	}{
 		{token, []string{"rule", "set", "acme/demo", "["}, "pattern must be"},
-		{token, []string{"rule", "set", "acme/demo", "dev", "--merge-methods", "rebase"}, "merge methods"},
+		{token, []string{"rule", "set", "acme/demo", "dev", "--merge-methods", "rebase"}, `one of \"ff, squash\"`},
 		{token, []string{"rule", "delete", "acme/demo", "missing"}, "no rule for missing"},
 		{writer, []string{"rule", "set", "acme/demo", "dev"}, "lacks admin"},
 	} {

@@ -155,19 +155,29 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request) error
 	return writeJSON(w, http.StatusCreated, assetWrite{Asset: created, EventID: eventID})
 }
 
-func (s *Server) handleDeleteAsset(w http.ResponseWriter, r *http.Request) error {
+type uploadAssetInput struct {
+	ReleasePath
+	Name    string `query:"name" required:"true"`
+	Clobber bool   `query:"clobber" doc:"Replace an asset with the same name."`
+}
+
+type assetInput struct {
+	ReleasePath
+	Name string `path:"name"`
+}
+
+func (s *Server) handleDeleteAsset(r *http.Request, input *assetInput) (*body[deletedWithEvent], error) {
 	ctx := r.Context()
 	repo, release, err := s.lookupRelease(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	name := pathParam(r, "name")
-	asset, eventID, err := s.store.DeleteAsset(ctx, identityFrom(r).actor, release, name)
+	asset, eventID, err := s.store.DeleteAsset(ctx, identityFrom(r).actor, release, input.Name)
 	if err != nil {
-		return missing(err, "asset "+name+" not found")
+		return nil, missing(err, "asset "+input.Name+" not found")
 	}
 	s.deleteObject(ctx, repo.Name, asset)
-	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
+	return reply(deletedWithEvent{Deleted: input.Name, EventID: eventID})
 }
 
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, release store.Release, name string) error {

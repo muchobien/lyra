@@ -67,26 +67,23 @@ type renderedMarkdown struct {
 	HTML string `json:"html"`
 }
 
-func (s *Server) handleMarkdown(w http.ResponseWriter, r *http.Request) error {
-	body, err := decodeBody[markdownRequest](w, r)
-	if err != nil {
-		return err
-	}
+func (s *Server) handleMarkdown(_ *http.Request, input *bodyInput[markdownRequest]) (*body[renderedMarkdown], error) {
+	body := input.Body
 	if err := checkText(nil, &body.Body); err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, renderedMarkdown{HTML: string(renderMarkdown(body.Body))})
+	return reply(renderedMarkdown{HTML: string(renderMarkdown(body.Body))})
 }
 
-func (s *Server) handleItemWorkspace(kind string) handler {
-	return func(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleItemWorkspace(kind string) func(*http.Request, *ItemPath) (*body[itemWorkspace], error) {
+	return func(r *http.Request, _ *ItemPath) (*body[itemWorkspace], error) {
 		repo, item, err := s.uiItem(r, kind, false)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		comments, err := s.store.Comments(r.Context(), item)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		reviews := []store.Review{}
 		workspace := itemWorkspace{
@@ -97,18 +94,18 @@ func (s *Server) handleItemWorkspace(kind string) handler {
 		if kind == kindPull {
 			pull, err := s.store.Pull(r.Context(), repo.Name, item.Number)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			workspace.Pull = &pull
 			workspace.IsAuthor = isAuthor(pull, identityFrom(r).actor)
 			workspace.Merge, workspace.MergeError = s.mergeStatus(r.Context(), repo.Name, pull)
 			checks, err := s.store.Checks(r.Context(), repo.Name, pull.HeadSHA)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			workspace.Checks = &checks
 			if reviews, err = s.store.Reviews(r.Context(), item); err != nil {
-				return err
+				return nil, err
 			}
 			s.markOutdated(r.Context(), repo.Name, pull, comments)
 			for index := range reviews {
@@ -125,7 +122,7 @@ func (s *Server) handleItemWorkspace(kind string) handler {
 				Review: review, HTML: string(renderMarkdown(review.Body)),
 			})
 		}
-		return writeJSON(w, http.StatusOK, workspace)
+		return reply(workspace)
 	}
 }
 
@@ -144,63 +141,63 @@ func highlightedDiff(files []*gitdiff.File, comments []store.Comment) []diffFile
 	return view
 }
 
-func (s *Server) handlePullPatch(w http.ResponseWriter, r *http.Request) error {
-	repo, pull, err := s.lookupPull(r)
+func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[[]diffFile], error) {
+	repo, pull, err := s.lookupPull(r, input.Number)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	comments, err := s.store.Comments(r.Context(), pull.Item)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.markOutdated(r.Context(), repo.Name, pull, comments)
 	files, err := s.pullDiff(r.Context(), repo.Name, pull)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, highlightedDiff(files, comments))
+	return reply(highlightedDiff(files, comments))
 }
 
-func (s *Server) handleCommitWorkspace(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*body[commitWorkspace], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ctx := r.Context()
 	dir := s.repoDir(repo.Name)
-	commit, err := s.git.Commit(ctx, dir, r.PathValue("rev"))
+	commit, err := s.git.Commit(ctx, dir, input.Rev)
 	if errors.Is(err, repos.ErrNotFound) {
-		return notFound("commit not found")
+		return nil, notFound("commit not found")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.verifySignatures(ctx, &commit.Signature); err != nil {
-		return err
+		return nil, err
 	}
 	patch, err := s.git.Patch(ctx, dir, commit.SHA)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	files, _, err := gitdiff.Parse(strings.NewReader(patch))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	checks, err := s.store.Checks(ctx, repo.Name, commit.SHA)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, commitWorkspace{Commit: commit, Checks: checks, Files: highlightedDiff(files, nil)})
+	return reply(commitWorkspace{Commit: commit, Checks: checks, Files: highlightedDiff(files, nil)})
 }
 
-func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleWorkflows(r *http.Request, input *sourceInput) (*body[[]workflowWorkspace], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ctx := r.Context()
 	dir := s.repoDir(repo.Name)
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(ctx, dir)
 	}
@@ -208,19 +205,19 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		branches, branchErr := s.git.Branches(ctx, dir)
 		if branchErr != nil {
-			return branchErr
+			return nil, branchErr
 		}
 		if len(branches) == 0 {
-			return writeJSON(w, http.StatusOK, []workflowWorkspace{})
+			return reply([]workflowWorkspace{})
 		}
-		return notFound("unknown ref " + ref)
+		return nil, notFound("unknown ref " + ref)
 	}
 	workflows := []workflowWorkspace{}
 	for _, file := range workflowFiles(ctx, s.git, dir, sha) {
 		view := workflowWorkspace{Path: file, Name: file, Inputs: map[string]workflowInput{}}
 		content, err := s.git.Blob(ctx, dir, sha, file)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
 		if err != nil {
@@ -241,5 +238,5 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) error {
 		}
 		workflows = append(workflows, view)
 	}
-	return writeJSON(w, http.StatusOK, workflows)
+	return reply(workflows)
 }

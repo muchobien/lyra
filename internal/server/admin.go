@@ -29,7 +29,7 @@ const (
 	registryBlobs   = "/docker/registry/v2/blobs"
 )
 
-type backupCreated struct {
+type BackupCreated struct {
 	Bytes   int64 `json:"bytes"`
 	Objects int   `json:"objects"`
 	PauseMS int64 `json:"pause_ms"`
@@ -38,11 +38,11 @@ type backupCreated struct {
 
 type lastBackup struct {
 	At time.Time `json:"at"`
-	backupCreated
+	BackupCreated
 }
 
 type statusView struct {
-	LastBackup *lastBackup `json:"last_backup"`
+	LastBackup *lastBackup `json:"last_backup" doc:"null until the first backup."`
 	ReadOnly   bool        `json:"read_only"`
 }
 
@@ -262,7 +262,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) error {
 		slog.Error("backup", "error", err)
 		return nil
 	}
-	created := backupCreated{
+	created := BackupCreated{
 		Bytes:   counter.count,
 		Objects: len(manifest.Objects),
 		PauseMS: pause.Milliseconds(),
@@ -274,53 +274,50 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func (s *Server) handleReadOnly(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleReadOnly(r *http.Request, input *bodyInput[readOnlyRequest]) (*body[statusView], error) {
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden("read-only mode needs an unrestricted admin token")
+		return nil, forbidden("read-only mode needs an unrestricted admin token")
 	}
-	body, err := decodeBody[readOnlyRequest](w, r)
-	if err != nil {
-		return err
-	}
-	if s.readOnly.Swap(body.Enabled) != body.Enabled {
+	enabled := input.Body.Enabled
+	if s.readOnly.Swap(enabled) != enabled {
 		action := "readonly.off"
-		if body.Enabled {
+		if enabled {
 			action = "readonly.on"
 		}
 		if _, err := s.store.AddEvent(r.Context(), action, "", id.actor, noData{}); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return s.handleStatus(w, r)
+	return s.handleStatus(r, nil)
 }
 
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleStatus(r *http.Request, _ *struct{}) (*body[statusView], error) {
 	if !identityFrom(r).can(scopeAdmin, "") {
-		return forbidden("status needs an unrestricted admin token")
+		return nil, forbidden("status needs an unrestricted admin token")
 	}
 	status := statusView{ReadOnly: s.readOnly.Load()}
 	last, err := s.store.LatestEvent(r.Context(), "backup.created")
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return err
+		return nil, err
 	}
 	if err == nil {
 		status.LastBackup = &lastBackup{At: last.At}
-		if err := json.Unmarshal(last.Data, &status.LastBackup.backupCreated); err != nil {
-			return err
+		if err := json.Unmarshal(last.Data, &status.LastBackup.BackupCreated); err != nil {
+			return nil, err
 		}
 	}
-	return writeJSON(w, http.StatusOK, status)
+	return reply(status)
 }
 
-func (s *Server) handleStorageCheck(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleStorageCheck(r *http.Request, _ *struct{}) (*body[storageCheck], error) {
 	ctx := r.Context()
 	if !identityFrom(r).can(scopeAdmin, "") {
-		return forbidden("the storage check needs an unrestricted admin token")
+		return nil, forbidden("the storage check needs an unrestricted admin token")
 	}
 	objects, err := s.store.StoredObjects(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	missing := []store.StoredObject{}
 	for _, object := range objects {
@@ -330,12 +327,12 @@ func (s *Server) handleStorageCheck(w http.ResponseWriter, r *http.Request) erro
 		case absent:
 			missing = append(missing, object)
 		case err != nil:
-			return err
+			return nil, err
 		case object.Size > 0 && info.Size() != object.Size:
 			missing = append(missing, object)
 		}
 	}
-	return writeJSON(w, http.StatusOK, storageCheck{Checked: len(objects), Missing: missing})
+	return reply(storageCheck{Checked: len(objects), Missing: missing})
 }
 
 func (s *Server) registryUsage(ctx context.Context) (int, int64, error) {
@@ -365,11 +362,11 @@ func (s *Server) collectRegistry(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleRegistryGC(r *http.Request, _ *struct{}) (*body[registryCollected], error) {
 	ctx := r.Context()
 	id := identityFrom(r)
 	if !id.can(scopeAdmin, "") {
-		return forbidden("registry garbage collection needs an unrestricted admin token")
+		return nil, forbidden("registry garbage collection needs an unrestricted admin token")
 	}
 	wasReadOnly := s.readOnly.Swap(true)
 	defer s.readOnly.Store(wasReadOnly)
@@ -378,14 +375,14 @@ func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) error 
 	start := time.Now()
 	blobsBefore, bytesBefore, err := s.registryUsage(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.collectRegistry(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	blobsAfter, bytesAfter, err := s.registryUsage(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	result := registryCollected{
 		BlobsAfter:  blobsAfter,
@@ -394,7 +391,7 @@ func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) error 
 		MS:          time.Since(start).Milliseconds(),
 	}
 	if _, err := s.store.AddEvent(ctx, "registry.gc", "", id.actor, result); err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, result)
+	return reply(result)
 }

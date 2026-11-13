@@ -14,6 +14,12 @@ import (
 	"github.com/muchobien/lyra/internal/webui"
 )
 
+type sourceInput struct {
+	RepoPath
+	Ref  string `query:"ref" doc:"Branch, tag, or commit; defaults to the repository's default branch."`
+	Path string `query:"path" doc:"Path relative to the repository root."`
+}
+
 type treeResponse struct {
 	Ref     string        `json:"ref"`
 	SHA     string        `json:"sha"`
@@ -52,7 +58,11 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 				}
 			case "runs":
 				if r.PathValue("number") != "" {
-					if _, err := s.lookupRun(r, scopeRead); err != nil {
+					number, err := uiRunNumber(r)
+					if err != nil {
+						return err
+					}
+					if _, err := s.lookupRun(r, scopeRead, number); err != nil {
 						return err
 					}
 				}
@@ -120,75 +130,71 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleTree(r *http.Request, input *sourceInput) (*body[treeResponse], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dir := s.repoDir(repo.Name)
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(ctx, dir)
 	}
-	path := strings.Trim(r.URL.Query().Get("path"), "/")
+	path := strings.Trim(input.Path, "/")
 	view := treeResponse{Ref: ref, Path: path, Entries: []repos.Entry{}}
 	view.SHA, err = s.git.ResolveCommit(ctx, dir, ref)
 	if err != nil {
 		branches, branchErr := s.git.Branches(ctx, dir)
 		if branchErr != nil {
-			return branchErr
+			return nil, branchErr
 		}
 		if len(branches) != 0 {
-			return notFound("unknown ref " + ref)
+			return nil, notFound("unknown ref " + ref)
 		}
 		view.Empty = true
-		return writeJSON(w, http.StatusOK, view)
+		return reply(view)
 	}
 	view.Entries, err = s.git.Tree(ctx, dir, view.SHA, path)
 	if errors.Is(err, repos.ErrNotFound) {
-		return notFound("directory not found")
+		return nil, notFound("directory not found")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	view.Readme = string(s.readme(ctx, dir, view.SHA, path, view.Entries))
 	commits, err := s.commits(ctx, repo.Name, view.SHA, 1)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(commits) != 0 {
 		view.Last = &commits[0]
 	}
-	return writeJSON(w, http.StatusOK, view)
+	return reply(view)
 }
 
-func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResponse], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dir := s.repoDir(repo.Name)
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(ctx, dir)
 	}
 	sha, err := s.git.ResolveCommit(ctx, dir, ref)
 	if err != nil {
-		return notFound("unknown ref " + ref)
+		return nil, notFound("unknown ref " + ref)
 	}
-	path := strings.Trim(r.URL.Query().Get("path"), "/")
+	path := strings.Trim(input.Path, "/")
 	content, err := s.git.Blob(ctx, dir, sha, path)
 	if errors.Is(err, repos.ErrNotFound) {
-		return notFound("file not found")
+		return nil, notFound("file not found")
 	}
 	if err != nil {
-		return err
-	}
-	if r.URL.Query().Has("raw") {
-		writeRaw(w, content)
-		return nil
+		return nil, err
 	}
 	view := blobResponse{
 		Path: path, Size: len(content), Binary: !utf8.Valid(content) || len(content) > maxHighlightSize,
@@ -200,32 +206,32 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) error {
 		}
 		view.Code = string(highlight(codeFormatter, lexer, string(content)))
 	}
-	return writeJSON(w, http.StatusOK, view)
+	return reply(view)
 }
 
-func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleFiles(r *http.Request, input *sourceInput) (*body[[]string], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dir := s.repoDir(repo.Name)
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(ctx, dir)
 	}
 	sha, err := s.git.ResolveCommit(ctx, dir, ref)
 	if err != nil {
 		if errors.Is(err, repos.ErrNotFound) {
-			return notFound("unknown ref " + ref)
+			return nil, notFound("unknown ref " + ref)
 		}
-		return err
+		return nil, err
 	}
 	files, err := s.git.Files(ctx, dir, sha)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, files)
+	return reply(files)
 }
 
 func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
@@ -244,4 +250,29 @@ func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
 		"}\n}\n@media (prefers-color-scheme: dark) {\n:root:not([data-theme=light]) {\n" + dark.String() + "}\n}\n"
 	_, err := w.Write([]byte(css))
 	return err
+}
+
+func (s *Server) handleRawBlob(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
+	if err != nil {
+		return err
+	}
+	dir := s.repoDir(repo.Name)
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		ref = s.git.DefaultBranch(r.Context(), dir)
+	}
+	sha, err := s.git.ResolveCommit(r.Context(), dir, ref)
+	if err != nil {
+		return notFound("unknown ref " + ref)
+	}
+	content, err := s.git.Blob(r.Context(), dir, sha, strings.Trim(r.URL.Query().Get("path"), "/"))
+	if errors.Is(err, repos.ErrNotFound) {
+		return notFound("file not found")
+	}
+	if err != nil {
+		return err
+	}
+	writeRaw(w, content)
+	return nil
 }

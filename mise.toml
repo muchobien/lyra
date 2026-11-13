@@ -4,7 +4,9 @@ go = "1.27.4"
 node = "26.13.1"
 pnpm = "12.18.0"
 golangci-lint = "2.15.0"
+goreleaser = "2.20.2"
 jactionlint = "2.5.0"
+packslip = { version = "1.11.4", identity_prefix = "https://github.com/jdx/packslip/.github/workflows/release.yml@", issuer = "https://token.actions.githubusercontent.com", list_identity_prefix = "https://github.com/jdx/packslip/.github/workflows/packslip-releases.yml@" }
 sqlc = "1.31.1"
 
 [tasks."actions:lock"]
@@ -20,28 +22,51 @@ description = "Lint the GitHub Actions workflows"
 run = "jactionlint"
 
 [tasks.fmt]
-description = "Format Go code with gofmt and goimports"
 depends = ["ui:fmt"]
+description = "Format Go code with gofmt and goimports"
 run = "golangci-lint fmt"
 
 [tasks.lint]
-description = "Check formatting, then run go vet and golangci-lint"
 depends = ["ui:build", "ui:check"]
+description = "Check formatting, then run go vet and golangci-lint"
 run = ["golangci-lint fmt --diff", "go vet ./...", "golangci-lint run"]
 
 [tasks.build]
-description = "Compile every package"
 depends = ["ui:build"]
+description = "Compile every package"
 run = "go build ./..."
 
 [tasks.test]
-description = "Run the test suite, including the end-to-end tests"
 depends = ["ui:build"]
+description = "Run the test suite, including the end-to-end tests"
 run = "go test ./..."
 
 [tasks."sqlc:check"]
 description = "Fail if the generated queries are out of date"
 run = "sqlc diff"
+
+[tasks.openapi]
+depends = ["ui:build"]
+description = "Write the API's OpenAPI document to api/openapi.yaml"
+run = "go run ./cmd/lyra openapi >| api/openapi.yaml"
+
+[tasks."openapi:check"]
+depends = ["ui:build"]
+description = "Fail if api/openapi.yaml is out of date"
+run = "go run ./cmd/lyra openapi | diff -u api/openapi.yaml -"
+
+[tasks.dist]
+description = "Build the release archives into dist/ without publishing; pass --snapshot when HEAD is not a tag"
+run = "goreleaser release --clean --skip=publish"
+
+[tasks."dist:snapshot"]
+description = "Build snapshot archives into dist/ from the working tree"
+run = "goreleaser release --clean --skip=publish --snapshot"
+
+[tasks.image]
+description = "Build the container image from freshly built snapshot archives"
+depends = ["dist:snapshot"]
+run = "docker build -t lyra ."
 
 [tasks."ui:install"]
 description = "Install the pinned frontend dependencies"

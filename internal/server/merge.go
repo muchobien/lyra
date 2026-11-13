@@ -36,11 +36,16 @@ type mergePlan struct {
 }
 
 type mergeRequest struct {
-	Method       string `json:"method"`
-	HeadSHA      string `json:"head_sha"`
-	Title        string `json:"title"`
-	Message      string `json:"message"`
-	DeleteBranch bool   `json:"delete_branch"`
+	Method       string `json:"method" enum:"squash,ff"`
+	HeadSHA      string `json:"head_sha,omitzero" doc:"Refuse the merge unless the head branch is at this commit."`
+	Title        string `json:"title,omitzero" doc:"Squash commit title; defaults to the title with (#number)."`
+	Message      string `json:"message,omitzero" doc:"Squash commit body."`
+	DeleteBranch bool   `json:"delete_branch,omitzero"`
+}
+
+type mergeInput struct {
+	ItemPath
+	Body mergeRequest
 }
 
 type PushEvent struct {
@@ -366,27 +371,20 @@ func (s *Server) mergePull(
 	return pull, eventID, err
 }
 
-func (s *Server) handleMergePull(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleMergePull(r *http.Request, input *mergeInput) (*body[pullWrite], error) {
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	number, err := itemNumber(r)
-	if err != nil {
-		return err
-	}
-	request, err := decodeBody[mergeRequest](w, r)
-	if err != nil {
-		return err
-	}
+	request := input.Body
 	if err := checkText(nil, &request.Message); err != nil {
-		return err
+		return nil, err
 	}
-	pull, eventID, err := s.mergePull(r, repo.Name, number, request)
+	pull, eventID, err := s.mergePull(r, repo.Name, input.Number, request)
 	if err != nil {
-		return missing(err, "pull request not found")
+		return nil, missing(err, "pull request not found")
 	}
-	return writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID})
+	return reply(pullWrite{Pull: pull, EventID: eventID})
 }
 
 func (s *Server) uiMergePull(w http.ResponseWriter, r *http.Request) error {

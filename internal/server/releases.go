@@ -22,20 +22,40 @@ const (
 
 type createReleaseRequest struct {
 	Tag           string `json:"tag"`
-	Target        string `json:"target"`
-	Title         string `json:"title"`
-	Notes         string `json:"notes"`
-	Draft         bool   `json:"draft"`
-	Prerelease    bool   `json:"prerelease"`
-	GenerateNotes bool   `json:"generate_notes"`
+	Target        string `json:"target,omitzero" doc:"Branch or commit to tag; defaults to the default branch."`
+	Title         string `json:"title,omitzero" doc:"Defaults to the tag."`
+	Notes         string `json:"notes,omitzero"`
+	Draft         bool   `json:"draft,omitzero"`
+	Prerelease    bool   `json:"prerelease,omitzero"`
+	GenerateNotes bool   `json:"generate_notes,omitzero" doc:"List the pull requests merged since the last release."`
 }
 
 type editReleaseRequest struct {
-	Title      *string `json:"title"`
-	Notes      *string `json:"notes"`
-	Draft      *bool   `json:"draft"`
-	Prerelease *bool   `json:"prerelease"`
-	Target     *string `json:"target"`
+	Title      *string `json:"title,omitzero"`
+	Notes      *string `json:"notes,omitzero"`
+	Draft      *bool   `json:"draft,omitzero" doc:"false publishes a draft."`
+	Prerelease *bool   `json:"prerelease,omitzero"`
+	Target     *string `json:"target,omitzero" doc:"Drafts only."`
+}
+
+type ReleasePath struct {
+	RepoPath
+	ID int64 `path:"id"`
+}
+
+type createReleaseInput struct {
+	RepoPath
+	Body createReleaseRequest
+}
+
+type editReleaseInput struct {
+	ReleasePath
+	Body editReleaseRequest
+}
+
+type deleteReleaseInput struct {
+	ReleasePath
+	CleanupTag bool `query:"cleanup_tag" doc:"Delete the tag too."`
 }
 
 type releaseWrite struct {
@@ -175,14 +195,14 @@ func (s *Server) untag(ctx context.Context, dir, tag, sha string) {
 	}
 }
 
-func (s *Server) handleListReleases(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListReleases(r *http.Request, _ *RepoPath) (*body[[]store.Release], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	releases, err := s.store.Releases(r.Context(), repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	drafts := identityFrom(r).can(scopeWrite, repo.Name)
 	visible := []store.Release{}
@@ -191,19 +211,19 @@ func (s *Server) handleListReleases(w http.ResponseWriter, r *http.Request) erro
 			visible = append(visible, s.releaseLinks(r, release))
 		}
 	}
-	return writeJSON(w, http.StatusOK, visible)
+	return reply(visible)
 }
 
-func (s *Server) handleLatestRelease(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleLatestRelease(r *http.Request, _ *RepoPath) (*body[store.Release], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	release, err := s.store.LatestRelease(r.Context(), repo.Name)
 	if err != nil {
-		return missing(err, "no published release")
+		return nil, missing(err, "no published release")
 	}
-	return writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
+	return reply(s.releaseLinks(r, release))
 }
 
 func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) error {
@@ -219,12 +239,12 @@ func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) erro
 	return writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
 }
 
-func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleGetRelease(r *http.Request, _ *ReleasePath) (*body[store.Release], error) {
 	_, release, err := s.lookupRelease(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
+	return reply(s.releaseLinks(r, release))
 }
 
 func (s *Server) appendGeneratedNotes(ctx context.Context, dir string, release *store.Release) error {
@@ -277,24 +297,21 @@ func (s *Server) newRelease(ctx context.Context, repo string, body createRelease
 	return release, nil
 }
 
-func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateRelease(r *http.Request, input *createReleaseInput) (*body[releaseWrite], error) {
 	ctx := r.Context()
 	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[createReleaseRequest](w, r)
+	request := input.Body
+	release, err := s.newRelease(ctx, repo.Name, request)
 	if err != nil {
-		return err
-	}
-	release, err := s.newRelease(ctx, repo.Name, body)
-	if err != nil {
-		return err
+		return nil, err
 	}
 	dir := s.repoDir(repo.Name)
-	createdTag, err := s.tagRelease(ctx, dir, &release, body.Target != "", !body.Draft)
+	createdTag, err := s.tagRelease(ctx, dir, &release, request.Target != "", !request.Draft)
 	if err != nil {
-		return releaseError(err, body.Tag)
+		return nil, releaseError(err, request.Tag)
 	}
 	if !release.Draft {
 		published := time.Now().UTC()
@@ -302,10 +319,10 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) err
 	}
 	created, eventID, err := s.store.CreateRelease(ctx, identityFrom(r).actor, release)
 	if err != nil {
-		s.untag(ctx, dir, body.Tag, createdTag)
-		return releaseError(err, body.Tag)
+		s.untag(ctx, dir, request.Tag, createdTag)
+		return nil, releaseError(err, request.Tag)
 	}
-	return writeJSON(w, http.StatusCreated, releaseWrite{
+	return reply(releaseWrite{
 		Release: s.releaseLinks(r, created),
 		EventID: eventID,
 		Actions: s.queueRelease(r, created),
@@ -337,25 +354,22 @@ func applyReleaseEdit(release *store.Release, body editReleaseRequest) error {
 	return nil
 }
 
-func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleEditRelease(r *http.Request, input *editReleaseInput) (*body[releaseWrite], error) {
 	ctx := r.Context()
 	repo, release, err := s.lookupRelease(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body, err := decodeBody[editReleaseRequest](w, r)
-	if err != nil {
-		return err
+	request := input.Body
+	if err := applyReleaseEdit(&release, request); err != nil {
+		return nil, err
 	}
-	if err := applyReleaseEdit(&release, body); err != nil {
-		return err
-	}
-	publish := release.Draft && body.Draft != nil && !*body.Draft
+	publish := release.Draft && request.Draft != nil && !*request.Draft
 	dir := s.repoDir(repo.Name)
 	createdTag := ""
 	if release.Draft {
-		if createdTag, err = s.tagRelease(ctx, dir, &release, body.Target != nil, publish); err != nil {
-			return releaseError(err, release.Tag)
+		if createdTag, err = s.tagRelease(ctx, dir, &release, request.Target != nil, publish); err != nil {
+			return nil, releaseError(err, release.Tag)
 		}
 	}
 	action := releaseUpdated
@@ -368,13 +382,13 @@ func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) error
 	updated, eventID, err := s.store.UpdateRelease(ctx, identityFrom(r).actor, release, action)
 	if err != nil {
 		s.untag(ctx, dir, release.Tag, createdTag)
-		return releaseError(err, release.Tag)
+		return nil, releaseError(err, release.Tag)
 	}
 	actions := []string{}
 	if publish {
 		actions = s.queueRelease(r, updated)
 	}
-	return writeJSON(w, http.StatusOK, releaseWrite{
+	return reply(releaseWrite{
 		Release: s.releaseLinks(r, updated),
 		EventID: eventID,
 		Actions: actions,
@@ -394,24 +408,24 @@ func (s *Server) deleteTag(ctx context.Context, repo, tag string) (bool, error) 
 	return true, nil
 }
 
-func (s *Server) handleDeleteRelease(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteRelease(r *http.Request, input *deleteReleaseInput) (*body[releaseDeleted], error) {
 	ctx := r.Context()
 	repo, release, err := s.lookupRelease(r, scopeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	eventID, err := s.store.DeleteRelease(ctx, identityFrom(r).actor, release)
 	if err != nil {
-		return releaseError(err, release.Tag)
+		return nil, releaseError(err, release.Tag)
 	}
 	for _, asset := range release.Assets {
 		s.deleteObject(ctx, repo.Name, asset)
 	}
 	tagDeleted := false
-	if r.URL.Query().Get("cleanup_tag") == "true" {
+	if input.CleanupTag {
 		if tagDeleted, err = s.deleteTag(ctx, repo.Name, release.Tag); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return writeJSON(w, http.StatusOK, releaseDeleted{Deleted: release.Tag, EventID: eventID, TagDeleted: tagDeleted})
+	return reply(releaseDeleted{Deleted: release.Tag, EventID: eventID, TagDeleted: tagDeleted})
 }

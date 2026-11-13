@@ -71,95 +71,86 @@ func runnerAdmin(r *http.Request) error {
 	return nil
 }
 
-func runnerPathID(r *http.Request) (int64, error) {
-	return pathID(r, "id", "invalid id "+r.PathValue("id"))
-}
-
-func requestedName(w http.ResponseWriter, r *http.Request, longest int) (string, error) {
-	body, err := decodeBody[nameRequest](w, r)
-	if err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(body.Name)
+func requestedName(request nameRequest, longest int) (string, error) {
+	name := strings.TrimSpace(request.Name)
 	if name == "" || utf8.RuneCountInString(name) > longest {
 		return "", badRequest(fmt.Sprintf("name must be 1 to %d characters", longest))
 	}
 	return name, nil
 }
 
-func (s *Server) handleListRunners(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListRunners(r *http.Request, _ *struct{}) (*body[[]runnerView], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
 	runners, err := s.store.Runners(r.Context())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	views := []runnerView{}
 	for _, runner := range runners {
 		online := runner.LastSeenAt != nil && time.Since(*runner.LastSeenAt) < runnerOnline
 		views = append(views, runnerView{Runner: runner, Online: online})
 	}
-	return writeJSON(w, http.StatusOK, views)
+	return reply(views)
 }
 
-func (s *Server) handleCreateRunner(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateRunner(r *http.Request, input *bodyInput[nameRequest]) (*body[runnerCreated], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
-	name, err := requestedName(w, r, maxRunnerName)
+	name, err := requestedName(input.Body, maxRunnerName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	secret := randomHex(20)
 	registered := store.Runner{UUID: newUUID(), Name: name}
 	runner, err := s.store.CreateRunner(r.Context(), identityFrom(r).actor, registered, secret, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, runnerCreated{Runner: runner, Token: secret, URL: s.actionsURL(r)})
+	return reply(runnerCreated{Runner: runner, Token: secret, URL: s.actionsURL(r)})
 }
 
-func (s *Server) handleDeleteRunner(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteRunner(r *http.Request, input *idPath) (*body[deletedIDWithEvent], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
-	id, err := runnerPathID(r)
+	eventID, err := s.store.DeleteRunner(r.Context(), identityFrom(r).actor, input.ID)
 	if err != nil {
-		return err
+		return nil, missing(err, fmt.Sprintf("runner %d not found", input.ID))
 	}
-	eventID, err := s.store.DeleteRunner(r.Context(), identityFrom(r).actor, id)
-	if err != nil {
-		return missing(err, fmt.Sprintf("runner %d not found", id))
-	}
-	return writeJSON(w, http.StatusOK, deletedIDWithEvent{Deleted: id, EventID: eventID})
+	return reply(deletedIDWithEvent{Deleted: input.ID, EventID: eventID})
 }
 
-func (s *Server) handleListRunnerTokens(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListRunnerTokens(r *http.Request, _ *struct{}) (*body[[]store.RunnerToken], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
 	tokens, err := s.store.RunnerTokens(r.Context())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, tokens)
+	return reply(tokens)
 }
 
-func (s *Server) handleCreateRunnerToken(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCreateRunnerToken(
+	r *http.Request,
+	input *bodyInput[nameRequest],
+) (*body[runnerTokenCreated], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
-	name, err := requestedName(w, r, maxRunnerTokenName)
+	name, err := requestedName(input.Body, maxRunnerTokenName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	secret := randomHex(20)
 	token, eventID, err := s.store.CreateRunnerToken(r.Context(), identityFrom(r).actor, name, secret)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusCreated, runnerTokenCreated{
+	return reply(runnerTokenCreated{
 		RunnerToken: token,
 		Secret:      secret,
 		URL:         s.actionsURL(r),
@@ -167,17 +158,13 @@ func (s *Server) handleCreateRunnerToken(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (s *Server) handleDeleteRunnerToken(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleDeleteRunnerToken(r *http.Request, input *idPath) (*body[deletedIDWithEvent], error) {
 	if err := runnerAdmin(r); err != nil {
-		return err
+		return nil, err
 	}
-	id, err := runnerPathID(r)
+	eventID, err := s.store.DeleteRunnerToken(r.Context(), identityFrom(r).actor, input.ID)
 	if err != nil {
-		return err
+		return nil, missing(err, fmt.Sprintf("runner token %d not found", input.ID))
 	}
-	eventID, err := s.store.DeleteRunnerToken(r.Context(), identityFrom(r).actor, id)
-	if err != nil {
-		return missing(err, fmt.Sprintf("runner token %d not found", id))
-	}
-	return writeJSON(w, http.StatusOK, deletedIDWithEvent{Deleted: id, EventID: eventID})
+	return reply(deletedIDWithEvent{Deleted: input.ID, EventID: eventID})
 }

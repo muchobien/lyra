@@ -109,7 +109,7 @@ func (collector stateCollector) collectBackup(ctx context.Context, metrics chan<
 	if err != nil {
 		return err
 	}
-	var details backupCreated
+	var details BackupCreated
 	if err := json.Unmarshal(last.Data, &details); err != nil {
 		return err
 	}

@@ -196,14 +196,14 @@ func (s *Server) images(r *http.Request, repo string) ([]store.Image, error) {
 	return images, err
 }
 
-func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleListImages(r *http.Request, _ *RepoPath) (*body[[]store.Image], error) {
 	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	images, err := s.images(r, repo.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writeJSON(w, http.StatusOK, images)
+	return reply(images)
 }
