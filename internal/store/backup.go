@@ -16,18 +16,18 @@ type StoredObject struct {
 	Repo   string `json:"repo"`
 	Name   string `json:"name"`
 	Path   string `json:"path"`
-	Size   int64  `json:"size,omitempty"`
+	Size   int64  `json:"size,omitzero"`
 	SHA256 string `json:"sha256,omitempty"`
 }
 
-func (s *Store) Snapshot(file string) error {
-	_, err := s.db.ExecContext(context.Background(), "VACUUM INTO ?", file)
+func (s *Store) Snapshot(ctx context.Context, file string) error {
+	_, err := s.db.ExecContext(ctx, "VACUUM INTO ?", file)
 	return err
 }
 
-func (s *Store) IntegrityCheck() error {
+func (s *Store) IntegrityCheck(ctx context.Context) error {
 	var result string
-	if err := s.db.QueryRowContext(context.Background(), "PRAGMA integrity_check").Scan(&result); err != nil {
+	if err := s.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
 		return err
 	}
 	if result != "ok" {
@@ -36,9 +36,10 @@ func (s *Store) IntegrityCheck() error {
 	return nil
 }
 
-func (s *Store) SchemaVersion() (int64, error) {
+func (s *Store) SchemaVersion(ctx context.Context) (int64, error) {
 	var version int64
-	err := s.db.QueryRowContext(context.Background(), "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version WHERE is_applied").Scan(&version)
+	query := "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version WHERE is_applied"
+	err := s.db.QueryRowContext(ctx, query).Scan(&version)
 	return version, err
 }
 
@@ -58,8 +59,7 @@ func LatestMigration() (int64, error) {
 	return latest, nil
 }
 
-func (s *Store) StoredObjects() ([]StoredObject, error) {
-	ctx := context.Background()
+func (s *Store) StoredObjects(ctx context.Context) ([]StoredObject, error) {
 	objects := []StoredObject{}
 	assets, err := s.queries.ListAllAssets(ctx)
 	if err != nil {
@@ -67,8 +67,12 @@ func (s *Store) StoredObjects() ([]StoredObject, error) {
 	}
 	for _, asset := range assets {
 		objects = append(objects, StoredObject{
-			Kind: "release_asset", Repo: asset.Repo, Name: asset.Tag + "/" + asset.Name, Path: "/lyra/releases/" + asset.Repo + "/" + asset.Object,
-			Size: asset.Size, SHA256: asset.Sha256,
+			Kind:   "release_asset",
+			Repo:   asset.Repo,
+			Name:   asset.Tag + "/" + asset.Name,
+			Path:   "/lyra/releases/" + asset.Repo + "/" + asset.Object,
+			Size:   asset.Size,
+			SHA256: asset.Sha256,
 		})
 	}
 	logs, err := s.queries.ListLogObjects(ctx)
@@ -76,7 +80,12 @@ func (s *Store) StoredObjects() ([]StoredObject, error) {
 		return nil, err
 	}
 	for _, log := range logs {
-		objects = append(objects, StoredObject{Kind: "job_log", Repo: log.Repo, Name: "task " + strconv.FormatInt(log.ID, 10), Path: log.LogObject})
+		objects = append(objects, StoredObject{
+			Kind: "job_log",
+			Repo: log.Repo,
+			Name: "task " + strconv.FormatInt(log.ID, 10),
+			Path: log.LogObject,
+		})
 	}
 	images, err := s.queries.ListAllImages(ctx)
 	if err != nil {
@@ -85,15 +94,17 @@ func (s *Store) StoredObjects() ([]StoredObject, error) {
 	for _, image := range images {
 		algorithm, digest, _ := strings.Cut(image.Digest, ":")
 		objects = append(objects, StoredObject{
-			Kind: "image", Repo: image.Repo, Name: image.Name + ":" + image.Tag,
+			Kind: "image",
+			Repo: image.Repo,
+			Name: image.Name + ":" + image.Tag,
 			Path: path.Join("/docker/registry/v2/blobs", algorithm, digest[:min(2, len(digest))], digest, "data"),
 		})
 	}
 	return objects, nil
 }
 
-func (s *Store) LatestEvent(action string) (Event, error) {
-	row, err := s.queries.LatestEventByAction(context.Background(), action)
+func (s *Store) LatestEvent(ctx context.Context, action string) (Event, error) {
+	row, err := s.queries.LatestEventByAction(ctx, action)
 	if err != nil {
 		return Event{}, notFound(err)
 	}
@@ -106,8 +117,7 @@ type Counts struct {
 	Jobs  map[string]int64
 }
 
-func (s *Store) Counts() (Counts, error) {
-	ctx := context.Background()
+func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	counts := Counts{Runs: map[string]int64{}, Jobs: map[string]int64{}}
 	var err error
 	if counts.Repos, err = s.queries.CountRepos(ctx); err != nil {

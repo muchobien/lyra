@@ -6,7 +6,8 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,6 +26,13 @@ import (
 var migrations embed.FS
 
 var ErrNotFound = errors.New("not found")
+
+var storedJSON = json.JoinOptions(
+	json.Deterministic(true),
+	jsontext.EscapeForHTML(true),
+	jsontext.EscapeForJS(true),
+	jsontext.AllowInvalidUTF8(true),
+)
 
 type Store struct {
 	db      *sql.DB
@@ -57,17 +65,28 @@ type Token struct {
 }
 
 type Event struct {
-	ID     int64           `json:"id"`
-	At     time.Time       `json:"at"`
-	Action string          `json:"action"`
-	Repo   string          `json:"repo,omitempty"`
-	Item   int64           `json:"item,omitempty"`
-	Actor  Actor           `json:"actor"`
-	Data   json.RawMessage `json:"data"`
+	ID     int64          `json:"id"`
+	At     time.Time      `json:"at"`
+	Action string         `json:"action"`
+	Repo   string         `json:"repo,omitempty"`
+	Item   int64          `json:"item,omitzero"`
+	Actor  Actor          `json:"actor"`
+	Data   jsontext.Value `json:"data"`
+}
+
+type nameEvent struct {
+	Name string `json:"name"`
+}
+
+type numberEvent struct {
+	Number int64 `json:"number"`
 }
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_time_format=sqlite&_txlock=immediate")
+	source := "file:" + path +
+		"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)" +
+		"&_time_format=sqlite&_txlock=immediate"
+	db, err := sql.Open("sqlite", source)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +107,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	for _, result := range results {
-		slog.Info("migrated", "version", result.Source.Version, "file", result.Source.Path, "duration", result.Duration)
+		slog.Info(
+			"migrated",
+			"version", result.Source.Version,
+			"file", result.Source.Path,
+			"duration", result.Duration,
+		)
 	}
 	return nil
 }
@@ -136,18 +160,33 @@ func (s *Store) Notify() {
 	s.changed = make(chan struct{})
 }
 
-func addEvent(q *queries.Queries, action, repo string, item int64, actor Actor, data any) (int64, error) {
-	encoded, err := json.Marshal(data)
+func addEvent(
+	ctx context.Context,
+	q *queries.Queries,
+	action, repo string,
+	item int64,
+	actor Actor,
+	data any,
+) (int64, error) {
+	encoded, err := json.Marshal(data, storedJSON)
 	if err != nil {
 		return 0, err
 	}
-	return q.CreateEvent(context.Background(), queries.CreateEventParams{
-		At: now(), Action: action, Repo: repo, Item: item, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, Data: string(encoded),
+	return q.CreateEvent(ctx, queries.CreateEventParams{
+		At:      now(),
+		Action:  action,
+		Repo:    repo,
+		Item:    item,
+		User:    actor.User,
+		Via:     actor.Via,
+		Agent:   actor.Agent,
+		Session: actor.Session,
+		Data:    string(encoded),
 	})
 }
 
-func (s *Store) AddEvent(action, repo string, actor Actor, data any) (int64, error) {
-	id, err := addEvent(s.queries, action, repo, 0, actor, data)
+func (s *Store) AddEvent(ctx context.Context, action, repo string, actor Actor, data any) (int64, error) {
+	id, err := addEvent(ctx, s.queries, action, repo, 0, actor, data)
 	if err != nil {
 		return 0, err
 	}
@@ -155,8 +194,8 @@ func (s *Store) AddEvent(action, repo string, actor Actor, data any) (int64, err
 	return id, nil
 }
 
-func (s *Store) inTx(run func(q *queries.Queries) error) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+func (s *Store) inTx(ctx context.Context, run func(q *queries.Queries) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -181,22 +220,22 @@ func eventsFromRows(rows []queries.Event) []Event {
 			Repo:   row.Repo,
 			Item:   row.Item,
 			Actor:  Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
-			Data:   json.RawMessage(row.Data),
+			Data:   jsontext.Value(row.Data),
 		})
 	}
 	return events
 }
 
-func (s *Store) EventsAfter(id int64, limit int) ([]Event, error) {
-	rows, err := s.queries.ListEventsAfter(context.Background(), queries.ListEventsAfterParams{ID: id, Limit: int64(limit)})
+func (s *Store) EventsAfter(ctx context.Context, id int64, limit int) ([]Event, error) {
+	rows, err := s.queries.ListEventsAfter(ctx, queries.ListEventsAfterParams{ID: id, Limit: int64(limit)})
 	if err != nil {
 		return nil, err
 	}
 	return eventsFromRows(rows), nil
 }
 
-func (s *Store) ItemEvents(repo string, item int64) ([]Event, error) {
-	rows, err := s.queries.ListItemEvents(context.Background(), queries.ListItemEventsParams{Repo: repo, Item: item})
+func (s *Store) ItemEvents(ctx context.Context, repo string, item int64) ([]Event, error) {
+	rows, err := s.queries.ListItemEvents(ctx, queries.ListItemEventsParams{Repo: repo, Item: item})
 	if err != nil {
 		return nil, err
 	}
@@ -208,35 +247,44 @@ type WaitCursor struct {
 	EventID int64
 }
 
-func (s *Store) WaitCursors(repo string, item int64) ([]WaitCursor, error) {
-	rows, err := s.queries.ListWaitCursors(context.Background(), queries.ListWaitCursorsParams{Repo: repo, Item: item})
+func (s *Store) WaitCursors(ctx context.Context, repo string, item int64) ([]WaitCursor, error) {
+	rows, err := s.queries.ListWaitCursors(ctx, queries.ListWaitCursorsParams{Repo: repo, Item: item})
 	if err != nil {
 		return nil, err
 	}
 	cursors := []WaitCursor{}
 	for _, row := range rows {
-		cursors = append(cursors, WaitCursor{Actor: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, EventID: row.EventID})
+		cursors = append(cursors, WaitCursor{
+			Actor:   Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
+			EventID: row.EventID,
+		})
 	}
 	return cursors, nil
 }
 
-func (s *Store) SetWaitCursor(repo string, item int64, actor Actor, eventID int64) error {
-	return s.queries.SetWaitCursor(context.Background(), queries.SetWaitCursorParams{
-		Repo: repo, Item: item, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, EventID: eventID,
+func (s *Store) SetWaitCursor(ctx context.Context, repo string, item int64, actor Actor, eventID int64) error {
+	return s.queries.SetWaitCursor(ctx, queries.SetWaitCursorParams{
+		Repo:    repo,
+		Item:    item,
+		User:    actor.User,
+		Via:     actor.Via,
+		Agent:   actor.Agent,
+		Session: actor.Session,
+		EventID: eventID,
 	})
 }
 
-func (s *Store) LatestEventID() (int64, error) {
-	return s.queries.LatestEventID(context.Background())
+func (s *Store) LatestEventID(ctx context.Context) (int64, error) {
+	return s.queries.LatestEventID(ctx)
 }
 
-func (s *Store) Events(repo string, limit int) ([]Event, error) {
+func (s *Store) Events(ctx context.Context, repo string, limit int) ([]Event, error) {
 	var rows []queries.Event
 	var err error
 	if repo == "" {
-		rows, err = s.queries.ListEvents(context.Background(), int64(limit))
+		rows, err = s.queries.ListEvents(ctx, int64(limit))
 	} else {
-		rows, err = s.queries.ListRepoEvents(context.Background(), queries.ListRepoEventsParams{Repo: repo, Limit: int64(limit)})
+		rows, err = s.queries.ListRepoEvents(ctx, queries.ListRepoEventsParams{Repo: repo, Limit: int64(limit)})
 	}
 	if err != nil {
 		return nil, err
@@ -244,29 +292,41 @@ func (s *Store) Events(repo string, limit int) ([]Event, error) {
 	return eventsFromRows(rows), nil
 }
 
-func (s *Store) CreateRepo(name, description, createdBy string) (Repo, error) {
-	return s.queries.CreateRepo(context.Background(), queries.CreateRepoParams{Name: name, Description: description, CreatedAt: now(), CreatedBy: createdBy})
+func (s *Store) CreateRepo(ctx context.Context, name, description, createdBy string) (Repo, error) {
+	return s.queries.CreateRepo(ctx, queries.CreateRepoParams{
+		Name:        name,
+		Description: description,
+		CreatedAt:   now(),
+		CreatedBy:   createdBy,
+	})
 }
 
-func (s *Store) Repo(name string) (Repo, error) {
-	repo, err := s.queries.GetRepo(context.Background(), name)
+func (s *Store) Repo(ctx context.Context, name string) (Repo, error) {
+	repo, err := s.queries.GetRepo(ctx, name)
 	return repo, notFound(err)
 }
 
-func (s *Store) Repos() ([]Repo, error) {
-	repos, err := s.queries.ListRepos(context.Background())
+func (s *Store) Repos(ctx context.Context) ([]Repo, error) {
+	repos, err := s.queries.ListRepos(ctx)
 	if repos == nil {
 		repos = []Repo{}
 	}
 	return repos, err
 }
 
-func (s *Store) DeleteRepo(name string) error {
-	return deleted(s.queries.DeleteRepo(context.Background(), name))
+func (s *Store) DeleteRepo(ctx context.Context, name string) error {
+	return deleted(s.queries.DeleteRepo(ctx, name))
 }
 
 func tokenFromRow(row queries.Token) (Token, error) {
-	token := Token{ID: row.ID, Name: row.Name, User: row.User, Prefix: row.Prefix, Scope: row.Scope, CreatedAt: row.CreatedAt}
+	token := Token{
+		ID:        row.ID,
+		Name:      row.Name,
+		User:      row.User,
+		Prefix:    row.Prefix,
+		Scope:     row.Scope,
+		CreatedAt: row.CreatedAt,
+	}
 	if err := json.Unmarshal([]byte(row.Repos), &token.Repos); err != nil {
 		return token, err
 	}
@@ -279,8 +339,13 @@ func tokenFromRow(row queries.Token) (Token, error) {
 	return token, nil
 }
 
-func (s *Store) CreateToken(name, user, secret, scope string, repos []string, expiresAt *time.Time) (Token, error) {
-	encodedRepos, err := json.Marshal(repos)
+func (s *Store) CreateToken(
+	ctx context.Context,
+	name, user, secret, scope string,
+	repos []string,
+	expiresAt *time.Time,
+) (Token, error) {
+	encodedRepos, err := json.Marshal(repos, storedJSON)
 	if err != nil {
 		return Token{}, err
 	}
@@ -288,8 +353,15 @@ func (s *Store) CreateToken(name, user, secret, scope string, repos []string, ex
 	if expiresAt != nil {
 		expires = sql.NullTime{Time: expiresAt.UTC(), Valid: true}
 	}
-	row, err := s.queries.CreateToken(context.Background(), queries.CreateTokenParams{
-		Name: name, User: user, Hash: HashToken(secret), Prefix: secret[:12], Scope: scope, Repos: string(encodedRepos), CreatedAt: now(), ExpiresAt: expires,
+	row, err := s.queries.CreateToken(ctx, queries.CreateTokenParams{
+		Name:      name,
+		User:      user,
+		Hash:      HashToken(secret),
+		Prefix:    secret[:12],
+		Scope:     scope,
+		Repos:     string(encodedRepos),
+		CreatedAt: now(),
+		ExpiresAt: expires,
 	})
 	if err != nil {
 		return Token{}, err
@@ -297,16 +369,19 @@ func (s *Store) CreateToken(name, user, secret, scope string, repos []string, ex
 	return tokenFromRow(row)
 }
 
-func (s *Store) TokenBySecret(secret string) (Token, error) {
-	row, err := s.queries.UseToken(context.Background(), queries.UseTokenParams{LastUsedAt: sql.NullTime{Time: now(), Valid: true}, Hash: HashToken(secret)})
+func (s *Store) TokenBySecret(ctx context.Context, secret string) (Token, error) {
+	row, err := s.queries.UseToken(ctx, queries.UseTokenParams{
+		LastUsedAt: sql.NullTime{Time: now(), Valid: true},
+		Hash:       HashToken(secret),
+	})
 	if err != nil {
 		return Token{}, notFound(err)
 	}
 	return tokenFromRow(row)
 }
 
-func (s *Store) Tokens(user string) ([]Token, error) {
-	rows, err := s.queries.ListTokens(context.Background(), user)
+func (s *Store) Tokens(ctx context.Context, user string) ([]Token, error) {
+	rows, err := s.queries.ListTokens(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -321,28 +396,37 @@ func (s *Store) Tokens(user string) ([]Token, error) {
 	return tokens, nil
 }
 
-func (s *Store) TokenActive(id int64) (bool, error) {
-	count, err := s.queries.TokenActive(context.Background(), queries.TokenActiveParams{ID: id, ExpiresAt: sql.NullTime{Time: now(), Valid: true}})
+func (s *Store) TokenActive(ctx context.Context, id int64) (bool, error) {
+	count, err := s.queries.TokenActive(ctx, queries.TokenActiveParams{
+		ID:        id,
+		ExpiresAt: sql.NullTime{Time: now(), Valid: true},
+	})
 	return count > 0, err
 }
 
-func (s *Store) DeleteToken(user string, id int64) error {
-	return deleted(s.queries.DeleteToken(context.Background(), queries.DeleteTokenParams{User: user, ID: id}))
+func (s *Store) DeleteToken(ctx context.Context, user string, id int64) error {
+	return deleted(s.queries.DeleteToken(ctx, queries.DeleteTokenParams{User: user, ID: id}))
 }
 
-func (s *Store) CreateKey(key Key) (Key, error) {
-	return s.queries.CreateKey(context.Background(), queries.CreateKeyParams{
-		User: key.User, Title: key.Title, Agent: key.Agent, PublicKey: key.PublicKey, Fingerprint: key.Fingerprint, Signing: key.Signing, CreatedAt: now(),
+func (s *Store) CreateKey(ctx context.Context, key Key) (Key, error) {
+	return s.queries.CreateKey(ctx, queries.CreateKeyParams{
+		User:        key.User,
+		Title:       key.Title,
+		Agent:       key.Agent,
+		PublicKey:   key.PublicKey,
+		Fingerprint: key.Fingerprint,
+		Signing:     key.Signing,
+		CreatedAt:   now(),
 	})
 }
 
-func (s *Store) Keys(user string) ([]Key, error) {
+func (s *Store) Keys(ctx context.Context, user string) ([]Key, error) {
 	var keys []Key
 	var err error
 	if user == "" {
-		keys, err = s.queries.ListKeys(context.Background())
+		keys, err = s.queries.ListKeys(ctx)
 	} else {
-		keys, err = s.queries.ListUserKeys(context.Background(), user)
+		keys, err = s.queries.ListUserKeys(ctx, user)
 	}
 	if keys == nil {
 		keys = []Key{}
@@ -350,8 +434,8 @@ func (s *Store) Keys(user string) ([]Key, error) {
 	return keys, err
 }
 
-func (s *Store) DeleteKey(user string, id int64) error {
-	return deleted(s.queries.DeleteKey(context.Background(), queries.DeleteKeyParams{User: user, ID: id}))
+func (s *Store) DeleteKey(ctx context.Context, user string, id int64) error {
+	return deleted(s.queries.DeleteKey(ctx, queries.DeleteKeyParams{User: user, ID: id}))
 }
 
 func IsUniqueViolation(err error) bool {

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"path"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,126 +17,165 @@ import (
 	"github.com/muchobien/lyra/internal/store"
 )
 
-func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
-	}
-	var body struct {
-		Workflow string            `json:"workflow"`
-		Ref      string            `json:"ref"`
-		Inputs   map[string]string `json:"inputs"`
-	}
-	if !decodeBody(w, r, &body) {
-		return
-	}
-	dir := s.repoDir(repo.Name)
-	if body.Ref == "" {
-		body.Ref = s.git.DefaultBranch(dir)
-	}
-	ref, sha := "", ""
-	for _, candidate := range []string{"refs/heads/" + body.Ref, "refs/tags/" + body.Ref, body.Ref} {
-		if resolved, err := s.git.ResolveCommit(dir, candidate); err == nil && strings.HasPrefix(candidate, "refs/") {
-			ref, sha = candidate, resolved
-			break
+type dispatchRequest struct {
+	Workflow string            `json:"workflow"`
+	Ref      string            `json:"ref"`
+	Inputs   map[string]string `json:"inputs"`
+}
+
+func (s *Server) dispatchRef(ctx context.Context, dir, name string) (string, string, error) {
+	for _, candidate := range []string{"refs/heads/" + name, "refs/tags/" + name, name} {
+		if !strings.HasPrefix(candidate, "refs/") {
+			continue
+		}
+		if sha, err := s.git.ResolveCommit(ctx, dir, candidate); err == nil {
+			return candidate, sha, nil
 		}
 	}
-	if sha == "" {
-		writeError(w, http.StatusBadRequest, "no branch or tag "+body.Ref)
-		return
-	}
+	return "", "", badRequest("no branch or tag " + name)
+}
+
+func (s *Server) dispatchWorkflow(
+	ctx context.Context,
+	dir, sha string,
+	body dispatchRequest,
+) (string, *model.WorkflowDispatch, error) {
 	file := ""
-	for _, candidate := range workflowFiles(s.git, dir, sha) {
+	for _, candidate := range workflowFiles(ctx, s.git, dir, sha) {
 		if candidate == body.Workflow || path.Base(candidate) == body.Workflow {
 			file = candidate
 		}
 	}
 	if file == "" {
-		writeError(w, http.StatusNotFound, "no workflow "+body.Workflow+" at "+body.Ref)
-		return
+		return "", nil, notFound("no workflow " + body.Workflow + " at " + body.Ref)
 	}
-	content, err := s.git.Blob(dir, sha, file)
+	content, err := s.git.Blob(ctx, dir, sha, file)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return file, nil, err
 	}
 	workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, file+": "+err.Error())
-		return
+		return file, nil, badRequest(file + ": " + err.Error())
 	}
 	config := workflow.WorkflowDispatchConfig()
 	if config == nil {
-		writeError(w, http.StatusBadRequest, file+" has no workflow_dispatch trigger")
-		return
+		return file, nil, badRequest(file + " has no workflow_dispatch trigger")
+	}
+	return file, config, nil
+}
+
+func dispatchInput(name string, input model.WorkflowDispatchInput, given map[string]string) (string, error) {
+	value, present := given[name]
+	if !present {
+		value = input.Default
+	}
+	if !present && input.Required && input.Default == "" {
+		return "", badRequest("input " + name + " is required")
+	}
+	if input.Type == "boolean" && value != "" && value != "true" && value != "false" {
+		return "", badRequest("input " + name + " must be true or false")
+	}
+	if input.Type == "choice" && !slices.Contains(input.Options, value) {
+		return "", badRequest("input " + name + " must be one of " + strings.Join(input.Options, ", "))
+	}
+	return value, nil
+}
+
+func dispatchInputs(file string, config *model.WorkflowDispatch, given map[string]string) (map[string]any, error) {
+	for name := range given {
+		if _, known := config.Inputs[name]; !known {
+			return nil, badRequest(file + " has no input " + name)
+		}
 	}
 	inputs := map[string]any{}
-	for name := range body.Inputs {
-		if _, known := config.Inputs[name]; !known {
-			writeError(w, http.StatusBadRequest, file+" has no input "+name)
-			return
-		}
-	}
 	for name, input := range config.Inputs {
-		value, given := body.Inputs[name]
-		if !given {
-			value = input.Default
-		}
-		if !given && input.Required && input.Default == "" {
-			writeError(w, http.StatusBadRequest, "input "+name+" is required")
-			return
-		}
-		if input.Type == "boolean" && value != "" && value != "true" && value != "false" {
-			writeError(w, http.StatusBadRequest, "input "+name+" must be true or false")
-			return
-		}
-		if input.Type == "choice" && !slices.Contains(input.Options, value) {
-			writeError(w, http.StatusBadRequest, "input "+name+" must be one of "+strings.Join(input.Options, ", "))
-			return
+		value, err := dispatchInput(name, input, given)
+		if err != nil {
+			return nil, err
 		}
 		inputs[name] = value
 	}
-	runs, messages := queueTrigger(s.store, s.git, dir, repo.Name, identityFrom(r).actor, trigger{
-		event: "workflow_dispatch", ref: ref, sha: sha, file: file,
-		payload: map[string]any{"inputs": inputs, "ref": ref, "workflow": file},
-		matches: func(event *jobparser.Event) bool { return event.Name == "workflow_dispatch" },
+	return inputs, nil
+}
+
+func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
+	}
+	body, err := decodeBody[dispatchRequest](w, r)
+	if err != nil {
+		return err
+	}
+	dir := s.repoDir(repo.Name)
+	if body.Ref == "" {
+		body.Ref = s.git.DefaultBranch(ctx, dir)
+	}
+	ref, sha, err := s.dispatchRef(ctx, dir, body.Ref)
+	if err != nil {
+		return err
+	}
+	file, config, err := s.dispatchWorkflow(ctx, dir, sha, body)
+	if err != nil {
+		return err
+	}
+	inputs, err := dispatchInputs(file, config, body.Inputs)
+	if err != nil {
+		return err
+	}
+	runs, messages := s.queue(repo.Name, identityFrom(r).actor).trigger(ctx, trigger{
+		event:   eventDispatch,
+		ref:     ref,
+		sha:     sha,
+		file:    file,
+		payload: workflowEvent{Inputs: inputs, Ref: ref, Workflow: file},
+		matches: func(event *jobparser.Event) bool { return event.Name == eventDispatch },
 		options: []jobparser.ParseOption{jobparser.WithInputs(inputs)},
 	})
 	if len(runs) == 0 {
-		writeError(w, http.StatusBadRequest, strings.Join(messages, "; "))
-		return
+		return badRequest(strings.Join(messages, "; "))
 	}
-	run, err := s.store.Run(repo.Name, runs[0].Number)
+	run, err := s.store.Run(ctx, repo.Name, runs[0].Number)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusCreated, withStepNames(run))
+	return writeJSON(w, http.StatusCreated, withStepNames(run))
 }
 
 func matchesRelease(event *jobparser.Event, prerelease bool) bool {
 	types, typed := event.Acts()["types"]
-	if !typed {
+	if !typed || slices.Contains(types, "published") {
 		return true
 	}
-	return slices.Contains(types, "published") || slices.Contains(types, "released") && !prerelease || slices.Contains(types, "prereleased") && prerelease
+	if prerelease {
+		return slices.Contains(types, "prereleased")
+	}
+	return slices.Contains(types, "released")
 }
 
 func (s *Server) queueRelease(r *http.Request, release store.Release) []string {
 	if release.Draft || release.Commit == "" {
 		return nil
 	}
-	_, messages := queueTrigger(s.store, s.git, s.repoDir(release.Repo), release.Repo, identityFrom(r).actor, trigger{
-		event: "release", ref: "refs/tags/" + release.Tag, sha: release.Commit,
-		payload: map[string]any{
-			"action": "published",
-			"release": map[string]any{
-				"id": release.ID, "tag_name": release.Tag, "name": release.Title, "body": release.Notes,
-				"draft": release.Draft, "prerelease": release.Prerelease, "target_commitish": release.Commit,
+	_, messages := s.queue(release.Repo, identityFrom(r).actor).trigger(r.Context(), trigger{
+		event: eventRelease,
+		ref:   tagRef(release.Tag),
+		sha:   release.Commit,
+		payload: workflowEvent{
+			Action: "published",
+			Release: &releasePayload{
+				Body:            release.Notes,
+				Draft:           release.Draft,
+				ID:              release.ID,
+				Name:            release.Title,
+				Prerelease:      release.Prerelease,
+				TagName:         release.Tag,
+				TargetCommitish: release.Commit,
 			},
 		},
 		matches: func(event *jobparser.Event) bool {
-			return event.Name == "release" && matchesRelease(event, release.Prerelease)
+			return event.Name == eventRelease && matchesRelease(event, release.Prerelease)
 		},
 	})
 	return messages
@@ -151,66 +189,82 @@ func (s *Server) schedule(ctx context.Context) {
 			return
 		case <-time.After(time.Until(next)):
 		}
-		s.queueScheduled(next)
+		s.queueScheduled(ctx, next)
 	}
 }
 
-func (s *Server) queueScheduled(minute time.Time) {
+func dueCron(repo, file string, events []*jobparser.Event, minute time.Time) string {
+	due := ""
+	for _, event := range events {
+		for _, entry := range event.Schedules() {
+			parsed, err := cron.ParseStandard(entry["cron"])
+			if err != nil {
+				slog.Warn("schedule", "repo", repo, "workflow", file, "cron", entry["cron"], "error", err)
+				continue
+			}
+			if event.Name == eventSchedule && parsed.Next(minute.Add(-time.Second)).Equal(minute) {
+				due = entry["cron"]
+			}
+		}
+	}
+	return due
+}
+
+func (s *Server) scheduledCron(ctx context.Context, repo, sha, file string, minute time.Time) string {
+	content, err := s.git.Blob(ctx, s.repoDir(repo), sha, file)
+	if err != nil {
+		return ""
+	}
+	workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
+	if err != nil {
+		return ""
+	}
+	events, err := jobparser.ParseRawOn(&workflow.RawOn)
+	if err != nil {
+		return ""
+	}
+	return dueCron(repo, file, events, minute)
+}
+
+func (s *Server) queueRepoSchedules(ctx context.Context, repo string, minute time.Time) {
+	dir := s.repoDir(repo)
+	branch := s.git.DefaultBranch(ctx, dir)
+	sha, err := s.git.ResolveCommit(ctx, dir, "refs/heads/"+branch)
+	if err != nil {
+		return
+	}
+	queue := s.queue(repo, store.Actor{User: lyraUser, Via: "schedule"})
+	files := workflowFiles(ctx, s.git, dir, sha)
+	slices.Sort(files)
+	for _, file := range files {
+		due := s.scheduledCron(ctx, repo, sha, file, minute)
+		if due == "" {
+			continue
+		}
+		_, messages := queue.trigger(ctx, trigger{
+			event:   eventSchedule,
+			ref:     "refs/heads/" + branch,
+			sha:     sha,
+			file:    file,
+			payload: workflowEvent{Schedule: due},
+			matches: func(event *jobparser.Event) bool { return event.Name == eventSchedule },
+		})
+		slog.Info("schedule", "repo", repo, "workflow", file, "cron", due, "result", strings.Join(messages, "; "))
+	}
+}
+
+func (s *Server) queueScheduled(ctx context.Context, minute time.Time) {
 	if s.readOnly.Load() {
 		return
 	}
 	s.gate.RLock()
 	defer s.gate.RUnlock()
-	repos, err := s.store.Repos()
+	repos, err := s.store.Repos(ctx)
 	if err != nil {
 		slog.Error("schedule", "error", err)
 		return
 	}
-	actor := store.Actor{User: lyraUser, Via: "schedule"}
 	for _, repo := range repos {
-		dir := s.repoDir(repo.Name)
-		branch := s.git.DefaultBranch(dir)
-		sha, err := s.git.ResolveCommit(dir, "refs/heads/"+branch)
-		if err != nil {
-			continue
-		}
-		files := workflowFiles(s.git, dir, sha)
-		sort.Strings(files)
-		for _, file := range files {
-			content, err := s.git.Blob(dir, sha, file)
-			if err != nil {
-				continue
-			}
-			workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
-			if err != nil {
-				continue
-			}
-			events, err := jobparser.ParseRawOn(&workflow.RawOn)
-			if err != nil {
-				continue
-			}
-			due := ""
-			for _, event := range events {
-				for _, entry := range event.Schedules() {
-					parsed, err := cron.ParseStandard(entry["cron"])
-					if err != nil {
-						slog.Warn("schedule", "repo", repo.Name, "workflow", file, "cron", entry["cron"], "error", err)
-						continue
-					}
-					if event.Name == "schedule" && parsed.Next(minute.Add(-time.Second)).Equal(minute) {
-						due = entry["cron"]
-					}
-				}
-			}
-			if due == "" {
-				continue
-			}
-			_, messages := queueTrigger(s.store, s.git, dir, repo.Name, actor, trigger{
-				event: "schedule", ref: "refs/heads/" + branch, sha: sha, file: file,
-				payload: map[string]any{"schedule": due},
-				matches: func(event *jobparser.Event) bool { return event.Name == "schedule" },
-			})
-			slog.Info("schedule", "repo", repo.Name, "workflow", file, "cron", due, "result", strings.Join(messages, "; "))
-		}
+		s.queueRepoSchedules(ctx, repo.Name, minute)
 	}
 }

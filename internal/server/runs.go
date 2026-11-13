@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -13,6 +12,43 @@ import (
 	"github.com/muchobien/lyra/internal/store"
 )
 
+const (
+	statusWaiting   = "waiting"
+	statusBlocked   = "blocked"
+	statusRunning   = "running"
+	statusSuccess   = "success"
+	statusFailure   = "failure"
+	statusCancelled = "cancelled"
+	statusSkipped   = "skipped"
+
+	checksNone    = "none"
+	checksPending = "pending"
+	checksFailure = "failure"
+)
+
+var activeStatuses = []string{statusWaiting, statusBlocked, statusRunning}
+
+type runCancelled struct {
+	Cancelled int64 `json:"cancelled"`
+	EventID   int64 `json:"event_id"`
+}
+
+type runWrite struct {
+	store.Run
+	EventID int64 `json:"event_id"`
+}
+
+func stepName(step *jobparser.Step) string {
+	switch {
+	case step.Name != "":
+		return step.Name
+	case step.Uses != "":
+		return step.Uses
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(step.Run), "\n")
+	return "Run " + line
+}
+
 func stepNames(payload string) []string {
 	singles, err := jobparser.Parse([]byte(payload), false)
 	if err != nil || len(singles) != 1 {
@@ -21,173 +57,148 @@ func stepNames(payload string) []string {
 	_, job := singles[0].Job()
 	names := []string{}
 	for _, step := range job.Steps {
-		name := step.Name
-		switch {
-		case name != "":
-		case step.Uses != "":
-			name = step.Uses
-		default:
-			line, _, _ := strings.Cut(strings.TrimSpace(step.Run), "\n")
-			name = "Run " + line
-		}
-		names = append(names, name)
+		names = append(names, stepName(step))
 	}
 	return names
 }
 
 func withStepNames(run store.Run) store.Run {
 	for index, job := range run.Jobs {
-		names := stepNames(job.Payload)
-		for position, name := range names {
+		for position, name := range stepNames(job.Payload) {
 			if position < len(job.Steps) {
 				job.Steps[position].Name = name
-			} else {
-				job.Steps = append(job.Steps, store.TaskStep{ID: int64(position), Name: name})
+				continue
 			}
+			job.Steps = append(job.Steps, store.TaskStep{ID: int64(position), Name: name})
 		}
 		run.Jobs[index] = job
 	}
 	return run
 }
 
-func runNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func runNumber(r *http.Request) (int64, error) {
 	number, err := strconv.ParseInt(r.PathValue("number"), 10, 64)
 	if err != nil || number <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid run number "+r.PathValue("number"))
-		return 0, false
+		return 0, badRequest("invalid run number " + r.PathValue("number"))
 	}
-	return number, true
+	return number, nil
 }
 
-func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	limit, err := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
-	if err != nil || limit <= 0 || limit > 100 {
-		limit = 30
-	}
-	runs, err := s.store.Runs(repo.Name, limit)
+func runMissing(err error, number int64) error {
+	return missing(err, fmt.Sprintf("run #%d not found", number))
+}
+
+func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
+	}
+	runs, err := s.store.Runs(r.Context(), repo.Name, int64(queryLimit(r, 30, 100)))
+	if err != nil {
+		return err
 	}
 	for index := range runs {
 		runs[index] = withStepNames(runs[index])
 	}
-	writeJSON(w, http.StatusOK, runs)
+	return writeJSON(w, http.StatusOK, runs)
 }
 
-func (s *Server) lookupRun(w http.ResponseWriter, r *http.Request, scope string) (store.Run, bool) {
-	repo, ok := s.lookupRepo(w, r, scope)
-	if !ok {
-		return store.Run{}, false
-	}
-	number, ok := runNumber(w, r)
-	if !ok {
-		return store.Run{}, false
-	}
-	run, err := s.store.Run(repo.Name, number)
+func (s *Server) lookupRun(r *http.Request, scope string) (store.Run, error) {
+	repo, err := s.lookupRepo(r, scope)
 	if err != nil {
-		writeStoreError(w, err, fmt.Sprintf("run #%d not found", number))
-		return run, false
+		return store.Run{}, err
 	}
-	return withStepNames(run), true
+	number, err := runNumber(r)
+	if err != nil {
+		return store.Run{}, err
+	}
+	run, err := s.store.Run(r.Context(), repo.Name, number)
+	if err != nil {
+		return run, runMissing(err, number)
+	}
+	return withStepNames(run), nil
 }
 
-func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
-	run, ok := s.lookupRun(w, r, "read")
-	if !ok {
-		return
+func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) error {
+	run, err := s.lookupRun(r, scopeRead)
+	if err != nil {
+		return err
 	}
-	writeJSON(w, http.StatusOK, run)
+	return writeJSON(w, http.StatusOK, run)
 }
 
-func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) {
-	run, ok := s.lookupRun(w, r, "read")
-	if !ok {
-		return
+func (s *Server) jobLog(r *http.Request, job store.Job, offset int64) ([]store.LogLine, bool, error) {
+	done := !slices.Contains(activeStatuses, job.Status)
+	if job.TaskID == 0 {
+		return []store.LogLine{}, done, nil
+	}
+	task, _, err := s.store.Task(r.Context(), job.TaskID)
+	if err != nil {
+		return nil, false, err
+	}
+	lines, err := s.readLog(r.Context(), task, offset)
+	return lines, done && (task.LogObject != "" || task.Status != statusRunning), err
+}
+
+func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) error {
+	run, err := s.lookupRun(r, scopeRead)
+	if err != nil {
+		return err
 	}
 	jobID, err := strconv.ParseInt(r.PathValue("job"), 10, 64)
 	index := slices.IndexFunc(run.Jobs, func(job store.Job) bool { return job.ID == jobID })
 	if err != nil || index < 0 {
-		writeError(w, http.StatusNotFound, "job "+r.PathValue("job")+" not found in run #"+fmt.Sprint(run.Number))
-		return
+		return notFound("job " + r.PathValue("job") + " not found in run #" + fmt.Sprint(run.Number))
 	}
-	job := run.Jobs[index]
 	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
-	lines := []store.LogLine{}
-	done := !slices.Contains([]string{"waiting", "blocked", "running"}, job.Status)
-	if job.TaskID != 0 {
-		task, _, err := s.store.Task(job.TaskID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if lines, err = readLog(r.Context(), s, task, max(offset, 0)); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		done = done && (task.LogObject != "" || task.Status != "running")
+	offset = max(offset, 0)
+	lines, done, err := s.jobLog(r, run.Jobs[index], offset)
+	if err != nil {
+		return err
 	}
-	next := max(offset, 0) + int64(len(lines))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Lyra-Log-Next", fmt.Sprint(next))
+	w.Header().Set("Lyra-Log-Next", fmt.Sprint(offset+int64(len(lines))))
 	w.Header().Set("Lyra-Log-Done", strconv.FormatBool(done))
 	for _, line := range lines {
 		fmt.Fprintln(w, line.Content)
 	}
+	return nil
 }
 
-func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
-	}
-	number, ok := runNumber(w, r)
-	if !ok {
-		return
-	}
-	eventID, err := s.store.CancelRun(identityFrom(r).actor, repo.Name, number)
-	var invalid store.InvalidError
-	if errors.As(err, &invalid) {
-		writeError(w, http.StatusConflict, invalid.Error())
-		return
-	}
+func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		writeStoreError(w, err, fmt.Sprintf("run #%d not found", number))
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"cancelled": number, "event_id": eventID})
+	number, err := runNumber(r)
+	if err != nil {
+		return err
+	}
+	eventID, err := s.store.CancelRun(r.Context(), identityFrom(r).actor, repo.Name, number)
+	if err != nil {
+		return runMissing(invalidAsConflict(err), number)
+	}
+	return writeJSON(w, http.StatusOK, runCancelled{Cancelled: number, EventID: eventID})
 }
 
-func (s *Server) handleRerunRun(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
-	}
-	number, ok := runNumber(w, r)
-	if !ok {
-		return
-	}
-	eventID, err := s.store.RerunRun(identityFrom(r).actor, repo.Name, number, r.URL.Query().Get("failed") == "true")
-	var invalid store.InvalidError
-	if errors.As(err, &invalid) {
-		writeError(w, http.StatusConflict, invalid.Error())
-		return
-	}
+func (s *Server) handleRerunRun(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		writeStoreError(w, err, fmt.Sprintf("run #%d not found", number))
-		return
+		return err
 	}
-	run, err := s.store.Run(repo.Name, number)
+	number, err := runNumber(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, struct {
-		store.Run
-		EventID int64 `json:"event_id"`
-	}{withStepNames(run), eventID})
+	failedOnly := r.URL.Query().Get("failed") == "true"
+	eventID, err := s.store.RerunRun(ctx, identityFrom(r).actor, repo.Name, number, failedOnly)
+	if err != nil {
+		return runMissing(invalidAsConflict(err), number)
+	}
+	run, err := s.store.Run(ctx, repo.Name, number)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, runWrite{Run: withStepNames(run), EventID: eventID})
 }

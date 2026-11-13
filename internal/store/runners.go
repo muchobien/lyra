@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/muchobien/lyra/internal/store/queries"
@@ -30,14 +30,36 @@ type Runner struct {
 	TokenHash  string     `json:"-"`
 }
 
+type idEvent struct {
+	ID int64 `json:"id"`
+}
+
+type runnerTokenCreatedEvent struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type runnerRegisteredEvent struct {
+	Ephemeral bool   `json:"ephemeral"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+}
+
 func runnerTokenFromRow(row queries.RunnerToken) RunnerToken {
 	return RunnerToken{ID: row.ID, Name: row.Name, Prefix: row.Prefix, User: row.User, CreatedAt: row.CreatedAt}
 }
 
 func runnerFromRow(row queries.Runner) (Runner, error) {
 	runner := Runner{
-		ID: row.ID, UUID: row.Uuid, Name: row.Name, Version: row.Version, Ephemeral: row.Ephemeral, User: row.User,
-		CreatedAt: row.CreatedAt, TokenHash: row.TokenHash,
+		ID:        row.ID,
+		UUID:      row.Uuid,
+		Name:      row.Name,
+		Version:   row.Version,
+		Ephemeral: row.Ephemeral,
+		User:      row.User,
+		CreatedAt: row.CreatedAt,
+		TokenHash: row.TokenHash,
 	}
 	if row.LastSeenAt.Valid {
 		runner.LastSeenAt = &row.LastSeenAt.Time
@@ -45,33 +67,38 @@ func runnerFromRow(row queries.Runner) (Runner, error) {
 	return runner, json.Unmarshal([]byte(row.Labels), &runner.Labels)
 }
 
-func (s *Store) CreateRunnerToken(actor Actor, name, secret string) (RunnerToken, int64, error) {
+func (s *Store) CreateRunnerToken(ctx context.Context, actor Actor, name, secret string) (RunnerToken, int64, error) {
 	var created RunnerToken
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		row, err := q.CreateRunnerToken(context.Background(), queries.CreateRunnerTokenParams{
-			Name: name, Hash: HashToken(secret), Prefix: secret[:8], User: actor.User, CreatedAt: now(),
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := q.CreateRunnerToken(ctx, queries.CreateRunnerTokenParams{
+			Name:      name,
+			Hash:      HashToken(secret),
+			Prefix:    secret[:8],
+			User:      actor.User,
+			CreatedAt: now(),
 		})
 		if err != nil {
 			return err
 		}
 		created = runnerTokenFromRow(row)
-		eventID, err = addEvent(q, "runner.token.create", "", 0, actor, map[string]any{"id": created.ID, "name": created.Name})
+		data := runnerTokenCreatedEvent{ID: created.ID, Name: created.Name}
+		eventID, err = addEvent(ctx, q, "runner.token.create", "", 0, actor, data)
 		return err
 	})
 	return created, eventID, err
 }
 
-func (s *Store) RunnerTokenBySecret(secret string) (RunnerToken, error) {
-	row, err := s.queries.GetRunnerTokenByHash(context.Background(), HashToken(secret))
+func (s *Store) RunnerTokenBySecret(ctx context.Context, secret string) (RunnerToken, error) {
+	row, err := s.queries.GetRunnerTokenByHash(ctx, HashToken(secret))
 	if err != nil {
 		return RunnerToken{}, notFound(err)
 	}
 	return runnerTokenFromRow(row), nil
 }
 
-func (s *Store) RunnerTokens() ([]RunnerToken, error) {
-	rows, err := s.queries.ListRunnerTokens(context.Background())
+func (s *Store) RunnerTokens(ctx context.Context) ([]RunnerToken, error) {
+	rows, err := s.queries.ListRunnerTokens(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -82,26 +109,38 @@ func (s *Store) RunnerTokens() ([]RunnerToken, error) {
 	return tokens, nil
 }
 
-func (s *Store) DeleteRunnerToken(actor Actor, id int64) (int64, error) {
+func (s *Store) DeleteRunnerToken(ctx context.Context, actor Actor, id int64) (int64, error) {
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		if err := deleted(q.DeleteRunnerToken(context.Background(), id)); err != nil {
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		if err := deleted(q.DeleteRunnerToken(ctx, id)); err != nil {
 			return err
 		}
 		var err error
-		eventID, err = addEvent(q, "runner.token.delete", "", 0, actor, map[string]any{"id": id})
+		eventID, err = addEvent(ctx, q, "runner.token.delete", "", 0, actor, idEvent{ID: id})
 		return err
 	})
 	return eventID, err
 }
 
-func (s *Store) CreateRunner(actor Actor, runner Runner, secret string, registrationToken int64) (Runner, error) {
+func (s *Store) CreateRunner(
+	ctx context.Context,
+	actor Actor,
+	runner Runner,
+	secret string,
+	registrationToken int64,
+) (Runner, error) {
 	var created Runner
-	err := s.inTx(func(q *queries.Queries) error {
-		row, err := q.CreateRunner(context.Background(), queries.CreateRunnerParams{
-			Uuid: runner.UUID, TokenHash: HashToken(secret), Name: runner.Name, Version: runner.Version, Ephemeral: runner.Ephemeral,
-			RegistrationTokenID: sql.NullInt64{Int64: registrationToken, Valid: registrationToken != 0}, User: actor.User, CreatedAt: now(),
-			LastSeenAt: sql.NullTime{Time: now(), Valid: true},
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := q.CreateRunner(ctx, queries.CreateRunnerParams{
+			Uuid:                runner.UUID,
+			TokenHash:           HashToken(secret),
+			Name:                runner.Name,
+			Version:             runner.Version,
+			Ephemeral:           runner.Ephemeral,
+			RegistrationTokenID: sql.NullInt64{Int64: registrationToken, Valid: registrationToken != 0},
+			User:                actor.User,
+			CreatedAt:           now(),
+			LastSeenAt:          sql.NullTime{Time: now(), Valid: true},
 		})
 		if err != nil {
 			return err
@@ -109,29 +148,35 @@ func (s *Store) CreateRunner(actor Actor, runner Runner, secret string, registra
 		if created, err = runnerFromRow(row); err != nil {
 			return err
 		}
-		_, err = addEvent(q, "runner.register", "", 0, actor, map[string]any{
-			"id": created.ID, "name": created.Name, "version": created.Version, "ephemeral": created.Ephemeral,
+		_, err = addEvent(ctx, q, "runner.register", "", 0, actor, runnerRegisteredEvent{
+			Ephemeral: created.Ephemeral,
+			ID:        created.ID,
+			Name:      created.Name,
+			Version:   created.Version,
 		})
 		return err
 	})
 	return created, err
 }
 
-func (s *Store) RunnerByUUID(uuid string) (Runner, error) {
-	row, err := s.queries.GetRunnerByUUID(context.Background(), uuid)
+func (s *Store) RunnerByUUID(ctx context.Context, uuid string) (Runner, error) {
+	row, err := s.queries.GetRunnerByUUID(ctx, uuid)
 	if err != nil {
 		return Runner{}, notFound(err)
 	}
 	return runnerFromRow(row)
 }
 
-func (s *Store) DeclareRunner(id int64, labels []string, version string) (Runner, error) {
-	encoded, err := json.Marshal(labels)
+func (s *Store) DeclareRunner(ctx context.Context, id int64, labels []string, version string) (Runner, error) {
+	encoded, err := json.Marshal(labels, storedJSON)
 	if err != nil {
 		return Runner{}, err
 	}
-	row, err := s.queries.DeclareRunner(context.Background(), queries.DeclareRunnerParams{
-		Labels: string(encoded), Version: version, LastSeenAt: sql.NullTime{Time: now(), Valid: true}, ID: id,
+	row, err := s.queries.DeclareRunner(ctx, queries.DeclareRunnerParams{
+		Labels:     string(encoded),
+		Version:    version,
+		LastSeenAt: sql.NullTime{Time: now(), Valid: true},
+		ID:         id,
 	})
 	if err != nil {
 		return Runner{}, notFound(err)
@@ -139,12 +184,15 @@ func (s *Store) DeclareRunner(id int64, labels []string, version string) (Runner
 	return runnerFromRow(row)
 }
 
-func (s *Store) TouchRunner(id int64) error {
-	return s.queries.TouchRunner(context.Background(), queries.TouchRunnerParams{LastSeenAt: sql.NullTime{Time: now(), Valid: true}, ID: id})
+func (s *Store) TouchRunner(ctx context.Context, id int64) error {
+	return s.queries.TouchRunner(ctx, queries.TouchRunnerParams{
+		LastSeenAt: sql.NullTime{Time: now(), Valid: true},
+		ID:         id,
+	})
 }
 
-func (s *Store) Runners() ([]Runner, error) {
-	rows, err := s.queries.ListRunners(context.Background())
+func (s *Store) Runners(ctx context.Context) ([]Runner, error) {
+	rows, err := s.queries.ListRunners(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -159,14 +207,14 @@ func (s *Store) Runners() ([]Runner, error) {
 	return runners, nil
 }
 
-func (s *Store) DeleteRunner(actor Actor, id int64) (int64, error) {
+func (s *Store) DeleteRunner(ctx context.Context, actor Actor, id int64) (int64, error) {
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		if err := deleted(q.DeleteRunner(context.Background(), id)); err != nil {
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		if err := deleted(q.DeleteRunner(ctx, id)); err != nil {
 			return err
 		}
 		var err error
-		eventID, err = addEvent(q, "runner.delete", "", 0, actor, map[string]any{"id": id})
+		eventID, err = addEvent(ctx, q, "runner.delete", "", 0, actor, idEvent{ID: id})
 		return err
 	})
 	return eventID, err

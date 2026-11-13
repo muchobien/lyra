@@ -3,55 +3,136 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
+	"encoding/json/v2"
 	"fmt"
-	"io"
 	"log/slog"
 	"path"
 	"slices"
 	"strings"
-	"time"
 
-	runnerv1 "code.forgejo.org/forgejo/actions-proto/runner/v1"
 	"code.forgejo.org/forgejo/runner/v13/act/jobparser"
 	"code.forgejo.org/forgejo/runner/v13/act/model"
 	"code.forgejo.org/forgejo/runner/v13/act/workflowpattern"
-	"connectrpc.com/connect"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
 
+const (
+	eventPush        = "push"
+	eventPullRequest = "pull_request"
+	eventDispatch    = "workflow_dispatch"
+	eventRelease     = "release"
+	eventSchedule    = "schedule"
+)
+
 var workflowDirs = []string{".forgejo/workflows", ".github/workflows"}
 
-var resultNames = map[runnerv1.Result]string{
-	runnerv1.Result_RESULT_SUCCESS:   "success",
-	runnerv1.Result_RESULT_FAILURE:   "failure",
-	runnerv1.Result_RESULT_CANCELLED: "cancelled",
-	runnerv1.Result_RESULT_SKIPPED:   "skipped",
+var defaultPullTypes = []string{"opened", "synchronize", "reopened"}
+
+type loginPayload struct {
+	Login    string `json:"login"`
+	Username string `json:"username"`
 }
 
-func resultValue(name string) runnerv1.Result {
-	for value, known := range resultNames {
-		if known == name {
-			return value
-		}
-	}
-	return runnerv1.Result_RESULT_UNSPECIFIED
+type repositoryPayload struct {
+	DefaultBranch string       `json:"default_branch"`
+	FullName      string       `json:"full_name"`
+	Name          string       `json:"name"`
+	Owner         loginPayload `json:"owner"`
 }
 
-func workflowFiles(git repos.Git, dir, sha string) []string {
+type headCommitPayload struct {
+	ID        string `json:"id"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
+type pusherPayload struct {
+	Name     string `json:"name"`
+	Username string `json:"username"`
+}
+
+type repoNamePayload struct {
+	FullName string `json:"full_name"`
+}
+
+type branchPayload struct {
+	Ref  string          `json:"ref"`
+	Repo repoNamePayload `json:"repo"`
+	SHA  string          `json:"sha"`
+}
+
+type pullRequestPayload struct {
+	Base   branchPayload `json:"base"`
+	Body   string        `json:"body"`
+	Head   branchPayload `json:"head"`
+	Number int64         `json:"number"`
+	State  string        `json:"state"`
+	Title  string        `json:"title"`
+}
+
+type releasePayload struct {
+	Body            string `json:"body"`
+	Draft           bool   `json:"draft"`
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	Prerelease      bool   `json:"prerelease"`
+	TagName         string `json:"tag_name"`
+	TargetCommitish string `json:"target_commitish"`
+}
+
+type workflowEvent struct {
+	Action      string              `json:"action,omitempty"`
+	After       string              `json:"after,omitempty"`
+	Before      string              `json:"before,omitempty"`
+	HeadCommit  *headCommitPayload  `json:"head_commit,omitempty"`
+	Inputs      map[string]any      `json:"inputs,omitzero"`
+	Number      int64               `json:"number,omitzero"`
+	PullRequest *pullRequestPayload `json:"pull_request,omitempty"`
+	Pusher      *pusherPayload      `json:"pusher,omitempty"`
+	Ref         string              `json:"ref,omitempty"`
+	Release     *releasePayload     `json:"release,omitempty"`
+	Repository  repositoryPayload   `json:"repository"`
+	Schedule    string              `json:"schedule,omitempty"`
+	Sender      loginPayload        `json:"sender"`
+	Workflow    string              `json:"workflow,omitempty"`
+}
+
+type trigger struct {
+	event   string
+	ref     string
+	sha     string
+	pull    int64
+	headRef string
+	baseRef string
+	payload workflowEvent
+	matches func(*jobparser.Event) bool
+	file    string
+	options []jobparser.ParseOption
+}
+
+type workflowQueue struct {
+	db    *store.Store
+	git   repos.Git
+	dir   string
+	repo  string
+	actor store.Actor
+}
+
+func isWorkflowFile(entry repos.Entry) bool {
+	return entry.Type == "blob" && (strings.HasSuffix(entry.Name, ".yml") || strings.HasSuffix(entry.Name, ".yaml"))
+}
+
+func workflowFiles(ctx context.Context, git repos.Git, dir, sha string) []string {
 	for _, workflowDir := range workflowDirs {
-		entries, err := git.Tree(dir, sha, workflowDir)
+		entries, err := git.Tree(ctx, dir, sha, workflowDir)
 		if err != nil {
 			continue
 		}
 		files := []string{}
 		for _, entry := range entries {
-			if entry.Type == "blob" && (strings.HasSuffix(entry.Name, ".yml") || strings.HasSuffix(entry.Name, ".yaml")) {
+			if isWorkflowFile(entry) {
 				files = append(files, workflowDir+"/"+entry.Name)
 			}
 		}
@@ -60,18 +141,20 @@ func workflowFiles(git repos.Git, dir, sha string) []string {
 	return nil
 }
 
+func hasAny(acts map[string][]string, names ...string) bool {
+	return slices.ContainsFunc(names, func(name string) bool {
+		_, present := acts[name]
+		return present
+	})
+}
+
 func matchesPush(event *jobparser.Event, ref string, changed []string) bool {
 	branch, isBranch := strings.CutPrefix(ref, "refs/heads/")
 	tag, isTag := strings.CutPrefix(ref, "refs/tags/")
 	acts := event.Acts()
-	_, branches := acts["branches"]
-	_, branchesIgnore := acts["branches-ignore"]
-	_, tags := acts["tags"]
-	_, tagsIgnore := acts["tags-ignore"]
-	if (branches || branchesIgnore) && !(tags || tagsIgnore) && !isBranch {
-		return false
-	}
-	if (tags || tagsIgnore) && !(branches || branchesIgnore) && !isTag {
+	branches := hasAny(acts, "branches", "branches-ignore")
+	tags := hasAny(acts, "tags", "tags-ignore")
+	if (branches && !tags && !isBranch) || (tags && !branches && !isTag) {
 		return false
 	}
 	trace := &workflowpattern.EmptyTraceWriter{}
@@ -98,147 +181,11 @@ func matchesPush(event *jobparser.Event, ref string, changed []string) bool {
 	return true
 }
 
-type trigger struct {
-	event   string
-	ref     string
-	sha     string
-	pull    int64
-	headRef string
-	baseRef string
-	payload map[string]any
-	matches func(*jobparser.Event) bool
-	file    string
-	options []jobparser.ParseOption
-}
-
-func repositoryPayload(git repos.Git, dir, repo string) map[string]any {
-	owner, name, _ := strings.Cut(repo, "/")
-	return map[string]any{
-		"full_name": repo, "name": name, "owner": map[string]any{"login": owner, "username": owner}, "default_branch": git.DefaultBranch(dir),
-	}
-}
-
-func changedFiles(git repos.Git, dir, from, to string) []string {
-	files, err := git.DiffFiles(dir, from, to)
-	if err != nil {
-		return nil
-	}
-	changed := []string{}
-	for _, file := range files {
-		changed = append(changed, file.Path)
-	}
-	return changed
-}
-
-func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, cause trigger) ([]store.Run, []string) {
-	messages := []string{}
-	runs := []store.Run{}
-	commit, err := git.Commit(dir, cause.sha)
-	if err != nil {
-		return runs, append(messages, "actions: "+err.Error())
-	}
-	cause.payload["repository"] = repositoryPayload(git, dir, repo)
-	cause.payload["sender"] = map[string]any{"login": actor.User, "username": actor.User}
-	payload, err := json.Marshal(cause.payload)
-	if err != nil {
-		return runs, append(messages, "actions: "+err.Error())
-	}
-	for _, file := range workflowFiles(git, dir, cause.sha) {
-		if cause.file != "" && file != cause.file {
-			continue
-		}
-		content, err := git.Blob(dir, cause.sha, file)
-		if err != nil {
-			messages = append(messages, file+": "+err.Error())
-			continue
-		}
-		workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
-		if err != nil {
-			messages = append(messages, file+": "+err.Error())
-			continue
-		}
-		events, err := jobparser.ParseRawOn(&workflow.RawOn)
-		if err != nil {
-			messages = append(messages, file+": "+err.Error())
-			continue
-		}
-		if !slices.ContainsFunc(events, cause.matches) {
-			continue
-		}
-		singles, err := jobparser.Parse(content, false, cause.options...)
-		if err != nil {
-			messages = append(messages, file+": "+err.Error())
-			continue
-		}
-		jobs := []store.Job{}
-		for _, single := range singles {
-			key, job := single.Job()
-			encoded, err := single.Marshal()
-			if err != nil {
-				return runs, append(messages, file+": "+err.Error())
-			}
-			jobName := job.Name
-			if jobName == "" {
-				jobName = key
-			}
-			jobs = append(jobs, store.Job{
-				Key: key, Name: jobName, Needs: job.Needs(), RunsOn: job.RunsOn(), Conditional: job.If.Value != "", Payload: string(encoded),
-			})
-		}
-		runName := workflow.Name
-		if runName == "" {
-			runName = path.Base(file)
-		}
-		run, _, err := db.CreateRun(actor, store.Run{
-			Repo: repo, Workflow: file, Name: runName, Title: commit.Subject, Event: cause.event, Ref: cause.ref, SHA: cause.sha,
-			Payload: string(payload), Pull: cause.pull, HeadRef: cause.headRef, BaseRef: cause.baseRef,
-		}, jobs)
-		if err != nil {
-			messages = append(messages, file+": "+err.Error())
-			continue
-		}
-		messages = append(messages, fmt.Sprintf("queued run #%d (%s)", run.Number, runName))
-		runs = append(runs, run)
-	}
-	return runs, messages
-}
-
-func QueueRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, updates []RefUpdate) []string {
-	messages := []string{}
-	for _, update := range updates {
-		if zeroSHA(update.New) || !(strings.HasPrefix(update.Ref, "refs/heads/") || strings.HasPrefix(update.Ref, "refs/tags/")) {
-			continue
-		}
-		var changed []string
-		if !zeroSHA(update.Old) {
-			changed = changedFiles(git, dir, update.Old, update.New)
-		}
-		commit, err := git.Commit(dir, update.New)
-		if err != nil {
-			messages = append(messages, "actions: "+err.Error())
-			continue
-		}
-		_, queued := queueTrigger(db, git, dir, repo, actor, trigger{
-			event: "push", ref: update.Ref, sha: update.New,
-			payload: map[string]any{
-				"ref": update.Ref, "before": update.Old, "after": update.New,
-				"head_commit": map[string]any{"id": commit.SHA, "message": strings.TrimSpace(commit.Subject + "\n\n" + commit.Body), "timestamp": commit.Committer.Date},
-				"pusher":      map[string]any{"name": actor.User, "username": actor.User},
-			},
-			matches: func(event *jobparser.Event) bool {
-				return event.Name == "push" && matchesPush(event, update.Ref, changed)
-			},
-		})
-		messages = append(messages, queued...)
-	}
-	return messages
-}
-
 func matchesPull(event *jobparser.Event, action, base string, changed []string) bool {
 	acts := event.Acts()
 	types, typed := acts["types"]
 	if !typed {
-		types = []string{"opened", "synchronize", "reopened"}
+		types = defaultPullTypes
 	}
 	if !slices.Contains(types, action) {
 		return false
@@ -263,253 +210,274 @@ func matchesPull(event *jobparser.Event, action, base string, changed []string) 
 	return true
 }
 
-func QueuePullRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, pull store.Pull, action string) []string {
-	changed := changedFiles(git, dir, pull.BaseSHA, pull.HeadSHA)
-	ref := fmt.Sprintf("refs/pull/%d/head", pull.Number)
-	_, messages := queueTrigger(db, git, dir, repo, actor, trigger{
-		event: "pull_request", ref: ref, sha: pull.HeadSHA, pull: pull.Number, headRef: pull.Head, baseRef: pull.Base,
-		payload: map[string]any{
-			"action": action, "number": pull.Number,
-			"pull_request": map[string]any{
-				"number": pull.Number, "title": pull.Title, "body": pull.Body, "state": pull.State,
-				"head": map[string]any{"ref": pull.Head, "sha": pull.HeadSHA, "repo": map[string]any{"full_name": repo}},
-				"base": map[string]any{"ref": pull.Base, "sha": pull.BaseSHA, "repo": map[string]any{"full_name": repo}},
+func changedFiles(ctx context.Context, git repos.Git, dir, from, to string) []string {
+	files, err := git.DiffFiles(ctx, dir, from, to)
+	if err != nil {
+		return nil
+	}
+	changed := []string{}
+	for _, file := range files {
+		changed = append(changed, file.Path)
+	}
+	return changed
+}
+
+func workflowJobs(content []byte, options []jobparser.ParseOption) ([]store.Job, error) {
+	singles, err := jobparser.Parse(content, false, options...)
+	if err != nil {
+		return nil, err
+	}
+	jobs := []store.Job{}
+	for _, single := range singles {
+		key, job := single.Job()
+		encoded, err := single.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		name := job.Name
+		if name == "" {
+			name = key
+		}
+		jobs = append(jobs, store.Job{
+			Key:         key,
+			Name:        name,
+			Needs:       job.Needs(),
+			RunsOn:      job.RunsOn(),
+			Conditional: job.If.Value != "",
+			Payload:     string(encoded),
+		})
+	}
+	return jobs, nil
+}
+
+func (queue workflowQueue) parse(ctx context.Context, cause trigger, file string) (string, []store.Job, error) {
+	content, err := queue.git.Blob(ctx, queue.dir, cause.sha, file)
+	if err != nil {
+		return "", nil, err
+	}
+	workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
+	if err != nil {
+		return "", nil, err
+	}
+	events, err := jobparser.ParseRawOn(&workflow.RawOn)
+	if err != nil {
+		return "", nil, err
+	}
+	if !slices.ContainsFunc(events, cause.matches) {
+		return "", nil, nil
+	}
+	name := workflow.Name
+	if name == "" {
+		name = path.Base(file)
+	}
+	jobs, err := workflowJobs(content, cause.options)
+	return name, jobs, err
+}
+
+func (queue workflowQueue) trigger(ctx context.Context, cause trigger) ([]store.Run, []string) {
+	runs, messages := []store.Run{}, []string{}
+	commit, err := queue.git.Commit(ctx, queue.dir, cause.sha)
+	if err != nil {
+		return runs, append(messages, "actions: "+err.Error())
+	}
+	owner, name, _ := strings.Cut(queue.repo, "/")
+	cause.payload.Repository = repositoryPayload{
+		DefaultBranch: queue.git.DefaultBranch(ctx, queue.dir),
+		FullName:      queue.repo,
+		Name:          name,
+		Owner:         loginPayload{Login: owner, Username: owner},
+	}
+	cause.payload.Sender = loginPayload{Login: queue.actor.User, Username: queue.actor.User}
+	payload, err := json.Marshal(cause.payload, json.Deterministic(true))
+	if err != nil {
+		return runs, append(messages, "actions: "+err.Error())
+	}
+	for _, file := range workflowFiles(ctx, queue.git, queue.dir, cause.sha) {
+		if cause.file != "" && file != cause.file {
+			continue
+		}
+		runName, jobs, err := queue.parse(ctx, cause, file)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		if jobs == nil {
+			continue
+		}
+		run, _, err := queue.db.CreateRun(ctx, queue.actor, store.Run{
+			Repo:     queue.repo,
+			Workflow: file,
+			Name:     runName,
+			Title:    commit.Subject,
+			Event:    cause.event,
+			Ref:      cause.ref,
+			SHA:      cause.sha,
+			Payload:  string(payload),
+			Pull:     cause.pull,
+			HeadRef:  cause.headRef,
+			BaseRef:  cause.baseRef,
+		}, jobs)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		messages = append(messages, fmt.Sprintf("queued run #%d (%s)", run.Number, runName))
+		runs = append(runs, run)
+	}
+	return runs, messages
+}
+
+func isBranchOrTag(ref string) bool {
+	return strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/")
+}
+
+func (queue workflowQueue) push(ctx context.Context, update RefUpdate) []string {
+	var changed []string
+	if !zeroSHA(update.Old) {
+		changed = changedFiles(ctx, queue.git, queue.dir, update.Old, update.New)
+	}
+	commit, err := queue.git.Commit(ctx, queue.dir, update.New)
+	if err != nil {
+		return []string{"actions: " + err.Error()}
+	}
+	_, queued := queue.trigger(ctx, trigger{
+		event: eventPush,
+		ref:   update.Ref,
+		sha:   update.New,
+		payload: workflowEvent{
+			After:  update.New,
+			Before: update.Old,
+			HeadCommit: &headCommitPayload{
+				ID:        commit.SHA,
+				Message:   strings.TrimSpace(commit.Subject + "\n\n" + commit.Body),
+				Timestamp: commit.Committer.Date,
+			},
+			Pusher: &pusherPayload{Name: queue.actor.User, Username: queue.actor.User},
+			Ref:    update.Ref,
+		},
+		matches: func(event *jobparser.Event) bool {
+			return event.Name == eventPush && matchesPush(event, update.Ref, changed)
+		},
+	})
+	return queued
+}
+
+func QueueRuns(
+	ctx context.Context,
+	db *store.Store,
+	git repos.Git,
+	dir, repo string,
+	actor store.Actor,
+	updates []RefUpdate,
+) []string {
+	queue := workflowQueue{db: db, git: git, dir: dir, repo: repo, actor: actor}
+	messages := []string{}
+	for _, update := range updates {
+		if zeroSHA(update.New) || !isBranchOrTag(update.Ref) {
+			continue
+		}
+		messages = append(messages, queue.push(ctx, update)...)
+	}
+	return messages
+}
+
+func QueuePullRuns(
+	ctx context.Context,
+	db *store.Store,
+	git repos.Git,
+	dir, repo string,
+	actor store.Actor,
+	pull store.Pull,
+	action string,
+) []string {
+	queue := workflowQueue{db: db, git: git, dir: dir, repo: repo, actor: actor}
+	changed := changedFiles(ctx, git, dir, pull.BaseSHA, pull.HeadSHA)
+	source := repoNamePayload{FullName: repo}
+	_, messages := queue.trigger(ctx, trigger{
+		event:   eventPullRequest,
+		ref:     pullRef(pull.Number),
+		sha:     pull.HeadSHA,
+		pull:    pull.Number,
+		headRef: pull.Head,
+		baseRef: pull.Base,
+		payload: workflowEvent{
+			Action: action,
+			Number: pull.Number,
+			PullRequest: &pullRequestPayload{
+				Base:   branchPayload{Ref: pull.Base, Repo: source, SHA: pull.BaseSHA},
+				Body:   pull.Body,
+				Head:   branchPayload{Ref: pull.Head, Repo: source, SHA: pull.HeadSHA},
+				Number: pull.Number,
+				State:  pull.State,
+				Title:  pull.Title,
 			},
 		},
 		matches: func(event *jobparser.Event) bool {
-			return event.Name == "pull_request" && matchesPull(event, action, pull.Base, changed)
+			return event.Name == eventPullRequest && matchesPull(event, action, pull.Base, changed)
 		},
 	})
 	return messages
 }
 
-func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
-	token := randomHex(20)
-	assignment, err := service.server.store.AssignJob(runner.ID, runner.Labels, store.HashToken(token))
-	if err != nil || assignment == nil {
-		return nil, err
-	}
-	task, err := service.buildTask(*assignment, token)
-	if err == nil {
-		_, err = proto.Marshal(task)
-	}
-	if err == nil {
-		return task, nil
-	}
-	slog.Error("start job", "task", assignment.Task.ID, "error", err)
-	line := store.LogLine{At: time.Now().UTC(), Content: "lyra: the job couldn't start: " + err.Error()}
-	if _, err := service.server.store.AppendLog(assignment.Task.ID, 0, []store.LogLine{line}); err != nil {
-		return nil, err
-	}
-	if _, _, err := service.server.store.UpdateTask(assignment.Task.ID, nil, nil, "failure"); err != nil {
-		return nil, err
-	}
-	return nil, nil
+func (s *Server) queue(repo string, actor store.Actor) workflowQueue {
+	return workflowQueue{db: s.store, git: s.git, dir: s.repoDir(repo), repo: repo, actor: actor}
 }
 
-func (service runnerService) buildTask(assignment store.Assignment, token string) (*runnerv1.Task, error) {
-	run, job := assignment.Run, assignment.Job
-	owner, _, _ := strings.Cut(run.Repo, "/")
-	event := map[string]any{}
-	if err := json.Unmarshal([]byte(run.Payload), &event); err != nil {
-		return nil, err
+func (s *Server) syncReopened(ctx context.Context, pull *store.Pull, actor store.Actor) error {
+	dir := s.repoDir(pull.Repo)
+	tip, err := s.git.ResolveCommit(ctx, dir, "refs/heads/"+pull.Head)
+	if err != nil || tip == pull.HeadSHA {
+		return nil
 	}
-	refType, refName := "", strings.TrimPrefix(run.Ref, "refs/pull/")
-	if branch, isBranch := strings.CutPrefix(run.Ref, "refs/heads/"); isBranch {
-		refType, refName = "branch", branch
-	}
-	if tag, isTag := strings.CutPrefix(run.Ref, "refs/tags/"); isTag {
-		refType, refName = "tag", tag
-	}
-	defaultActions := service.server.config.DefaultActionsURL
-	taskContext, err := structpb.NewStruct(map[string]any{
-		"actor": run.Author.User, "repository": run.Repo, "repository_owner": owner, "sha": run.SHA, "ref": run.Ref,
-		"ref_name": refName, "ref_type": refType, "event_name": run.Event, "event": event, "run_id": fmt.Sprint(run.ID),
-		"run_number": fmt.Sprint(run.Number), "run_attempt": fmt.Sprint(job.Attempt), "job": job.Key,
-		"workflow_ref": run.Repo + "/" + run.Workflow + "@" + run.Ref, "token": token, "retention_days": fmt.Sprint(int(service.server.config.ActionsRetention.Hours() / 24)),
-		"base_ref": run.BaseRef, "head_ref": run.HeadRef, "forgejo_default_actions_url": defaultActions, "gitea_default_actions_url": defaultActions,
-	})
+	base, err := s.git.MergeBase(ctx, dir, "refs/heads/"+pull.Base, tip)
 	if err != nil {
-		return nil, err
+		base = pull.BaseSHA
 	}
-	needs := map[string]*runnerv1.TaskNeed{}
-	for key, need := range assignment.Needs {
-		needs[key] = &runnerv1.TaskNeed{Outputs: need.Outputs, Result: resultValue(need.Result)}
+	if err := s.git.UpdateRef(ctx, dir, pullRef(pull.Number), tip, ""); err != nil {
+		return err
 	}
-	secrets, err := service.server.repoSecrets(run.Repo)
-	if err != nil {
-		return nil, err
+	if _, err := s.store.SyncPull(ctx, pull.Repo, pull.Number, actor, tip, base); err != nil {
+		return err
 	}
-	secrets["GITHUB_TOKEN"], secrets["FORGEJO_TOKEN"] = token, token
-	stored, err := service.server.store.Variables(run.Repo)
-	if err != nil {
-		return nil, err
-	}
-	variables := map[string]string{}
-	for _, variable := range stored {
-		variables[variable.Name] = variable.Value
-	}
-	return &runnerv1.Task{
-		Id: assignment.Task.ID, WorkflowPayload: []byte(job.Payload), Context: taskContext, Needs: needs, Vars: variables, Secrets: secrets,
-	}, nil
+	pull.HeadSHA, pull.BaseSHA = tip, base
+	return nil
 }
 
-func (service runnerService) ownTask(runner store.Runner, id int64) (store.Task, store.Run, error) {
-	task, run, err := service.server.store.Task(id)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && task.RunnerID != runner.ID) {
-		return task, run, connect.NewError(connect.CodeNotFound, fmt.Errorf("task %d not found", id))
-	}
-	if err != nil {
-		return task, run, connect.NewError(connect.CodeInternal, err)
-	}
-	return task, run, nil
-}
-
-func (service runnerService) UpdateTask(ctx context.Context, request *connect.Request[runnerv1.UpdateTaskRequest]) (*connect.Response[runnerv1.UpdateTaskResponse], error) {
-	runner, err := service.authenticate(request.Header())
-	if err != nil {
-		return nil, err
-	}
-	state := request.Msg.State
-	if _, _, err := service.ownTask(runner, state.GetId()); err != nil {
-		return nil, err
-	}
-	steps := []store.TaskStep{}
-	for _, step := range state.Steps {
-		taskStep := store.TaskStep{ID: step.Id, Result: resultNames[step.Result], LogIndex: step.LogIndex, LogLength: step.LogLength}
-		if step.StartedAt != nil {
-			started := step.StartedAt.AsTime()
-			taskStep.StartedAt = &started
-		}
-		if step.StoppedAt != nil {
-			stopped := step.StoppedAt.AsTime()
-			taskStep.StoppedAt = &stopped
-		}
-		steps = append(steps, taskStep)
-	}
-	result := resultNames[state.Result]
-	status, stored, err := service.server.store.UpdateTask(state.Id, steps, request.Msg.Outputs, result)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	if result != "" && runner.Ephemeral {
-		if _, err := service.server.store.DeleteRunner(store.Actor{User: runner.User, Via: "runner:" + runner.Name}, runner.ID); err != nil {
-			slog.Error("delete ephemeral runner", "runner", runner.ID, "error", err)
-		}
-	}
-	return connect.NewResponse(&runnerv1.UpdateTaskResponse{
-		State: &runnerv1.TaskState{Id: state.Id, Result: resultValue(status)}, SentOutputs: stored,
-	}), nil
-}
-
-func logObject(repo string, taskID int64) string {
-	return fmt.Sprintf("/lyra/actions/%s/%d.log", repo, taskID)
-}
-
-func (service runnerService) UpdateLog(ctx context.Context, request *connect.Request[runnerv1.UpdateLogRequest]) (*connect.Response[runnerv1.UpdateLogResponse], error) {
-	runner, err := service.authenticate(request.Header())
-	if err != nil {
-		return nil, err
-	}
-	task, run, err := service.ownTask(runner, request.Msg.TaskId)
-	if err != nil {
-		return nil, err
-	}
-	lines := []store.LogLine{}
-	for _, row := range request.Msg.Rows {
-		lines = append(lines, store.LogLine{At: row.Time.AsTime(), Content: row.Content})
-	}
-	ack, err := service.server.store.AppendLog(task.ID, request.Msg.Index, lines)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	if request.Msg.NoMore && ack == request.Msg.Index+int64(len(lines)) {
-		stored, err := service.server.store.LogLines(task.ID, 0)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		var text bytes.Buffer
-		for _, line := range stored {
-			text.WriteString(line.At.UTC().Format(time.RFC3339Nano) + "\t" + line.Content + "\n")
-		}
-		object := logObject(run.Repo, task.ID)
-		if err := service.server.storage.PutContent(ctx, object, text.Bytes()); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		if err := service.server.store.ArchiveLog(task.ID, ack, object); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-	}
-	return connect.NewResponse(&runnerv1.UpdateLogResponse{AckIndex: ack}), nil
-}
-
-func (service runnerService) UpdateStepSummary(ctx context.Context, request *connect.Request[runnerv1.UpdateStepSummaryRequest]) (*connect.Response[runnerv1.UpdateStepSummaryResponse], error) {
-	if _, err := service.authenticate(request.Header()); err != nil {
-		return nil, err
-	}
-	return connect.NewResponse(&runnerv1.UpdateStepSummaryResponse{}), nil
-}
-
-func readLog(ctx context.Context, server *Server, task store.Task, from int64) ([]store.LogLine, error) {
-	if task.LogObject == "" {
-		return server.store.LogLines(task.ID, from)
-	}
-	reader, err := server.storage.Reader(ctx, task.LogObject, 0)
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	content, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	lines := []store.LogLine{}
-	for index, raw := range strings.Split(strings.TrimSuffix(string(content), "\n"), "\n") {
-		if int64(index) < from || raw == "" {
-			continue
-		}
-		stamp, text, _ := strings.Cut(raw, "\t")
-		at, _ := time.Parse(time.RFC3339Nano, stamp)
-		lines = append(lines, store.LogLine{Index: int64(index), At: at, Content: text})
-	}
-	return lines, nil
-}
-
-func (s *Server) queueReopened(repo string, number int64, wasOpen bool, actor store.Actor) []string {
+func (s *Server) queueReopened(
+	ctx context.Context,
+	repo string,
+	number int64,
+	wasOpen bool,
+	actor store.Actor,
+) []string {
 	if wasOpen {
 		return nil
 	}
-	pull, err := s.store.Pull(repo, number)
-	if err != nil || pull.State != "open" {
+	pull, err := s.store.Pull(ctx, repo, number)
+	if err != nil || pull.State != stateOpen {
 		return nil
 	}
-	dir := s.repoDir(repo)
-	if tip, err := s.git.ResolveCommit(dir, "refs/heads/"+pull.Head); err == nil && tip != pull.HeadSHA {
-		base, err := s.git.MergeBase(dir, "refs/heads/"+pull.Base, tip)
-		if err != nil {
-			base = pull.BaseSHA
-		}
-		if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", number), tip, ""); err != nil {
-			return []string{"sync: " + err.Error()}
-		}
-		if _, err := s.store.SyncPull(repo, number, actor, tip, base); err != nil {
-			return []string{"sync: " + err.Error()}
-		}
-		pull.HeadSHA, pull.BaseSHA = tip, base
+	if err := s.syncReopened(ctx, &pull, actor); err != nil {
+		return []string{"sync: " + err.Error()}
 	}
-	actions := QueuePullRuns(s.store, s.git, dir, repo, actor, pull, "reopened")
-	if err := s.store.AnnounceChecks(repo, pull.HeadSHA); err != nil {
+	actions := QueuePullRuns(ctx, s.store, s.git, s.repoDir(repo), repo, actor, pull, "reopened")
+	if err := s.store.AnnounceChecks(ctx, repo, pull.HeadSHA); err != nil {
 		slog.Error("announce checks", "repo", repo, "error", err)
 	}
 	return actions
 }
 
-func (s *Server) reopenProblem(repo string, pull store.Pull, state *string) string {
-	if pull.State != "closed" || state == nil || *state != "open" {
-		return ""
+func (s *Server) checkReopen(ctx context.Context, repo string, number int64, state *string) (bool, error) {
+	pull, err := s.store.Pull(ctx, repo, number)
+	if err != nil {
+		return true, nil
 	}
-	if _, err := s.git.ResolveCommit(s.repoDir(repo), "refs/heads/"+pull.Head); err != nil {
-		return "branch " + pull.Head + " no longer exists; push it again to reopen this pull request"
+	reopening := pull.State == stateClosed && state != nil && *state == stateOpen
+	if !reopening {
+		return pull.State == stateOpen, nil
 	}
-	return ""
+	if _, err := s.git.ResolveCommit(ctx, s.repoDir(repo), "refs/heads/"+pull.Head); err != nil {
+		return false, conflict("branch " + pull.Head + " no longer exists; push it again to reopen this pull request")
+	}
+	return false, nil
 }

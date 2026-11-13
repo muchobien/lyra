@@ -19,17 +19,47 @@ type Pull struct {
 	MergedAt *time.Time `json:"merged_at"`
 }
 
-func loadPull(q *queries.Queries, item queries.Item, pull queries.Pull) (Pull, error) {
-	loaded, err := loadItem(q, item)
-	result := Pull{Item: loaded, Base: pull.Base, Head: pull.Head, HeadSHA: pull.HeadSha, BaseSHA: pull.BaseSha, MergeSHA: pull.MergeSha}
+type pullOpenedEvent struct {
+	Assignees []string `json:"assignees"`
+	Base      string   `json:"base"`
+	Head      string   `json:"head"`
+	HeadSHA   string   `json:"head_sha"`
+	Labels    []string `json:"labels"`
+	Number    int64    `json:"number"`
+	Title     string   `json:"title"`
+}
+
+type pullSynchronizedEvent struct {
+	After  string `json:"after"`
+	Before string `json:"before"`
+	Number int64  `json:"number"`
+}
+
+type pullMergedEvent struct {
+	Base   string `json:"base"`
+	Method string `json:"method"`
+	Number int64  `json:"number"`
+	SHA    string `json:"sha"`
+}
+
+func loadPull(ctx context.Context, q *queries.Queries, item queries.Item, pull queries.Pull) (Pull, error) {
+	loaded, err := loadItem(ctx, q, item)
+	result := Pull{
+		Item:     loaded,
+		Base:     pull.Base,
+		Head:     pull.Head,
+		HeadSHA:  pull.HeadSha,
+		BaseSHA:  pull.BaseSha,
+		MergeSHA: pull.MergeSha,
+	}
 	if pull.MergedAt.Valid {
 		result.MergedAt = &pull.MergedAt.Time
 	}
 	return result, err
 }
 
-func getPull(q *queries.Queries, repo string, number int64) (queries.GetPullItemRow, error) {
-	row, err := q.GetPullItem(context.Background(), queries.GetPullItemParams{Repo: repo, Number: number})
+func getPull(ctx context.Context, q *queries.Queries, repo string, number int64) (queries.GetPullItemRow, error) {
+	row, err := q.GetPullItem(ctx, queries.GetPullItemParams{Repo: repo, Number: number})
 	if err != nil {
 		return row, notFound(err)
 	}
@@ -39,21 +69,28 @@ func getPull(q *queries.Queries, repo string, number int64) (queries.GetPullItem
 	return row, nil
 }
 
-func (s *Store) CreatePull(repo string, actor Actor, title, body, base, head, headSHA, baseSHA string, labels, assignees []string) (Pull, int64, error) {
+func (s *Store) CreatePull(
+	ctx context.Context,
+	repo string,
+	actor Actor,
+	title, body, base, head, headSHA, baseSHA string,
+	labels, assignees []string,
+) (Pull, int64, error) {
 	var pull Pull
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		ctx := context.Background()
+	err := s.inTx(ctx, func(q *queries.Queries) error {
 		open, err := q.ListPullItems(ctx, queries.ListPullItemsParams{Repo: repo, State: "open"})
 		if err != nil {
 			return err
 		}
 		for _, existing := range open {
-			if existing.Pull.Base == base && existing.Pull.Head == head {
-				return InvalidError(fmt.Sprintf("pull request #%d already proposes %s into %s", existing.Item.Number, head, base))
+			if existing.Pull.Base != base || existing.Pull.Head != head {
+				continue
 			}
+			number := existing.Item.Number
+			return InvalidError(fmt.Sprintf("pull request #%d already proposes %s into %s", number, head, base))
 		}
-		row, err := createItem(q, "pr", repo, actor, title, body, labels, assignees)
+		row, err := createItem(ctx, q, "pr", repo, actor, title, body, labels, assignees)
 		if err != nil {
 			return err
 		}
@@ -61,33 +98,46 @@ func (s *Store) CreatePull(repo string, actor Actor, title, body, base, head, he
 		if err := q.CreatePull(ctx, created); err != nil {
 			return err
 		}
-		if pull, err = loadPull(q, row, queries.Pull{ItemID: row.ID, Base: base, Head: head, HeadSha: headSHA, BaseSha: baseSHA}); err != nil {
+		pull, err = loadPull(ctx, q, row, queries.Pull{
+			ItemID:  row.ID,
+			Base:    base,
+			Head:    head,
+			HeadSha: headSHA,
+			BaseSha: baseSHA,
+		})
+		if err != nil {
 			return err
 		}
-		eventID, err = addEvent(q, "pr.opened", repo, row.Number, actor, map[string]any{
-			"number": row.Number, "title": title, "base": base, "head": head, "head_sha": headSHA, "labels": pull.Labels, "assignees": pull.Assignees,
+		eventID, err = addEvent(ctx, q, "pr.opened", repo, row.Number, actor, pullOpenedEvent{
+			Assignees: pull.Assignees,
+			Base:      base,
+			Head:      head,
+			HeadSHA:   headSHA,
+			Labels:    pull.Labels,
+			Number:    row.Number,
+			Title:     title,
 		})
 		return err
 	})
 	return pull, eventID, err
 }
 
-func (s *Store) Pull(repo string, number int64) (Pull, error) {
-	row, err := s.queries.GetPullItem(context.Background(), queries.GetPullItemParams{Repo: repo, Number: number})
+func (s *Store) Pull(ctx context.Context, repo string, number int64) (Pull, error) {
+	row, err := s.queries.GetPullItem(ctx, queries.GetPullItemParams{Repo: repo, Number: number})
 	if err != nil {
 		return Pull{}, notFound(err)
 	}
-	return loadPull(s.queries, row.Item, row.Pull)
+	return loadPull(ctx, s.queries, row.Item, row.Pull)
 }
 
-func (s *Store) Pulls(repo, state string) ([]Pull, error) {
-	rows, err := s.queries.ListPullItems(context.Background(), queries.ListPullItemsParams{Repo: repo, State: state})
+func (s *Store) Pulls(ctx context.Context, repo, state string) ([]Pull, error) {
+	rows, err := s.queries.ListPullItems(ctx, queries.ListPullItemsParams{Repo: repo, State: state})
 	if err != nil {
 		return nil, err
 	}
 	pulls := []Pull{}
 	for _, row := range rows {
-		pull, err := loadPull(s.queries, row.Item, row.Pull)
+		pull, err := loadPull(ctx, s.queries, row.Item, row.Pull)
 		if err != nil {
 			return nil, err
 		}
@@ -96,43 +146,76 @@ func (s *Store) Pulls(repo, state string) ([]Pull, error) {
 	return pulls, nil
 }
 
-func (s *Store) SyncPull(repo string, number int64, actor Actor, headSHA, baseSHA string) (int64, error) {
+func (s *Store) SyncPull(
+	ctx context.Context,
+	repo string,
+	number int64,
+	actor Actor,
+	headSHA, baseSHA string,
+) (int64, error) {
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		ctx := context.Background()
-		row, err := getPull(q, repo, number)
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := getPull(ctx, q, repo, number)
 		if err != nil {
 			return err
 		}
-		if err := q.UpdatePullHead(ctx, queries.UpdatePullHeadParams{HeadSha: headSHA, BaseSha: baseSHA, ItemID: row.Item.ID}); err != nil {
+		head := queries.UpdatePullHeadParams{HeadSha: headSHA, BaseSha: baseSHA, ItemID: row.Item.ID}
+		if err := q.UpdatePullHead(ctx, head); err != nil {
 			return err
 		}
 		if err := q.TouchItem(ctx, queries.TouchItemParams{UpdatedAt: now(), ID: row.Item.ID}); err != nil {
 			return err
 		}
-		eventID, err = addEvent(q, "pr.synchronized", repo, number, actor, map[string]any{"number": number, "before": row.Pull.HeadSha, "after": headSHA})
+		eventID, err = addEvent(ctx, q, "pr.synchronized", repo, number, actor, pullSynchronizedEvent{
+			After:  headSHA,
+			Before: row.Pull.HeadSha,
+			Number: number,
+		})
 		return err
 	})
 	return eventID, err
 }
 
-func (s *Store) MarkPullMerged(repo string, number int64, actor Actor, mergeSHA, baseSHA, method string) (int64, error) {
+func (s *Store) MarkPullMerged(
+	ctx context.Context,
+	repo string,
+	number int64,
+	actor Actor,
+	mergeSHA, baseSHA, method string,
+) (int64, error) {
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		ctx := context.Background()
-		row, err := getPull(q, repo, number)
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := getPull(ctx, q, repo, number)
 		if err != nil {
 			return err
 		}
 		mergedAt := sql.NullTime{Time: now(), Valid: true}
-		if err := q.MergePull(ctx, queries.MergePullParams{MergeSha: mergeSHA, BaseSha: baseSHA, MergedAt: mergedAt, ItemID: row.Item.ID}); err != nil {
+		err = q.MergePull(ctx, queries.MergePullParams{
+			MergeSha: mergeSHA,
+			BaseSha:  baseSHA,
+			MergedAt: mergedAt,
+			ItemID:   row.Item.ID,
+		})
+		if err != nil {
 			return err
 		}
-		update := queries.UpdateItemParams{ID: row.Item.ID, Title: row.Item.Title, Body: row.Item.Body, State: "merged", UpdatedAt: mergedAt.Time, ClosedAt: mergedAt}
+		update := queries.UpdateItemParams{
+			ID:        row.Item.ID,
+			Title:     row.Item.Title,
+			Body:      row.Item.Body,
+			State:     "merged",
+			UpdatedAt: mergedAt.Time,
+			ClosedAt:  mergedAt,
+		}
 		if _, err := q.UpdateItem(ctx, update); err != nil {
 			return err
 		}
-		eventID, err = addEvent(q, "pr.merged", repo, number, actor, map[string]any{"number": number, "sha": mergeSHA, "base": row.Pull.Base, "method": method})
+		eventID, err = addEvent(ctx, q, "pr.merged", repo, number, actor, pullMergedEvent{
+			Base:   row.Pull.Base,
+			Method: method,
+			Number: number,
+			SHA:    mergeSHA,
+		})
 		return err
 	})
 	return eventID, err

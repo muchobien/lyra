@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"embed"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -12,7 +11,6 @@ import (
 	"path"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -22,19 +20,11 @@ import (
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 
-	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
 
 //go:embed templates
 var templateFiles embed.FS
-
-const commitsPerPage = 50
-
-type crumb struct {
-	Name string
-	Path string
-}
 
 type page struct {
 	Title    string
@@ -45,76 +35,40 @@ type page struct {
 	Data     any
 }
 
+var pageNames = []string{
+	"repos",
+	"tree",
+	"blob",
+	"commits",
+	"commit",
+	"tags",
+	"items",
+	"item",
+	"releases",
+	"images",
+	"runs",
+	"run",
+	"error",
+}
+
+var sizeUnits = []string{"B", "KB", "MB", "GB", "TB"}
+
+var refPrefixes = []string{"refs/heads/", "refs/tags/", "refs/pull/"}
+
 var templateFuncs = template.FuncMap{
-	"short": func(sha string) string {
-		if len(sha) > 7 {
-			return sha[:7]
-		}
-		return sha
-	},
-	"esc":  url.PathEscape,
-	"base": path.Base,
-	"ownerOf": func(name string) string {
-		owner, _, _ := strings.Cut(name, "/")
-		return owner
-	},
-	"pathesc": func(path string) string {
-		segments := strings.Split(path, "/")
-		for index, segment := range segments {
-			segments[index] = url.PathEscape(segment)
-		}
-		return strings.Join(segments, "/")
-	},
-	"join": func(dir, name string) string {
-		if dir == "" {
-			return name
-		}
-		return dir + "/" + name
-	},
-	"digestHex": func(digest string) string {
-		_, hex, found := strings.Cut(digest, ":")
-		if !found {
-			return digest
-		}
-		return hex
-	},
-	"refName": func(ref string) string {
-		for _, prefix := range []string{"refs/heads/", "refs/tags/", "refs/pull/"} {
-			if name, found := strings.CutPrefix(ref, prefix); found {
-				return name
-			}
-		}
-		return ref
-	},
-	"duration": func(start, stop *time.Time) string {
-		end := time.Now()
-		if stop != nil {
-			end = *stop
-		}
-		elapsed := end.Sub(*start).Round(time.Second)
-		if elapsed < time.Minute {
-			return elapsed.String()
-		}
-		return fmt.Sprintf("%dm %ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
-	},
-	"size": func(bytes int64) string {
-		value, unit := float64(bytes), 0
-		units := []string{"B", "KB", "MB", "GB", "TB"}
-		for value >= 1000 && unit < len(units)-1 {
-			value /= 1000
-			unit++
-		}
-		if unit == 0 {
-			return fmt.Sprintf("%d B", bytes)
-		}
-		return fmt.Sprintf("%.1f %s", value, units[unit])
-	},
-	"day": func(date string) string {
-		if len(date) >= 16 {
-			return strings.Replace(date[:16], "T", " ", 1)
-		}
-		return date
-	},
+	"short":     shortSHA,
+	"esc":       url.PathEscape,
+	"base":      path.Base,
+	"ownerOf":   ownerOf,
+	"pathesc":   escapePath,
+	"join":      joinPath,
+	"digestHex": digestHex,
+	"refName":   refName,
+	"duration":  formatDuration,
+	"size":      formatSize,
+	"day":       formatDay,
+	"markdown":  renderMarkdown,
+	"codeCSS":   func() template.CSS { return codeCSS },
 }
 
 var pages = map[string]*template.Template{}
@@ -124,11 +78,102 @@ var markdown = goldmark.New(goldmark.WithExtensions(
 	highlighting.NewHighlighting(highlighting.WithFormatOptions(chromahtml.WithClasses(true))),
 ))
 
-var codeFormatter = chromahtml.New(chromahtml.WithClasses(true), chromahtml.WithLineNumbers(true), chromahtml.LineNumbersInTable(true))
+var codeFormatter = chromahtml.New(
+	chromahtml.WithClasses(true),
+	chromahtml.WithLineNumbers(true),
+	chromahtml.LineNumbersInTable(true),
+)
 
 var patchFormatter = chromahtml.New(chromahtml.WithClasses(true))
 
 var codeCSS template.CSS
+
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
+func ownerOf(name string) string {
+	owner, _, _ := strings.Cut(name, "/")
+	return owner
+}
+
+func escapePath(path string) string {
+	segments := strings.Split(path, "/")
+	for index, segment := range segments {
+		segments[index] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+func joinPath(dir, name string) string {
+	if dir == "" {
+		return name
+	}
+	return dir + "/" + name
+}
+
+func digestHex(digest string) string {
+	_, hex, found := strings.Cut(digest, ":")
+	if !found {
+		return digest
+	}
+	return hex
+}
+
+func refName(ref string) string {
+	for _, prefix := range refPrefixes {
+		if name, found := strings.CutPrefix(ref, prefix); found {
+			return name
+		}
+	}
+	return ref
+}
+
+func formatDuration(start, stop *time.Time) string {
+	end := time.Now()
+	if stop != nil {
+		end = *stop
+	}
+	elapsed := end.Sub(*start).Round(time.Second)
+	if elapsed < time.Minute {
+		return elapsed.String()
+	}
+	return fmt.Sprintf("%dm %ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+}
+
+func formatSize(bytes int64) string {
+	value, unit := float64(bytes), 0
+	for value >= 1000 && unit < len(sizeUnits)-1 {
+		value /= 1000
+		unit++
+	}
+	if unit == 0 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	return fmt.Sprintf("%.1f %s", value, sizeUnits[unit])
+}
+
+func formatDay(date string) string {
+	if len(date) >= 16 {
+		return strings.Replace(date[:16], "T", " ", 1)
+	}
+	return date
+}
+
+func preformatted(source string) template.HTML {
+	return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+}
+
+func renderMarkdown(source string) template.HTML {
+	var rendered bytes.Buffer
+	if markdown.Convert([]byte(source), &rendered) != nil {
+		return preformatted(source)
+	}
+	return template.HTML(rendered.String())
+}
 
 func highlight(formatter *chromahtml.Formatter, lexer chroma.Lexer, source string) template.HTML {
 	if lexer == nil {
@@ -136,11 +181,11 @@ func highlight(formatter *chromahtml.Formatter, lexer chroma.Lexer, source strin
 	}
 	iterator, err := chroma.Coalesce(lexer).Tokenise(nil, source)
 	if err != nil {
-		return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+		return preformatted(source)
 	}
 	var output strings.Builder
 	if err := formatter.Format(&output, styles.Get("github"), iterator); err != nil {
-		return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
+		return preformatted(source)
 	}
 	return template.HTML(output.String())
 }
@@ -150,20 +195,9 @@ func init() {
 	codeFormatter.WriteCSS(&light, styles.Get("github"))
 	codeFormatter.WriteCSS(&dark, styles.Get("github-dark"))
 	codeCSS = template.CSS(light.String() + "\n@media (prefers-color-scheme: dark) {\n" + dark.String() + "}\n")
-	templateFuncs["codeCSS"] = func() template.CSS {
-		return codeCSS
-	}
-
-	templateFuncs["markdown"] = func(source string) template.HTML {
-		var rendered bytes.Buffer
-		if markdown.Convert([]byte(source), &rendered) != nil {
-			return template.HTML("<pre>" + template.HTMLEscapeString(source) + "</pre>")
-		}
-		return template.HTML(rendered.String())
-	}
-
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "images", "runs", "run", "error"} {
-		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
+	for _, name := range pageNames {
+		layout := template.New("layout.html").Funcs(templateFuncs)
+		pages[name] = template.Must(layout.ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }
 
@@ -180,254 +214,15 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, r, status, "error", page{Title: http.StatusText(status), Data: message})
 }
 
-func (s *Server) uiLookup(w http.ResponseWriter, r *http.Request) (store.Repo, bool) {
+func (s *Server) repoPage(r *http.Request, repo *store.Repo, title, ref string, data any) page {
+	return page{Title: title, Repo: repo, Ref: ref, CloneURL: cloneURL(r, repo.Name), Data: data}
+}
+
+func (s *Server) uiLookup(r *http.Request) (store.Repo, error) {
 	name := r.PathValue("owner") + "/" + r.PathValue("repo")
-	if !identityFrom(r).can("read", name) {
-		s.renderError(w, r, http.StatusForbidden, "This token cannot read "+name+".")
-		return store.Repo{}, false
+	if !identityFrom(r).can(scopeRead, name) {
+		return store.Repo{}, forbidden("This token cannot read " + name + ".")
 	}
-	repo, err := s.store.Repo(name)
-	if errors.Is(err, store.ErrNotFound) {
-		s.renderError(w, r, http.StatusNotFound, "Repository "+name+" not found.")
-		return repo, false
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return repo, false
-	}
-	return repo, true
-}
-
-func (s *Server) uiRepoList(w http.ResponseWriter, r *http.Request) {
-	groups, err := s.ownerGroups(identityFrom(r), "")
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.render(w, r, http.StatusOK, "repos", page{Title: "Repositories", Data: groups})
-}
-
-func (s *Server) uiRepo(w http.ResponseWriter, r *http.Request) {
-	s.showTree(w, r, "", "")
-}
-
-func (s *Server) uiTree(w http.ResponseWriter, r *http.Request) {
-	s.showTree(w, r, r.PathValue("ref"), strings.Trim(r.PathValue("*"), "/"))
-}
-
-func (s *Server) showTree(w http.ResponseWriter, r *http.Request, ref, path string) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	dir := s.repoDir(repo.Name)
-	if ref == "" {
-		ref = s.git.DefaultBranch(dir)
-	}
-	branches, err := s.git.Branches(dir)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	view := struct {
-		Empty    bool
-		Path     string
-		Crumbs   []crumb
-		Entries  []repos.Entry
-		Branches []repos.Ref
-		Last     *repos.Commit
-		Readme   template.HTML
-	}{Path: path, Branches: branches}
-	base := page{Title: repo.Name, Repo: &repo, Ref: ref, CloneURL: cloneURL(r, repo.Name)}
-	sha, err := s.git.ResolveCommit(dir, ref)
-	if err != nil {
-		if len(branches) == 0 {
-			view.Empty = true
-			base.Data = view
-			s.render(w, r, http.StatusOK, "tree", base)
-			return
-		}
-		s.renderError(w, r, http.StatusNotFound, "Unknown ref "+ref+".")
-		return
-	}
-	entries, err := s.git.Tree(dir, sha, path)
-	if errors.Is(err, repos.ErrNotFound) {
-		s.renderError(w, r, http.StatusNotFound, "No directory "+path+" at "+ref+".")
-		return
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	view.Entries = entries
-	if path != "" {
-		parts := strings.Split(path, "/")
-		for index, part := range parts {
-			view.Crumbs = append(view.Crumbs, crumb{Name: part, Path: strings.Join(parts[:index+1], "/")})
-		}
-	}
-	for _, entry := range entries {
-		if entry.Type == "blob" && strings.EqualFold(strings.TrimSuffix(entry.Name, ".md"), "readme") && entry.Size < 256<<10 {
-			content, err := s.git.Blob(dir, sha, strings.TrimPrefix(path+"/"+entry.Name, "/"))
-			if err != nil || !utf8.Valid(content) {
-				continue
-			}
-			view.Readme = template.HTML("<pre>" + template.HTMLEscapeString(string(content)) + "</pre>")
-			var rendered bytes.Buffer
-			if strings.HasSuffix(strings.ToLower(entry.Name), ".md") && markdown.Convert(content, &rendered) == nil {
-				view.Readme = template.HTML(`<article class="markdown">` + rendered.String() + `</article>`)
-			}
-		}
-	}
-	commits, err := s.commits(repo.Name, sha, 1)
-	if err == nil && len(commits) == 1 {
-		view.Last = &commits[0]
-	}
-	base.Data = view
-	if path != "" {
-		base.Title = path + " · " + repo.Name
-	}
-	s.render(w, r, http.StatusOK, "tree", base)
-}
-
-func (s *Server) uiBlob(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	dir := s.repoDir(repo.Name)
-	ref := r.PathValue("ref")
-	path := strings.Trim(r.PathValue("*"), "/")
-	sha, err := s.git.ResolveCommit(dir, ref)
-	if err != nil {
-		s.renderError(w, r, http.StatusNotFound, "Unknown ref "+ref+".")
-		return
-	}
-	content, err := s.git.Blob(dir, sha, path)
-	if errors.Is(err, repos.ErrNotFound) {
-		s.renderError(w, r, http.StatusNotFound, "No file "+path+" at "+ref+".")
-		return
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if r.URL.Query().Has("raw") {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		if utf8.Valid(content) {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		}
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "sandbox")
-		w.Write(content)
-		return
-	}
-	parts := strings.Split(path, "/")
-	crumbs := []crumb{}
-	for index, part := range parts {
-		crumbs = append(crumbs, crumb{Name: part, Path: strings.Join(parts[:index+1], "/")})
-	}
-	view := struct {
-		Path   string
-		Crumbs []crumb
-		Size   int
-		Code   template.HTML
-		Binary bool
-	}{Path: path, Crumbs: crumbs, Size: len(content)}
-	if utf8.Valid(content) && len(content) <= 1<<20 {
-		lexer := lexers.Match(path)
-		if lexer == nil {
-			lexer = lexers.Analyse(string(content))
-		}
-		view.Code = highlight(codeFormatter, lexer, string(content))
-	} else {
-		view.Binary = true
-	}
-	s.render(w, r, http.StatusOK, "blob", page{Title: path + " · " + repo.Name, Repo: &repo, Ref: ref, CloneURL: cloneURL(r, repo.Name), Data: view})
-}
-
-func (s *Server) uiCommits(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	ref := r.PathValue("ref")
-	commits, err := s.commits(repo.Name, ref, commitsPerPage)
-	if errors.Is(err, repos.ErrNotFound) {
-		s.renderError(w, r, http.StatusNotFound, "Unknown ref "+ref+".")
-		return
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	states := map[string]string{}
-	for _, commit := range commits {
-		checks, err := s.store.Checks(repo.Name, commit.SHA)
-		if err != nil {
-			s.renderError(w, r, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if checks.State != "none" {
-			states[commit.SHA] = checks.State
-		}
-	}
-	view := struct {
-		Commits []repos.Commit
-		Older   string
-		Checks  map[string]string
-	}{Commits: commits, Checks: states}
-	if len(commits) == commitsPerPage && len(commits[len(commits)-1].Parents) > 0 {
-		view.Older = commits[len(commits)-1].Parents[0]
-	}
-	s.render(w, r, http.StatusOK, "commits", page{Title: "Commits · " + repo.Name, Repo: &repo, Ref: ref, CloneURL: cloneURL(r, repo.Name), Data: view})
-}
-
-func (s *Server) uiCommit(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	dir := s.repoDir(repo.Name)
-	commit, err := s.git.Commit(dir, r.PathValue("sha"))
-	if errors.Is(err, repos.ErrNotFound) {
-		s.renderError(w, r, http.StatusNotFound, "Unknown commit.")
-		return
-	}
-	if err == nil {
-		err = s.verifySignatures(&commit.Signature)
-	}
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	patch, err := s.git.Patch(dir, commit.SHA)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	checks, err := s.store.Checks(repo.Name, commit.SHA)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	view := struct {
-		Commit repos.Commit
-		Patch  template.HTML
-		Checks store.Checks
-	}{Commit: commit, Patch: highlight(patchFormatter, lexers.Get("diff"), patch), Checks: checks}
-	s.render(w, r, http.StatusOK, "commit", page{Title: commit.Subject + " · " + repo.Name, Repo: &repo, Ref: commit.SHA, CloneURL: cloneURL(r, repo.Name), Data: view})
-}
-
-func (s *Server) uiTags(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	tags, err := s.tags(repo.Name)
-	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.render(w, r, http.StatusOK, "tags", page{Title: "Tags · " + repo.Name, Repo: &repo, Ref: s.git.DefaultBranch(s.repoDir(repo.Name)), CloneURL: cloneURL(r, repo.Name), Data: tags})
+	repo, err := s.store.Repo(r.Context(), name)
+	return repo, missing(err, "Repository "+name+" not found.")
 }

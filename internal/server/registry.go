@@ -1,7 +1,8 @@
 package server
 
 import (
-	"encoding/json"
+	"context"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -13,9 +14,33 @@ import (
 	"github.com/muchobien/lyra/internal/store"
 )
 
+const (
+	registryRepositories = "/docker/registry/v2/repositories/"
+
+	registryDenied      = "DENIED"
+	registryNameUnknown = "NAME_UNKNOWN"
+	registryUnknown     = "UNKNOWN"
+	registryUnavailable = "UNAVAILABLE"
+)
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+}
+
+type registryProblem struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	status  int
+}
+
+type registryErrors struct {
+	Errors []registryProblem `json:"errors"`
+}
+
+type imagesView struct {
+	Images []store.Image
+	Host   string
 }
 
 func (recorder *statusRecorder) WriteHeader(status int) {
@@ -40,7 +65,10 @@ func registryError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]string{{"code": code, "message": message}}})
+	problems := registryErrors{Errors: []registryProblem{{Code: code, Message: message}}}
+	if encoded, err := json.Marshal(problems); err == nil {
+		w.Write(append(encoded, '\n'))
+	}
 }
 
 func imageRepo(name string) string {
@@ -51,17 +79,85 @@ func imageRepo(name string) string {
 	return parts[0] + "/" + parts[1]
 }
 
-func (s *Server) imageProblem(id *identity, name, scope string) (int, string, string) {
+func imageScope(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead:
+		return scopeRead
+	case http.MethodDelete:
+		return scopeAdmin
+	}
+	return scopeWrite
+}
+
+func (s *Server) imageProblem(ctx context.Context, id *identity, name, scope string) *registryProblem {
 	repo := imageRepo(name)
 	if !id.can(scope, repo) {
-		return http.StatusForbidden, "DENIED", "token lacks " + scope + " access to " + repo
+		return &registryProblem{
+			status:  http.StatusForbidden,
+			Code:    registryDenied,
+			Message: "token lacks " + scope + " access to " + repo,
+		}
 	}
-	if _, err := s.store.Repo(repo); errors.Is(err, store.ErrNotFound) {
-		return http.StatusNotFound, "NAME_UNKNOWN", "no repository " + repo + "; image names start with a repository's owner/name"
-	} else if err != nil {
-		return http.StatusInternalServerError, "UNKNOWN", err.Error()
+	_, err := s.store.Repo(ctx, repo)
+	if errors.Is(err, store.ErrNotFound) {
+		return &registryProblem{
+			status:  http.StatusNotFound,
+			Code:    registryNameUnknown,
+			Message: "no repository " + repo + "; image names start with a repository's owner/name",
+		}
 	}
-	return 0, "", ""
+	if err != nil {
+		return &registryProblem{status: http.StatusInternalServerError, Code: registryUnknown, Message: err.Error()}
+	}
+	return nil
+}
+
+func (s *Server) authorizeImage(r *http.Request, route, name string) *registryProblem {
+	id := identityFrom(r)
+	if route == v2.RouteNameCatalog && len(id.repos) > 0 {
+		return &registryProblem{
+			status:  http.StatusForbidden,
+			Code:    registryDenied,
+			Message: "the catalog needs a token that isn't limited to some repositories",
+		}
+	}
+	if route == v2.RouteNameCatalog || name == "" {
+		return nil
+	}
+	if problem := s.imageProblem(r.Context(), id, name, imageScope(r.Method)); problem != nil {
+		return problem
+	}
+	query := r.URL.Query()
+	from := query.Get("from")
+	if from != "" && s.imageProblem(r.Context(), id, from, scopeRead) != nil {
+		query.Del("from")
+		query.Del("mount")
+		r.URL.RawQuery = query.Encode()
+	}
+	return nil
+}
+
+func (s *Server) recordManifest(r *http.Request, recorder *statusRecorder, name, reference string) {
+	ctx := context.WithoutCancel(r.Context())
+	actor := identityFrom(r).actor
+	repo := imageRepo(name)
+	byDigest := strings.Contains(reference, ":")
+	var err error
+	switch {
+	case r.Method == http.MethodPut && recorder.status == http.StatusCreated && !byDigest:
+		_, _, err = s.store.SetImageTag(ctx, actor, store.Image{
+			Repo:      repo,
+			Name:      name,
+			Tag:       reference,
+			Digest:    recorder.Header().Get("Docker-Content-Digest"),
+			MediaType: r.Header.Get("Content-Type"),
+		})
+	case r.Method == http.MethodDelete && recorder.status == http.StatusAccepted:
+		_, err = s.store.DeleteImage(ctx, actor, repo, name, reference, byDigest)
+	}
+	if err != nil {
+		slog.Error("record image", "name", name, "reference", reference, "error", err)
+	}
 }
 
 func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
@@ -70,57 +166,20 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		s.registry.ServeHTTP(w, r)
 		return
 	}
-	id := identityFrom(r)
 	route := match.Route.GetName()
 	name := match.Vars["name"]
-	switch {
-	case route == v2.RouteNameCatalog:
-		if len(id.repos) > 0 {
-			registryError(w, http.StatusForbidden, "DENIED", "the catalog needs a token that isn't limited to some repositories")
-			return
-		}
-	case name != "":
-		scope := "write"
-		switch r.Method {
-		case http.MethodGet, http.MethodHead:
-			scope = "read"
-		case http.MethodDelete:
-			scope = "admin"
-		}
-		if status, code, message := s.imageProblem(id, name, scope); status != 0 {
-			registryError(w, status, code, message)
-			return
-		}
-		query := r.URL.Query()
-		if from := query.Get("from"); from != "" {
-			if status, _, _ := s.imageProblem(id, from, "read"); status != 0 {
-				query.Del("from")
-				query.Del("mount")
-				r.URL.RawQuery = query.Encode()
-			}
-		}
+	if problem := s.authorizeImage(r, route, name); problem != nil {
+		registryError(w, problem.status, problem.Code, problem.Message)
+		return
 	}
-	if route != v2.RouteNameManifest || (r.Method != http.MethodPut && r.Method != http.MethodDelete) {
+	changesManifest := route == v2.RouteNameManifest && (r.Method == http.MethodPut || r.Method == http.MethodDelete)
+	if !changesManifest {
 		s.registry.ServeHTTP(w, r)
 		return
 	}
 	recorder := &statusRecorder{ResponseWriter: w}
 	s.registry.ServeHTTP(recorder, r)
-	repo := imageRepo(name)
-	reference := match.Vars["reference"]
-	byDigest := strings.Contains(reference, ":")
-	var err error
-	switch {
-	case r.Method == http.MethodPut && recorder.status == http.StatusCreated && !byDigest:
-		_, _, err = s.store.SetImageTag(id.actor, store.Image{
-			Repo: repo, Name: name, Tag: reference, Digest: recorder.Header().Get("Docker-Content-Digest"), MediaType: r.Header.Get("Content-Type"),
-		})
-	case r.Method == http.MethodDelete && recorder.status == http.StatusAccepted:
-		_, err = s.store.DeleteImage(id.actor, repo, name, reference, byDigest)
-	}
-	if err != nil {
-		slog.Error("record image", "name", name, "reference", reference, "error", err)
-	}
+	s.recordManifest(r, recorder, name, match.Vars["reference"])
 }
 
 func (s *Server) registryHost(r *http.Request) string {
@@ -134,38 +193,37 @@ func (s *Server) imageReference(r *http.Request, image store.Image) string {
 	return s.registryHost(r) + "/" + image.Name + ":" + image.Tag
 }
 
-func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	images, err := s.store.Images(repo.Name)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+func (s *Server) images(r *http.Request, repo string) ([]store.Image, error) {
+	images, err := s.store.Images(r.Context(), repo)
 	for index := range images {
 		images[index].Reference = s.imageReference(r, images[index])
 	}
-	writeJSON(w, http.StatusOK, images)
+	return images, err
 }
 
-func (s *Server) uiImages(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.uiLookup(w, r)
-	if !ok {
-		return
-	}
-	images, err := s.store.Images(repo.Name)
+func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		s.renderError(w, r, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	for index := range images {
-		images[index].Reference = s.imageReference(r, images[index])
+	images, err := s.images(r, repo.Name)
+	if err != nil {
+		return err
 	}
-	view := struct {
-		Images []store.Image
-		Host   string
-	}{images, s.registryHost(r)}
-	s.render(w, r, http.StatusOK, "images", page{Title: "Images · " + repo.Name, Repo: &repo, Ref: s.git.DefaultBranch(s.repoDir(repo.Name)), CloneURL: cloneURL(r, repo.Name), Data: view})
+	return writeJSON(w, http.StatusOK, images)
+}
+
+func (s *Server) uiImages(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.uiLookup(r)
+	if err != nil {
+		return err
+	}
+	images, err := s.images(r, repo.Name)
+	if err != nil {
+		return err
+	}
+	view := imagesView{Images: images, Host: s.registryHost(r)}
+	ref := s.git.DefaultBranch(r.Context(), s.repoDir(repo.Name))
+	s.render(w, r, http.StatusOK, "images", s.repoPage(r, &repo, "Images · "+repo.Name, ref, view))
+	return nil
 }

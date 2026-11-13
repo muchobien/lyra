@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -13,12 +14,33 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+)
+
+const (
+	maxSecret         = 64 << 10
+	secretNameProblem = "names are letters, digits and _, not starting with a digit, GITHUB_, FORGEJO_ or GITEA_"
 )
 
 var secretNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,99}$`)
 
-const maxSecret = 64 << 10
+var reservedSecretPrefixes = []string{"GITHUB_", "FORGEJO_", "GITEA_"}
+
+type valueRequest struct {
+	Value string `json:"value"`
+}
+
+type secretSet struct {
+	EventID int64  `json:"event_id"`
+	Name    string `json:"name"`
+}
+
+type variableSet struct {
+	EventID int64  `json:"event_id"`
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+}
 
 func loadSecretsKey(config Config) ([]byte, error) {
 	file := config.SecretsKeyFile
@@ -30,7 +52,11 @@ func loadSecretsKey(config Config) ([]byte, error) {
 			if err := os.WriteFile(file, []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
 				return nil, err
 			}
-			slog.Warn("generated a secrets key in the data directory; it exists only there and in backups, so keep it with --secrets-key-file", "file", file)
+			slog.Warn(
+				"generated a secrets key in the data directory; it exists only there and in backups, "+
+					"so keep it with --secrets-key-file",
+				"file", file,
+			)
 		}
 	}
 	content, err := os.ReadFile(file)
@@ -44,12 +70,16 @@ func loadSecretsKey(config Config) ([]byte, error) {
 	return key, nil
 }
 
-func (s *Server) sealSecret(plain []byte) ([]byte, error) {
+func (s *Server) secretCipher() (cipher.AEAD, error) {
 	block, err := aes.NewCipher(s.secretsKey)
 	if err != nil {
 		return nil, err
 	}
-	aead, err := cipher.NewGCM(block)
+	return cipher.NewGCM(block)
+}
+
+func (s *Server) sealSecret(plain []byte) ([]byte, error) {
+	aead, err := s.secretCipher()
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +91,7 @@ func (s *Server) sealSecret(plain []byte) ([]byte, error) {
 }
 
 func (s *Server) openSecret(sealed []byte) ([]byte, error) {
-	block, err := aes.NewCipher(s.secretsKey)
-	if err != nil {
-		return nil, err
-	}
-	aead, err := cipher.NewGCM(block)
+	aead, err := s.secretCipher()
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +101,8 @@ func (s *Server) openSecret(sealed []byte) ([]byte, error) {
 	return aead.Open(nil, sealed[:aead.NonceSize()], sealed[aead.NonceSize():], nil)
 }
 
-func (s *Server) repoSecrets(repo string) (map[string]string, error) {
-	stored, err := s.store.Secrets(repo)
+func (s *Server) repoSecrets(ctx context.Context, repo string) (map[string]string, error) {
+	stored, err := s.store.Secrets(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -91,130 +117,119 @@ func (s *Server) repoSecrets(repo string) (map[string]string, error) {
 	return secrets, nil
 }
 
-func secretName(w http.ResponseWriter, r *http.Request) (string, bool) {
+func secretName(r *http.Request) (string, error) {
 	name := strings.ToUpper(r.PathValue("name"))
-	if !secretNamePattern.MatchString(name) || strings.HasPrefix(name, "GITHUB_") || strings.HasPrefix(name, "FORGEJO_") || strings.HasPrefix(name, "GITEA_") {
-		writeError(w, http.StatusBadRequest, "names are letters, digits and _, not starting with a digit, GITHUB_, FORGEJO_ or GITEA_")
-		return "", false
+	reserved := slices.ContainsFunc(reservedSecretPrefixes, func(prefix string) bool {
+		return strings.HasPrefix(name, prefix)
+	})
+	if !secretNamePattern.MatchString(name) || reserved {
+		return "", badRequest(secretNameProblem)
 	}
-	return name, true
+	return name, nil
 }
 
-func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "admin")
-	if !ok {
-		return
-	}
-	secrets, err := s.store.Secrets(repo.Name)
+func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, secrets)
+	secrets, err := s.store.Secrets(r.Context(), repo.Name)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, secrets)
 }
 
-func (s *Server) handleSetSecret(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "admin")
-	if !ok {
-		return
+func (s *Server) handleSetSecret(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeAdmin)
+	if err != nil {
+		return err
 	}
-	name, ok := secretName(w, r)
-	if !ok {
-		return
+	name, err := secretName(r)
+	if err != nil {
+		return err
 	}
-	var body struct {
-		Value string `json:"value"`
-	}
-	if !decodeBody(w, r, &body) {
-		return
+	body, err := decodeBody[valueRequest](w, r)
+	if err != nil {
+		return err
 	}
 	if body.Value == "" || len(body.Value) > maxSecret {
-		writeError(w, http.StatusBadRequest, "a secret is 1 byte to 64 KiB")
-		return
+		return badRequest("a secret is 1 byte to 64 KiB")
 	}
 	sealed, err := s.sealSecret([]byte(body.Value))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	eventID, err := s.store.SetSecret(identityFrom(r).actor, repo.Name, name, sealed)
+	eventID, err := s.store.SetSecret(r.Context(), identityFrom(r).actor, repo.Name, name, sealed)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "event_id": eventID})
+	return writeJSON(w, http.StatusOK, secretSet{EventID: eventID, Name: name})
 }
 
-func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "admin")
-	if !ok {
-		return
-	}
-	name, ok := secretName(w, r)
-	if !ok {
-		return
-	}
-	eventID, err := s.store.DeleteSecret(identityFrom(r).actor, repo.Name, name)
+func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeAdmin)
 	if err != nil {
-		writeStoreError(w, err, "no secret "+name)
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": name, "event_id": eventID})
+	name, err := secretName(r)
+	if err != nil {
+		return err
+	}
+	eventID, err := s.store.DeleteSecret(r.Context(), identityFrom(r).actor, repo.Name, name)
+	if err != nil {
+		return missing(err, "no secret "+name)
+	}
+	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
 }
 
-func (s *Server) handleListVariables(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	variables, err := s.store.Variables(repo.Name)
+func (s *Server) handleListVariables(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, variables)
+	variables, err := s.store.Variables(r.Context(), repo.Name)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, variables)
 }
 
-func (s *Server) handleSetVariable(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) handleSetVariable(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
 	}
-	name, ok := secretName(w, r)
-	if !ok {
-		return
+	name, err := secretName(r)
+	if err != nil {
+		return err
 	}
-	var body struct {
-		Value string `json:"value"`
-	}
-	if !decodeBody(w, r, &body) {
-		return
+	body, err := decodeBody[valueRequest](w, r)
+	if err != nil {
+		return err
 	}
 	if len(body.Value) > maxSecret {
-		writeError(w, http.StatusBadRequest, "a variable is at most 64 KiB")
-		return
+		return badRequest("a variable is at most 64 KiB")
 	}
-	eventID, err := s.store.SetVariable(identityFrom(r).actor, repo.Name, name, body.Value)
+	eventID, err := s.store.SetVariable(r.Context(), identityFrom(r).actor, repo.Name, name, body.Value)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "value": body.Value, "event_id": eventID})
+	return writeJSON(w, http.StatusOK, variableSet{EventID: eventID, Name: name, Value: body.Value})
 }
 
-func (s *Server) handleDeleteVariable(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
-	}
-	name, ok := secretName(w, r)
-	if !ok {
-		return
-	}
-	eventID, err := s.store.DeleteVariable(identityFrom(r).actor, repo.Name, name)
+func (s *Server) handleDeleteVariable(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		writeStoreError(w, err, "no variable "+name)
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": name, "event_id": eventID})
+	name, err := secretName(r)
+	if err != nil {
+		return err
+	}
+	eventID, err := s.store.DeleteVariable(r.Context(), identityFrom(r).actor, repo.Name, name)
+	if err != nil {
+		return missing(err, "no variable "+name)
+	}
+	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
 }

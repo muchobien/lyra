@@ -1,7 +1,7 @@
 package server
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,16 +10,20 @@ import (
 	"time"
 
 	"github.com/hiddeco/sshsig"
-	"golang.org/x/crypto/ssh"
 
+	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
 
-type conflictError string
+const (
+	methodFastForward = "ff"
+	methodSquash      = "squash"
 
-func (conflict conflictError) Error() string {
-	return string(conflict)
-}
+	pullCommitLimit    = 250
+	squashCommitLimit  = 1000
+	closingCommitLimit = 1000
+	signedCommitLimit  = 10000
+)
 
 type mergePlan struct {
 	HeadSHA     string   `json:"head_sha"`
@@ -39,268 +43,365 @@ type mergeRequest struct {
 	DeleteBranch bool   `json:"delete_branch"`
 }
 
-func (s *Server) planMerge(repo string, pull store.Pull) (mergePlan, error) {
+type PushEvent struct {
+	Method string      `json:"method,omitempty"`
+	Pull   int64       `json:"pull,omitzero"`
+	Refs   []RefUpdate `json:"refs"`
+}
+
+func (s *Server) approvalBlocks(ctx context.Context, pull store.Pull, head string) ([]string, error) {
+	reviews, err := s.store.Reviews(ctx, pull.Item)
+	if err != nil {
+		return nil, err
+	}
+	return approvalProblems(pull, reviews, head), nil
+}
+
+func (s *Server) checkBlocks(ctx context.Context, repo, head string) ([]string, error) {
+	checks, err := s.store.Checks(ctx, repo, head)
+	if err != nil {
+		return nil, err
+	}
+	failing := []string{}
+	for _, check := range checks.Jobs {
+		if check.Status == statusFailure || check.Status == statusCancelled {
+			failing = append(failing, check.Name)
+		}
+	}
+	switch checks.State {
+	case checksNone:
+		return []string{"no checks ran for " + head[:7]}, nil
+	case checksPending:
+		return []string{"checks for " + head[:7] + " are still running"}, nil
+	case checksFailure:
+		return []string{"checks failed for " + head[:7] + ": " + strings.Join(failing, ", ")}, nil
+	}
+	return nil, nil
+}
+
+func (s *Server) signatureBlocks(ctx context.Context, dir string, plan mergePlan) ([]string, error) {
+	commits, err := s.git.Log(ctx, dir, plan.HeadSHA, signedCommitLimit, plan.BaseSHA)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := s.store.Keys(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return unverifiedCommits(keys, commits)
+}
+
+func (s *Server) planBlocks(
+	ctx context.Context,
+	repo string,
+	pull store.Pull,
+	plan mergePlan,
+	policy branchPolicy,
+) ([]string, error) {
+	blocked := []string{}
+	rule := "branch rule " + strings.Join(policy.rules, ", ")
+	if policy.requireApproval {
+		problems, err := s.approvalBlocks(ctx, pull, plan.HeadSHA)
+		if err != nil {
+			return nil, err
+		}
+		for _, problem := range problems {
+			blocked = append(blocked, rule+": "+problem)
+		}
+	}
+	if policy.requireChecks {
+		problems, err := s.checkBlocks(ctx, repo, plan.HeadSHA)
+		if err != nil {
+			return nil, err
+		}
+		for _, problem := range problems {
+			blocked = append(blocked, rule+": "+problem)
+		}
+	}
+	if len(policy.methods) == 0 {
+		blocked = append(blocked, "branch rules "+strings.Join(policy.rules, ", ")+" allow no merge method")
+	}
+	if policy.requireSigned {
+		problems, err := s.signatureBlocks(ctx, s.repoDir(repo), plan)
+		if err != nil {
+			return nil, err
+		}
+		for _, problem := range problems {
+			blocked = append(blocked, rule+" requires verified signatures: "+problem)
+		}
+	}
+	return blocked, nil
+}
+
+func (s *Server) planMerge(ctx context.Context, repo string, pull store.Pull) (mergePlan, error) {
 	dir := s.repoDir(repo)
 	plan := mergePlan{Blocked: []string{}}
 	var err error
-	if plan.HeadSHA, err = s.git.ResolveCommit(dir, "refs/heads/"+pull.Head); err != nil {
+	if plan.HeadSHA, err = s.git.ResolveCommit(ctx, dir, "refs/heads/"+pull.Head); err != nil {
 		return plan, store.InvalidError("branch " + pull.Head + " no longer exists")
 	}
-	if plan.BaseSHA, err = s.git.ResolveCommit(dir, "refs/heads/"+pull.Base); err != nil {
+	if plan.BaseSHA, err = s.git.ResolveCommit(ctx, dir, "refs/heads/"+pull.Base); err != nil {
 		return plan, store.InvalidError("branch " + pull.Base + " no longer exists")
 	}
-	if plan.FastForward, err = s.git.IsAncestor(dir, plan.BaseSHA, plan.HeadSHA); err != nil {
+	if plan.FastForward, err = s.git.IsAncestor(ctx, dir, plan.BaseSHA, plan.HeadSHA); err != nil {
 		return plan, err
 	}
-	if plan.tree, plan.Conflicts, err = s.git.MergeTree(dir, plan.BaseSHA, plan.HeadSHA); err != nil {
+	if plan.tree, plan.Conflicts, err = s.git.MergeTree(ctx, dir, plan.BaseSHA, plan.HeadSHA); err != nil {
 		return plan, err
 	}
-	rules, err := s.store.Rules(repo)
+	rules, err := s.store.Rules(ctx, repo)
 	if err != nil {
 		return plan, err
 	}
 	policy := policyFor(rules, pull.Base)
 	plan.Methods = policy.methods
-	if policy.requireApproval {
-		reviews, err := s.store.Reviews(pull.Item)
-		if err != nil {
-			return plan, err
-		}
-		for _, problem := range approvalProblems(pull, reviews, plan.HeadSHA) {
-			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+": "+problem)
-		}
-	}
-	if policy.requireChecks {
-		checks, err := s.store.Checks(repo, plan.HeadSHA)
-		if err != nil {
-			return plan, err
-		}
-		failing := []string{}
-		for _, check := range checks.Jobs {
-			if check.Status == "failure" || check.Status == "cancelled" {
-				failing = append(failing, check.Name)
-			}
-		}
-		problem := map[string]string{
-			"none":    "no checks ran for " + plan.HeadSHA[:7],
-			"pending": "checks for " + plan.HeadSHA[:7] + " are still running",
-			"failure": "checks failed for " + plan.HeadSHA[:7] + ": " + strings.Join(failing, ", "),
-		}[checks.State]
-		if problem != "" {
-			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+": "+problem)
-		}
-	}
-	if len(policy.methods) == 0 {
-		plan.Blocked = append(plan.Blocked, "branch rules "+strings.Join(policy.rules, ", ")+" allow no merge method")
-	}
-	if policy.requireSigned {
-		commits, err := s.git.Log(dir, plan.HeadSHA, 10000, plan.BaseSHA)
-		if err != nil {
-			return plan, err
-		}
-		keys, err := s.store.Keys("")
-		if err != nil {
-			return plan, err
-		}
-		problems, err := unverifiedCommits(keys, commits)
-		if err != nil {
-			return plan, err
-		}
-		for _, problem := range problems {
-			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+" requires verified signatures: "+problem)
-		}
-	}
-	return plan, nil
+	plan.Blocked, err = s.planBlocks(ctx, repo, pull, plan, policy)
+	return plan, err
 }
 
 func gitIdentity(name, email string, when time.Time) string {
 	return fmt.Sprintf("%s <%s> %d +0000", name, email, when.Unix())
 }
 
-func (s *Server) mergePull(r *http.Request, repo string, number int64, request mergeRequest) (store.Pull, int64, error) {
-	id := identityFrom(r)
-	dir := s.repoDir(repo)
-	pull, err := s.store.Pull(repo, number)
+func (s *Server) checkMerge(
+	ctx context.Context,
+	repo string,
+	pull store.Pull,
+	request mergeRequest,
+) (mergePlan, error) {
+	if pull.State != stateOpen {
+		return mergePlan{}, store.InvalidError(fmt.Sprintf("pull request #%d is %s", pull.Number, pull.State))
+	}
+	if !slices.Contains(mergeMethods, request.Method) {
+		return mergePlan{}, store.InvalidError("method must be ff or squash")
+	}
+	plan, err := s.planMerge(ctx, repo, pull)
 	if err != nil {
-		return pull, 0, err
-	}
-	if pull.State != "open" {
-		return pull, 0, store.InvalidError(fmt.Sprintf("pull request #%d is %s", number, pull.State))
-	}
-	if request.Method != "ff" && request.Method != "squash" {
-		return pull, 0, store.InvalidError("method must be ff or squash")
-	}
-	plan, err := s.planMerge(repo, pull)
-	if err != nil {
-		return pull, 0, err
+		return plan, err
 	}
 	if len(plan.Blocked) > 0 {
-		return pull, 0, conflictError(strings.Join(plan.Blocked, "; "))
+		return plan, conflict(strings.Join(plan.Blocked, "; "))
 	}
 	if request.DeleteBranch {
-		rules, err := s.store.Rules(repo)
+		rules, err := s.store.Rules(ctx, repo)
 		if err != nil {
-			return pull, 0, err
+			return plan, err
 		}
 		if policy := policyFor(rules, pull.Head); policy.forbidDeletion {
-			return pull, 0, conflictError("branch rule " + strings.Join(policy.rules, ", ") + " protects " + pull.Head + " from deletion; merge without deleting it")
+			return plan, conflict(
+				"branch rule " + strings.Join(policy.rules, ", ") + " protects " + pull.Head +
+					" from deletion; merge without deleting it",
+			)
 		}
 	}
 	if !slices.Contains(plan.Methods, request.Method) {
-		return pull, 0, conflictError("branch rules for " + pull.Base + " allow only " + strings.Join(plan.Methods, ", "))
+		return plan, conflict("branch rules for " + pull.Base + " allow only " + strings.Join(plan.Methods, ", "))
 	}
 	if request.HeadSHA != "" && request.HeadSHA != plan.HeadSHA {
-		return pull, 0, conflictError(fmt.Sprintf("%s is at %s, not %s", pull.Head, plan.HeadSHA, request.HeadSHA))
+		return plan, conflict(fmt.Sprintf("%s is at %s, not %s", pull.Head, plan.HeadSHA, request.HeadSHA))
 	}
-	if plan.HeadSHA != pull.HeadSHA {
-		if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", number), plan.HeadSHA, ""); err != nil {
-			return pull, 0, err
-		}
-		if _, err := s.store.SyncPull(repo, number, id.actor, plan.HeadSHA, pull.BaseSHA); err != nil {
-			return pull, 0, err
-		}
-	}
+	return plan, nil
+}
 
-	mergeSHA := plan.HeadSHA
+func squashMessage(pull store.Pull, commits []repos.Commit, request mergeRequest) string {
+	author := commits[len(commits)-1].Author
+	title := strings.TrimSpace(request.Title)
+	if title == "" {
+		title = fmt.Sprintf("%s (#%d)", pull.Title, pull.Number)
+	}
+	message := strings.TrimSpace(request.Message)
+	if request.Message == "" {
+		message = strings.TrimSpace(pull.Body)
+	}
+	coauthors := []string{}
+	for _, commit := range slices.Backward(commits) {
+		trailer := fmt.Sprintf("Co-authored-by: %s <%s>", commit.Author.Name, commit.Author.Email)
+		if commit.Author.Email != author.Email && !slices.Contains(coauthors, trailer) {
+			coauthors = append(coauthors, trailer)
+		}
+	}
+	text := title + "\n"
+	if message != "" {
+		text += "\n" + message + "\n"
+	}
+	if len(coauthors) > 0 {
+		text += "\n" + strings.Join(coauthors, "\n") + "\n"
+	}
+	return text
+}
+
+func (s *Server) squashCommit(
+	r *http.Request,
+	dir string,
+	pull store.Pull,
+	plan mergePlan,
+	request mergeRequest,
+) (string, error) {
+	ctx := r.Context()
+	commits, err := s.git.Log(ctx, dir, plan.HeadSHA, squashCommitLimit, plan.BaseSHA)
+	if err != nil {
+		return "", err
+	}
+	if len(commits) == 0 {
+		return "", store.InvalidError(pull.Base + " already contains every commit on " + pull.Head)
+	}
+	author := commits[len(commits)-1].Author
+	text := squashMessage(pull, commits, request)
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host
+	}
+	now := time.Now()
+	headers := "tree " + plan.tree + "\nparent " + plan.BaseSHA +
+		"\nauthor " + gitIdentity(author.Name, author.Email, now) +
+		"\ncommitter " + gitIdentity("Lyra", "lyra@"+host, now) + "\n"
+	signature, err := sshsig.Sign(strings.NewReader(headers+"\n"+text), s.signer, sshsig.HashSHA512, "git")
+	if err != nil {
+		return "", err
+	}
+	armored := strings.TrimSuffix(string(sshsig.Armor(signature)), "\n")
+	raw := headers + "gpgsig " + strings.ReplaceAll(armored, "\n", "\n ") + "\n\n" + text
+	return s.git.WriteCommit(ctx, dir, []byte(raw))
+}
+
+func (s *Server) mergeCommit(
+	r *http.Request,
+	dir string,
+	pull store.Pull,
+	plan mergePlan,
+	request mergeRequest,
+) (string, error) {
 	switch {
-	case request.Method == "ff" && !plan.FastForward:
-		return pull, 0, conflictError(pull.Base + " has commits that " + pull.Head + " doesn't; rebase it or merge with squash")
-	case request.Method == "squash" && len(plan.Conflicts) > 0:
-		return pull, 0, conflictError("merging " + pull.Head + " into " + pull.Base + " conflicts in " + strings.Join(plan.Conflicts, ", "))
-	case request.Method == "squash":
-		commits, err := s.git.Log(dir, plan.HeadSHA, 1000, plan.BaseSHA)
-		if err != nil {
-			return pull, 0, err
-		}
-		if len(commits) == 0 {
-			return pull, 0, store.InvalidError(pull.Base + " already contains every commit on " + pull.Head)
-		}
-		author := commits[len(commits)-1].Author
-		title := strings.TrimSpace(request.Title)
-		if title == "" {
-			title = fmt.Sprintf("%s (#%d)", pull.Title, number)
-		}
-		message := strings.TrimSpace(request.Message)
-		if request.Message == "" {
-			message = strings.TrimSpace(pull.Body)
-		}
-		coauthors := []string{}
-		for index := len(commits) - 1; index >= 0; index-- {
-			trailer := fmt.Sprintf("Co-authored-by: %s <%s>", commits[index].Author.Name, commits[index].Author.Email)
-			if commits[index].Author.Email != author.Email && !slices.Contains(coauthors, trailer) {
-				coauthors = append(coauthors, trailer)
-			}
-		}
-		text := title + "\n"
-		if message != "" {
-			text += "\n" + message + "\n"
-		}
-		if len(coauthors) > 0 {
-			text += "\n" + strings.Join(coauthors, "\n") + "\n"
-		}
-		host, _, err := net.SplitHostPort(r.Host)
-		if err != nil {
-			host = r.Host
-		}
-		now := time.Now()
-		headers := "tree " + plan.tree + "\nparent " + plan.BaseSHA + "\nauthor " + gitIdentity(author.Name, author.Email, now) + "\ncommitter " + gitIdentity("Lyra", "lyra@"+host, now) + "\n"
-		signature, err := sshsig.Sign(strings.NewReader(headers+"\n"+text), s.signer, sshsig.HashSHA512, "git")
-		if err != nil {
-			return pull, 0, err
-		}
-		armored := strings.TrimSuffix(string(sshsig.Armor(signature)), "\n")
-		raw := headers + "gpgsig " + strings.ReplaceAll(armored, "\n", "\n ") + "\n\n" + text
-		if mergeSHA, err = s.git.WriteCommit(dir, []byte(raw)); err != nil {
-			return pull, 0, err
-		}
+	case request.Method == methodFastForward && !plan.FastForward:
+		return "", conflict(pull.Base + " has commits that " + pull.Head + " doesn't; rebase it or merge with squash")
+	case request.Method == methodSquash && len(plan.Conflicts) > 0:
+		return "", conflict(
+			"merging " + pull.Head + " into " + pull.Base + " conflicts in " + strings.Join(plan.Conflicts, ", "),
+		)
+	case request.Method == methodSquash:
+		return s.squashCommit(r, dir, pull, plan, request)
 	}
+	return plan.HeadSHA, nil
+}
 
-	if err := s.git.UpdateRef(dir, "refs/heads/"+pull.Base, mergeSHA, plan.BaseSHA); err != nil {
-		return pull, 0, conflictError(pull.Base + " moved while merging; try again")
+func (s *Server) finishMerge(
+	r *http.Request,
+	pull store.Pull,
+	plan mergePlan,
+	request mergeRequest,
+	mergeSHA string,
+) (int64, error) {
+	ctx := r.Context()
+	actor := identityFrom(r).actor
+	repo := pull.Repo
+	dir := s.repoDir(repo)
+	if err := s.git.UpdateRef(ctx, dir, "refs/heads/"+pull.Base, mergeSHA, plan.BaseSHA); err != nil {
+		return 0, conflict(pull.Base + " moved while merging; try again")
 	}
-	mergeBase, err := s.git.MergeBase(dir, plan.BaseSHA, plan.HeadSHA)
+	mergeBase, err := s.git.MergeBase(ctx, dir, plan.BaseSHA, plan.HeadSHA)
 	if err != nil {
 		mergeBase = pull.BaseSHA
 	}
-	eventID, err := s.store.MarkPullMerged(repo, number, id.actor, mergeSHA, mergeBase, request.Method)
+	eventID, err := s.store.MarkPullMerged(ctx, repo, pull.Number, actor, mergeSHA, mergeBase, request.Method)
 	if err != nil {
-		return pull, 0, err
+		return 0, err
 	}
 	updates := []RefUpdate{{Ref: "refs/heads/" + pull.Base, Old: plan.BaseSHA, New: mergeSHA}}
 	if request.DeleteBranch {
-		if err := s.git.UpdateRef(dir, "refs/heads/"+pull.Head, "", plan.HeadSHA); err == nil {
-			updates = append(updates, RefUpdate{Ref: "refs/heads/" + pull.Head, Old: plan.HeadSHA, New: strings.Repeat("0", len(plan.HeadSHA))})
+		if err := s.git.UpdateRef(ctx, dir, "refs/heads/"+pull.Head, "", plan.HeadSHA); err == nil {
+			updates = append(updates, RefUpdate{
+				Ref: "refs/heads/" + pull.Head,
+				Old: plan.HeadSHA,
+				New: strings.Repeat("0", len(plan.HeadSHA)),
+			})
 		}
 	}
-	if _, err := s.store.AddEvent("push", repo, id.actor, map[string]any{"refs": updates, "pull": number, "method": request.Method}); err != nil {
-		return pull, eventID, err
+	pushed := PushEvent{Method: request.Method, Pull: pull.Number, Refs: updates}
+	if _, err := s.store.AddEvent(ctx, "push", repo, actor, pushed); err != nil {
+		return eventID, err
 	}
-	if pull.Base == s.git.DefaultBranch(dir) {
-		if _, err := closeReferenced(s.store, repo, id.actor, pull.Title+"\n"+pull.Body, mergeSHA); err != nil {
-			return pull, eventID, err
+	if pull.Base == s.git.DefaultBranch(ctx, dir) {
+		if _, err := closeReferenced(ctx, s.store, repo, actor, pull.Title+"\n"+pull.Body, mergeSHA); err != nil {
+			return eventID, err
 		}
 	}
-	if _, err := ProcessPush(s.store, s.git, dir, repo, id.actor, updates); err != nil {
+	_, err = ProcessPush(ctx, s.store, s.git, dir, repo, actor, updates)
+	return eventID, err
+}
+
+func (s *Server) mergePull(
+	r *http.Request,
+	repo string,
+	number int64,
+	request mergeRequest,
+) (store.Pull, int64, error) {
+	ctx := r.Context()
+	dir := s.repoDir(repo)
+	pull, err := s.store.Pull(ctx, repo, number)
+	if err != nil {
+		return pull, 0, err
+	}
+	plan, err := s.checkMerge(ctx, repo, pull, request)
+	if err != nil {
+		return pull, 0, err
+	}
+	if plan.HeadSHA != pull.HeadSHA {
+		if err := s.git.UpdateRef(ctx, dir, pullRef(number), plan.HeadSHA, ""); err != nil {
+			return pull, 0, err
+		}
+		actor := identityFrom(r).actor
+		if _, err := s.store.SyncPull(ctx, repo, number, actor, plan.HeadSHA, pull.BaseSHA); err != nil {
+			return pull, 0, err
+		}
+	}
+	mergeSHA, err := s.mergeCommit(r, dir, pull, plan, request)
+	if err != nil {
+		return pull, 0, err
+	}
+	eventID, err := s.finishMerge(r, pull, plan, request, mergeSHA)
+	if err != nil {
 		return pull, eventID, err
 	}
-	pull, err = s.store.Pull(repo, number)
+	pull, err = s.store.Pull(ctx, repo, number)
 	return pull, eventID, err
 }
 
-func (s *Server) handleMergePull(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) handleMergePull(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
 	}
-	number, ok := itemNumber(w, r)
-	if !ok {
-		return
+	number, err := itemNumber(r)
+	if err != nil {
+		return err
 	}
-	var request mergeRequest
-	if !decodeBody(w, r, &request) {
-		return
+	request, err := decodeBody[mergeRequest](w, r)
+	if err != nil {
+		return err
 	}
-	if problem := checkText(nil, &request.Message); problem != "" {
-		writeError(w, http.StatusBadRequest, problem)
-		return
+	if err := checkText(nil, &request.Message); err != nil {
+		return err
 	}
 	pull, eventID, err := s.mergePull(r, repo.Name, number, request)
-	var conflict conflictError
-	if errors.As(err, &conflict) {
-		writeError(w, http.StatusConflict, conflict.Error())
-		return
-	}
 	if err != nil {
-		writeStoreError(w, err, "pull request not found")
-		return
+		return missing(err, "pull request not found")
 	}
-	writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID})
+	return writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID})
 }
 
-func (s *Server) handleSigningKey(w http.ResponseWriter, r *http.Request) {
-	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.signer.PublicKey())))
-	writeJSON(w, http.StatusOK, map[string]string{
-		"public_key":      publicKey,
-		"fingerprint":     ssh.FingerprintSHA256(s.signer.PublicKey()),
-		"allowed_signers": `lyra namespaces="git" ` + publicKey,
-	})
-}
-
-func (s *Server) uiMergePull(w http.ResponseWriter, r *http.Request) {
-	repo, item, ok := s.uiItem(w, r, "pr", true)
-	if !ok {
-		return
-	}
-	request := mergeRequest{Method: r.FormValue("method"), HeadSHA: r.FormValue("head_sha"), DeleteBranch: r.FormValue("delete_branch") != ""}
-	_, _, err := s.mergePull(r, repo.Name, item.Number, request)
-	var conflict conflictError
-	if errors.As(err, &conflict) {
-		s.renderError(w, r, http.StatusConflict, conflict.Error())
-		return
-	}
+func (s *Server) uiMergePull(w http.ResponseWriter, r *http.Request) error {
+	repo, item, err := s.uiItem(r, kindPull, true)
 	if err != nil {
-		s.renderStoreError(w, r, err, "Pull request not found.")
-		return
+		return err
+	}
+	request := mergeRequest{
+		Method:       r.FormValue("method"),
+		HeadSHA:      r.FormValue("head_sha"),
+		DeleteBranch: r.FormValue("delete_branch") != "",
+	}
+	if _, _, err := s.mergePull(r, repo.Name, item.Number, request); err != nil {
+		return missing(err, "Pull request not found.")
 	}
 	http.Redirect(w, r, fmt.Sprintf("/%s/pulls/%d", repo.Name, item.Number), http.StatusSeeOther)
+	return nil
 }

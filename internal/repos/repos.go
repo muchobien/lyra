@@ -2,6 +2,7 @@ package repos
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -25,7 +26,7 @@ type Git struct{}
 type Signature struct {
 	Status      string `json:"status"`
 	Fingerprint string `json:"fingerprint,omitempty"`
-	KeyID       int64  `json:"key_id,omitempty"`
+	KeyID       int64  `json:"key_id,omitzero"`
 	KeyUser     string `json:"key_user,omitempty"`
 	KeyAgent    string `json:"key_agent,omitempty"`
 	Payload     []byte `json:"-"`
@@ -70,10 +71,12 @@ type Ref struct {
 	SHA  string `json:"sha"`
 }
 
-var signatureStart = regexp.MustCompile(`(?m)^-----BEGIN (PGP|SSH) SIGNATURE-----$|^-----BEGIN SIGNED MESSAGE-----$`)
+var signatureStart = regexp.MustCompile(
+	`(?m)^-----BEGIN (PGP|SSH) SIGNATURE-----$|^-----BEGIN SIGNED MESSAGE-----$`,
+)
 
-func (g Git) command(dir string, stdin []byte, args ...string) ([]byte, []byte, error) {
-	cmd := exec.Command("git", args...)
+func (g Git) command(ctx context.Context, dir string, stdin []byte, args ...string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0")
 	if stdin != nil {
@@ -86,16 +89,16 @@ func (g Git) command(dir string, stdin []byte, args ...string) ([]byte, []byte, 
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
-func (g Git) run(dir string, args ...string) ([]byte, []byte, error) {
-	return g.command(dir, nil, args...)
+func (g Git) run(ctx context.Context, dir string, args ...string) ([]byte, []byte, error) {
+	return g.command(ctx, dir, nil, args...)
 }
 
-func (g Git) objects(dir string, shas []string) (map[string][]byte, error) {
+func (g Git) objects(ctx context.Context, dir string, shas []string) (map[string][]byte, error) {
 	objects := map[string][]byte{}
 	if len(shas) == 0 {
 		return objects, nil
 	}
-	stdout, stderr, err := g.command(dir, []byte(strings.Join(shas, "\n")+"\n"), "cat-file", "--batch")
+	stdout, stderr, err := g.command(ctx, dir, []byte(strings.Join(shas, "\n")+"\n"), "cat-file", "--batch")
 	if err != nil {
 		return nil, fmt.Errorf("cat-file --batch: %v: %s", err, stderr)
 	}
@@ -159,8 +162,8 @@ func tagSignature(raw []byte) Signature {
 	return Signature{Status: Unverified, Payload: raw[:start], Armored: raw[start:]}
 }
 
-func (g Git) Init(dir string) error {
-	cmd := exec.Command("git", "init", "--quiet", "--bare", "--initial-branch=main", dir)
+func (g Git) Init(ctx context.Context, dir string) error {
+	cmd := exec.CommandContext(ctx, "git", "init", "--quiet", "--bare", "--initial-branch=main", dir)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git init: %v: %s", err, output)
@@ -168,27 +171,27 @@ func (g Git) Init(dir string) error {
 	return nil
 }
 
-func (g Git) ResolveCommit(dir, rev string) (string, error) {
+func (g Git) ResolveCommit(ctx context.Context, dir, rev string) (string, error) {
 	if rev == "" || strings.HasPrefix(rev, "-") {
 		return "", ErrNotFound
 	}
-	stdout, _, err := g.run(dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
+	stdout, _, err := g.run(ctx, dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
 	if err != nil {
 		return "", ErrNotFound
 	}
 	return strings.TrimSpace(string(stdout)), nil
 }
 
-func (g Git) DefaultBranch(dir string) string {
-	stdout, _, err := g.run(dir, "symbolic-ref", "--short", "HEAD")
+func (g Git) DefaultBranch(ctx context.Context, dir string) string {
+	stdout, _, err := g.run(ctx, dir, "symbolic-ref", "--short", "HEAD")
 	if err != nil {
 		return "main"
 	}
 	return strings.TrimSpace(string(stdout))
 }
 
-func (g Git) Branches(dir string) ([]Ref, error) {
-	stdout, stderr, err := g.run(dir, "for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads")
+func (g Git) Branches(ctx context.Context, dir string) ([]Ref, error) {
+	stdout, stderr, err := g.run(ctx, dir, "for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads")
 	if err != nil {
 		return nil, fmt.Errorf("for-each-ref: %v: %s", err, stderr)
 	}
@@ -204,8 +207,8 @@ func (g Git) Branches(dir string) ([]Ref, error) {
 
 const logFormat = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%b%x1e"
 
-func (g Git) Log(dir, rev string, limit int, exclude ...string) ([]Commit, error) {
-	sha, err := g.ResolveCommit(dir, rev)
+func (g Git) Log(ctx context.Context, dir, rev string, limit int, exclude ...string) ([]Commit, error) {
+	sha, err := g.ResolveCommit(ctx, dir, rev)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +216,7 @@ func (g Git) Log(dir, rev string, limit int, exclude ...string) ([]Commit, error
 	for _, excluded := range exclude {
 		args = append(args, "^"+excluded)
 	}
-	stdout, stderr, err := g.run(dir, append(args, "--")...)
+	stdout, stderr, err := g.run(ctx, dir, append(args, "--")...)
 	if err != nil {
 		return nil, fmt.Errorf("git log: %v: %s", err, stderr)
 	}
@@ -238,7 +241,7 @@ func (g Git) Log(dir, rev string, limit int, exclude ...string) ([]Commit, error
 		})
 		shas = append(shas, fields[0])
 	}
-	objects, err := g.objects(dir, shas)
+	objects, err := g.objects(ctx, dir, shas)
 	if err != nil {
 		return nil, err
 	}
@@ -248,8 +251,8 @@ func (g Git) Log(dir, rev string, limit int, exclude ...string) ([]Commit, error
 	return commits, nil
 }
 
-func (g Git) Commit(dir, rev string) (Commit, error) {
-	commits, err := g.Log(dir, rev, 1)
+func (g Git) Commit(ctx context.Context, dir, rev string) (Commit, error) {
+	commits, err := g.Log(ctx, dir, rev, 1)
 	if err != nil {
 		return Commit{}, err
 	}
@@ -259,26 +262,25 @@ func (g Git) Commit(dir, rev string) (Commit, error) {
 	return commits[0], nil
 }
 
-func (g Git) Patch(dir, sha string) (string, error) {
-	stdout, stderr, err := g.run(dir, "show", "--format=", "--stat", "--patch", "--no-color", sha, "--")
+func (g Git) Patch(ctx context.Context, dir, sha string) (string, error) {
+	stdout, stderr, err := g.run(ctx, dir, "show", "--format=", "--stat", "--patch", "--no-color", sha, "--")
 	if err != nil {
 		return "", fmt.Errorf("git show: %v: %s", err, stderr)
 	}
 	return string(stdout), nil
 }
 
-func (g Git) MergeBase(dir, first, second string) (string, error) {
-	stdout, _, err := g.run(dir, "merge-base", first, second)
+func (g Git) MergeBase(ctx context.Context, dir, first, second string) (string, error) {
+	stdout, _, err := g.run(ctx, dir, "merge-base", first, second)
 	if err != nil {
 		return "", ErrNotFound
 	}
 	return strings.TrimSpace(string(stdout)), nil
 }
 
-func (g Git) IsAncestor(dir, ancestor, descendant string) (bool, error) {
-	_, stderr, err := g.run(dir, "merge-base", "--is-ancestor", ancestor, descendant)
-	var exitError *exec.ExitError
-	if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+func (g Git) IsAncestor(ctx context.Context, dir, ancestor, descendant string) (bool, error) {
+	_, stderr, err := g.run(ctx, dir, "merge-base", "--is-ancestor", ancestor, descendant)
+	if exitError, exited := errors.AsType[*exec.ExitError](err); exited && exitError.ExitCode() == 1 {
 		return false, nil
 	}
 	if err != nil {
@@ -287,7 +289,7 @@ func (g Git) IsAncestor(dir, ancestor, descendant string) (bool, error) {
 	return true, nil
 }
 
-func (g Git) UpdateRef(dir, ref, newSHA, oldSHA string) error {
+func (g Git) UpdateRef(ctx context.Context, dir, ref, newSHA, oldSHA string) error {
 	args := []string{"update-ref", ref, newSHA}
 	if newSHA == "" {
 		args = []string{"update-ref", "-d", ref}
@@ -295,16 +297,21 @@ func (g Git) UpdateRef(dir, ref, newSHA, oldSHA string) error {
 	if oldSHA != "" {
 		args = append(args, oldSHA)
 	}
-	if _, stderr, err := g.run(dir, args...); err != nil {
+	if _, stderr, err := g.run(ctx, dir, args...); err != nil {
 		return fmt.Errorf("update-ref %s: %v: %s", ref, err, stderr)
 	}
 	return nil
 }
 
-func (g Git) MergeTree(dir, base, head string) (string, []string, error) {
-	stdout, stderr, err := g.run(dir, "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", base, head)
-	var exitError *exec.ExitError
-	if err != nil && !(errors.As(err, &exitError) && exitError.ExitCode() == 1) {
+func (g Git) MergeTree(ctx context.Context, dir, base, head string) (string, []string, error) {
+	stdout, stderr, err := g.run(
+		ctx,
+		dir,
+		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", base, head,
+	)
+	exitError, exited := errors.AsType[*exec.ExitError](err)
+	conflicted := exited && exitError.ExitCode() == 1
+	if err != nil && !conflicted {
 		return "", nil, fmt.Errorf("merge-tree: %v: %s", err, stderr)
 	}
 	fields := strings.Split(strings.TrimRight(string(stdout), "\x00"), "\x00")
@@ -317,26 +324,25 @@ func (g Git) MergeTree(dir, base, head string) (string, []string, error) {
 	return fields[0], conflicts, nil
 }
 
-func (g Git) WriteCommit(dir string, raw []byte) (string, error) {
-	stdout, stderr, err := g.command(dir, raw, "hash-object", "-w", "-t", "commit", "--stdin")
+func (g Git) WriteCommit(ctx context.Context, dir string, raw []byte) (string, error) {
+	stdout, stderr, err := g.command(ctx, dir, raw, "hash-object", "-w", "-t", "commit", "--stdin")
 	if err != nil {
 		return "", fmt.Errorf("hash-object: %v: %s", err, stderr)
 	}
 	return strings.TrimSpace(string(stdout)), nil
 }
 
-func (g Git) Diff(dir, base, head string) (string, error) {
-	stdout, stderr, err := g.run(dir, "diff", "--no-color", "--find-renames", base, head, "--")
+func (g Git) Diff(ctx context.Context, dir, base, head string) (string, error) {
+	stdout, stderr, err := g.run(ctx, dir, "diff", "--no-color", "--find-renames", base, head, "--")
 	if err != nil {
 		return "", fmt.Errorf("git diff: %v: %s", err, stderr)
 	}
 	return string(stdout), nil
 }
 
-func (g Git) Changed(dir, from, to, path string) (bool, error) {
-	_, stderr, err := g.run(dir, "diff", "--quiet", from, to, "--", path)
-	var exitError *exec.ExitError
-	if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+func (g Git) Changed(ctx context.Context, dir, from, to, path string) (bool, error) {
+	_, stderr, err := g.run(ctx, dir, "diff", "--quiet", from, to, "--", path)
+	if exitError, exited := errors.AsType[*exec.ExitError](err); exited && exitError.ExitCode() == 1 {
 		return true, nil
 	}
 	if err != nil {
@@ -351,13 +357,20 @@ type FileChange struct {
 	Status    string `json:"status"`
 	Additions int    `json:"additions"`
 	Deletions int    `json:"deletions"`
-	Binary    bool   `json:"binary,omitempty"`
+	Binary    bool   `json:"binary,omitzero"`
 }
 
-var fileStatuses = map[byte]string{'A': "added", 'D': "deleted", 'M': "modified", 'R': "renamed", 'C': "copied", 'T': "type-changed"}
+var fileStatuses = map[byte]string{
+	'A': "added",
+	'D': "deleted",
+	'M': "modified",
+	'R': "renamed",
+	'C': "copied",
+	'T': "type-changed",
+}
 
-func (g Git) DiffFiles(dir, base, head string) ([]FileChange, error) {
-	stdout, stderr, err := g.run(dir, "diff", "--find-renames", "--name-status", "-z", base, head, "--")
+func (g Git) DiffFiles(ctx context.Context, dir, base, head string) ([]FileChange, error) {
+	stdout, stderr, err := g.run(ctx, dir, "diff", "--find-renames", "--name-status", "-z", base, head, "--")
 	if err != nil {
 		return nil, fmt.Errorf("git diff --name-status: %v: %s", err, stderr)
 	}
@@ -372,7 +385,7 @@ func (g Git) DiffFiles(dir, base, head string) ([]FileChange, error) {
 		}
 		files = append(files, change)
 	}
-	stdout, stderr, err = g.run(dir, "diff", "--find-renames", "--numstat", "-z", base, head, "--")
+	stdout, stderr, err = g.run(ctx, dir, "diff", "--find-renames", "--numstat", "-z", base, head, "--")
 	if err != nil {
 		return nil, fmt.Errorf("git diff --numstat: %v: %s", err, stderr)
 	}
@@ -396,9 +409,11 @@ func (g Git) DiffFiles(dir, base, head string) ([]FileChange, error) {
 	return files, nil
 }
 
-func (g Git) Tags(dir string) ([]Tag, error) {
-	format := "%(refname:short)%00%(objecttype)%00%(*objectname)%00%(objectname)%00%(taggername)%00%(taggeremail:trim)%00%(taggerdate:iso-strict)%00%(contents:subject)%1e"
-	stdout, stderr, err := g.run(dir, "for-each-ref", "--sort=-creatordate", "--format="+format, "refs/tags")
+const tagFormat = "%(refname:short)%00%(objecttype)%00%(*objectname)%00%(objectname)" +
+	"%00%(taggername)%00%(taggeremail:trim)%00%(taggerdate:iso-strict)%00%(contents:subject)%1e"
+
+func (g Git) Tags(ctx context.Context, dir string) ([]Tag, error) {
+	stdout, stderr, err := g.run(ctx, dir, "for-each-ref", "--sort=-creatordate", "--format="+tagFormat, "refs/tags")
 	if err != nil {
 		return nil, fmt.Errorf("for-each-ref: %v: %s", err, stderr)
 	}
@@ -423,7 +438,7 @@ func (g Git) Tags(dir string) ([]Tag, error) {
 		}
 		tags = append(tags, tag)
 	}
-	objects, err := g.objects(dir, tagObjects)
+	objects, err := g.objects(ctx, dir, tagObjects)
 	if err != nil {
 		return nil, err
 	}
@@ -437,16 +452,16 @@ func (g Git) Tags(dir string) ([]Tag, error) {
 	return tags, nil
 }
 
-func (g Git) Tree(dir, sha, path string) ([]Entry, error) {
+func (g Git) Tree(ctx context.Context, dir, sha, path string) ([]Entry, error) {
 	object := sha + "^{tree}"
 	if path != "" {
 		object = sha + ":" + path
 	}
-	kind, _, err := g.run(dir, "cat-file", "-t", object)
+	kind, _, err := g.run(ctx, dir, "cat-file", "-t", object)
 	if err != nil || strings.TrimSpace(string(kind)) != "tree" {
 		return nil, ErrNotFound
 	}
-	stdout, stderr, err := g.run(dir, "ls-tree", "-z", "--long", object)
+	stdout, stderr, err := g.run(ctx, dir, "ls-tree", "-z", "--long", object)
 	if err != nil {
 		return nil, fmt.Errorf("ls-tree: %v: %s", err, stderr)
 	}
@@ -466,38 +481,38 @@ func (g Git) Tree(dir, sha, path string) ([]Entry, error) {
 	return entries, nil
 }
 
-func (g Git) Blob(dir, sha, path string) ([]byte, error) {
+func (g Git) Blob(ctx context.Context, dir, sha, path string) ([]byte, error) {
 	object := sha + ":" + path
-	kind, _, err := g.run(dir, "cat-file", "-t", object)
+	kind, _, err := g.run(ctx, dir, "cat-file", "-t", object)
 	if err != nil || strings.TrimSpace(string(kind)) != "blob" {
 		return nil, ErrNotFound
 	}
-	stdout, stderr, err := g.run(dir, "cat-file", "blob", object)
+	stdout, stderr, err := g.run(ctx, dir, "cat-file", "blob", object)
 	if err != nil {
 		return nil, fmt.Errorf("cat-file: %v: %s", err, stderr)
 	}
 	return stdout, nil
 }
 
-func (g Git) ValidRef(ref string) bool {
-	_, _, err := g.run("", "check-ref-format", ref)
+func (g Git) ValidRef(ctx context.Context, ref string) bool {
+	_, _, err := g.run(ctx, "", "check-ref-format", ref)
 	return err == nil
 }
 
-func (g Git) RevList(dir, rev string, exclude ...string) ([]string, error) {
+func (g Git) RevList(ctx context.Context, dir, rev string, exclude ...string) ([]string, error) {
 	args := []string{"rev-list", rev}
 	for _, excluded := range exclude {
 		args = append(args, "^"+excluded)
 	}
-	stdout, stderr, err := g.run(dir, append(args, "--")...)
+	stdout, stderr, err := g.run(ctx, dir, append(args, "--")...)
 	if err != nil {
 		return nil, fmt.Errorf("rev-list: %v: %s", err, stderr)
 	}
 	return strings.Fields(string(stdout)), nil
 }
 
-func (g Git) Refs(dir string) (map[string]string, error) {
-	stdout, stderr, err := g.run(dir, "for-each-ref", "--format=%(refname) %(objectname)")
+func (g Git) Refs(ctx context.Context, dir string) (map[string]string, error) {
+	stdout, stderr, err := g.run(ctx, dir, "for-each-ref", "--format=%(refname) %(objectname)")
 	if err != nil {
 		return nil, fmt.Errorf("for-each-ref: %v: %s", err, stderr)
 	}
@@ -510,8 +525,8 @@ func (g Git) Refs(dir string) (map[string]string, error) {
 	return refs, nil
 }
 
-func (g Git) Fsck(dir string) error {
-	if _, stderr, err := g.run(dir, "fsck", "--connectivity-only", "--no-dangling", "--no-progress"); err != nil {
+func (g Git) Fsck(ctx context.Context, dir string) error {
+	if _, stderr, err := g.run(ctx, dir, "fsck", "--connectivity-only", "--no-dangling", "--no-progress"); err != nil {
 		return fmt.Errorf("git fsck: %v: %s", err, strings.TrimSpace(string(stderr)))
 	}
 	return nil

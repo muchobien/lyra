@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,11 +11,39 @@ import (
 	"github.com/muchobien/lyra/internal/store"
 )
 
-var reviewStates = map[string]string{"approve": "approved", "request_changes": "changes_requested", "comment": "commented"}
+const (
+	sideOld = "old"
+	sideNew = "new"
 
-func (s *Server) pullDiff(repo string, pull store.Pull) ([]*gitdiff.File, error) {
-	base, head := s.pullRange(repo, pull)
-	diff, err := s.git.Diff(s.repoDir(repo), base, head)
+	reviewApprove        = "approve"
+	reviewRequestChanges = "request_changes"
+	reviewComment        = "comment"
+
+	reviewApproved         = "approved"
+	reviewChangesRequested = "changes_requested"
+	reviewCommented        = "commented"
+)
+
+var reviewStates = map[string]string{
+	reviewApprove:        reviewApproved,
+	reviewRequestChanges: reviewChangesRequested,
+	reviewComment:        reviewCommented,
+}
+
+type reviewRequest struct {
+	State    string              `json:"state"`
+	Body     string              `json:"body"`
+	Comments []store.LineComment `json:"comments"`
+}
+
+type reviewWrite struct {
+	store.Review
+	EventID int64 `json:"event_id"`
+}
+
+func (s *Server) pullDiff(ctx context.Context, repo string, pull store.Pull) ([]*gitdiff.File, error) {
+	base, head := s.pullRange(ctx, repo, pull)
+	diff, err := s.git.Diff(ctx, s.repoDir(repo), base, head)
 	if err != nil {
 		return nil, err
 	}
@@ -22,81 +51,98 @@ func (s *Server) pullDiff(repo string, pull store.Pull) ([]*gitdiff.File, error)
 	return files, err
 }
 
+func fragmentHas(fragment *gitdiff.TextFragment, line store.LineRef) bool {
+	oldNumber, newNumber := fragment.OldPosition, fragment.NewPosition
+	for _, diffLine := range fragment.Lines {
+		if line.Side == sideOld && diffLine.Old() && oldNumber == line.Line {
+			return true
+		}
+		if line.Side == sideNew && diffLine.New() && newNumber == line.Line {
+			return true
+		}
+		if diffLine.Old() {
+			oldNumber++
+		}
+		if diffLine.New() {
+			newNumber++
+		}
+	}
+	return false
+}
+
 func anchored(files []*gitdiff.File, line store.LineRef) bool {
 	for _, file := range files {
-		if (line.Side == "new" && file.NewName != line.Path) || (line.Side == "old" && file.OldName != line.Path) {
+		if line.Side == sideNew && file.NewName != line.Path {
+			continue
+		}
+		if line.Side == sideOld && file.OldName != line.Path {
 			continue
 		}
 		for _, fragment := range file.TextFragments {
-			oldNumber, newNumber := fragment.OldPosition, fragment.NewPosition
-			for _, diffLine := range fragment.Lines {
-				if line.Side == "old" && diffLine.Old() && oldNumber == line.Line {
-					return true
-				}
-				if line.Side == "new" && diffLine.New() && newNumber == line.Line {
-					return true
-				}
-				if diffLine.Old() {
-					oldNumber++
-				}
-				if diffLine.New() {
-					newNumber++
-				}
+			if fragmentHas(fragment, line) {
+				return true
 			}
 		}
 	}
 	return false
 }
 
-func (s *Server) checkLines(repo string, pull store.Pull, lines []*store.LineRef) error {
+func (s *Server) checkLines(ctx context.Context, repo string, pull store.Pull, lines []*store.LineRef) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	files, err := s.pullDiff(repo, pull)
+	files, err := s.pullDiff(ctx, repo, pull)
 	if err != nil {
 		return err
 	}
 	for _, line := range lines {
 		if line.Side == "" {
-			line.Side = "new"
+			line.Side = sideNew
 		}
-		if line.Side != "old" && line.Side != "new" {
+		if line.Side != sideOld && line.Side != sideNew {
 			return store.InvalidError("side must be old or new")
 		}
 		if !anchored(files, *line) {
-			return store.InvalidError(fmt.Sprintf("line %d (%s side) of %s is not in the diff of #%d", line.Line, line.Side, line.Path, pull.Number))
+			return store.InvalidError(fmt.Sprintf(
+				"line %d (%s side) of %s is not in the diff of #%d",
+				line.Line, line.Side, line.Path, pull.Number,
+			))
 		}
 		line.CommitSHA = pull.HeadSHA
 	}
 	return nil
 }
 
-func (s *Server) commentLine(repo, kind string, number int64, path string, line int64, side string) (store.LineRef, error) {
-	ref := store.LineRef{Path: path, Line: line, Side: side}
-	if path == "" && line == 0 && side == "" {
+func (s *Server) commentLine(
+	ctx context.Context,
+	repo, kind string,
+	number int64,
+	ref store.LineRef,
+) (store.LineRef, error) {
+	if ref.Path == "" && ref.Line == 0 && ref.Side == "" {
 		return ref, nil
 	}
-	if kind != "pr" {
+	if kind != kindPull {
 		return ref, store.InvalidError("only pull request comments can point at a line")
 	}
-	if path == "" || line <= 0 {
+	if ref.Path == "" || ref.Line <= 0 {
 		return ref, store.InvalidError("a line comment needs a path and a line number")
 	}
-	pull, err := s.store.Pull(repo, number)
+	pull, err := s.store.Pull(ctx, repo, number)
 	if err != nil {
 		return ref, err
 	}
-	err = s.checkLines(repo, pull, []*store.LineRef{&ref})
+	err = s.checkLines(ctx, repo, pull, []*store.LineRef{&ref})
 	return ref, err
 }
 
-func (s *Server) markOutdated(repo string, pull store.Pull, comments []store.Comment) {
+func (s *Server) markOutdated(ctx context.Context, repo string, pull store.Pull, comments []store.Comment) {
 	for index := range comments {
 		comment := &comments[index]
-		if comment.Path == "" || comment.Side != "new" || comment.CommitSHA == pull.HeadSHA {
+		if comment.Path == "" || comment.Side != sideNew || comment.CommitSHA == pull.HeadSHA {
 			continue
 		}
-		changed, err := s.git.Changed(s.repoDir(repo), comment.CommitSHA, pull.HeadSHA, comment.Path)
+		changed, err := s.git.Changed(ctx, s.repoDir(repo), comment.CommitSHA, pull.HeadSHA, comment.Path)
 		comment.Outdated = err != nil || changed
 	}
 }
@@ -105,11 +151,11 @@ func isAuthor(pull store.Pull, actor store.Actor) bool {
 	return pull.Author.User == actor.User && pull.Author.Agent == actor.Agent
 }
 
-func approvalProblems(pull store.Pull, reviews []store.Review, head string) []string {
+func latestReviews(pull store.Pull, reviews []store.Review) []store.Review {
 	latest := map[string]store.Review{}
 	order := []string{}
 	for _, review := range reviews {
-		if review.State == "commented" || isAuthor(pull, review.Author) {
+		if review.State == reviewCommented || isAuthor(pull, review.Author) {
 			continue
 		}
 		reviewer := review.Author.User + " " + review.Author.Agent
@@ -118,96 +164,121 @@ func approvalProblems(pull store.Pull, reviews []store.Review, head string) []st
 		}
 		latest[reviewer] = review
 	}
+	ordered := []store.Review{}
+	for _, reviewer := range order {
+		ordered = append(ordered, latest[reviewer])
+	}
+	return ordered
+}
+
+func approvalProblems(pull store.Pull, reviews []store.Review, head string) []string {
 	problems := []string{}
 	approved := false
-	for _, reviewer := range order {
-		review := latest[reviewer]
+	for _, review := range latestReviews(pull, reviews) {
 		name := review.Author.User
 		if review.Author.Agent != "" {
 			name = review.Author.Agent + " for " + review.Author.User
 		}
-		if review.State == "changes_requested" {
+		if review.State == reviewChangesRequested {
 			problems = append(problems, name+" requested changes")
 		}
-		approved = approved || (review.State == "approved" && review.CommitSHA == head)
+		approved = approved || (review.State == reviewApproved && review.CommitSHA == head)
 	}
 	if !approved {
-		problems = append(problems, fmt.Sprintf("needs an approving review of %s by someone other than the author", head[:7]))
+		problems = append(problems, fmt.Sprintf(
+			"needs an approving review of %s by someone other than the author",
+			head[:7],
+		))
 	}
 	return problems
 }
 
-func (s *Server) handleReviewPull(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
-	}
-	number, ok := itemNumber(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		State    string              `json:"state"`
-		Body     string              `json:"body"`
-		Comments []store.LineComment `json:"comments"`
-	}
-	if !decodeBody(w, r, &body) {
-		return
-	}
-	review, eventID, err := s.reviewPull(r, repo.Name, number, body.State, body.Body, body.Comments)
+func (s *Server) handleReviewPull(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		writeStoreError(w, err, "pull request not found")
-		return
+		return err
 	}
-	writeJSON(w, http.StatusCreated, struct {
-		store.Review
-		EventID int64 `json:"event_id"`
-	}{review, eventID})
+	number, err := itemNumber(r)
+	if err != nil {
+		return err
+	}
+	body, err := decodeBody[reviewRequest](w, r)
+	if err != nil {
+		return err
+	}
+	review, eventID, err := s.reviewPull(r, repo.Name, number, body)
+	if err != nil {
+		return missing(err, "pull request not found")
+	}
+	return writeJSON(w, http.StatusCreated, reviewWrite{Review: review, EventID: eventID})
 }
 
-func (s *Server) reviewPull(r *http.Request, repo string, number int64, state, body string, comments []store.LineComment) (store.Review, int64, error) {
+func checkReview(request reviewRequest) error {
+	if _, ok := reviewStates[request.State]; !ok {
+		return store.InvalidError("state must be approve, request_changes or comment")
+	}
+	if err := checkText(nil, &request.Body); err != nil {
+		return err
+	}
+	empty := strings.TrimSpace(request.Body) == ""
+	if request.State == reviewRequestChanges && empty {
+		return store.InvalidError("requesting changes needs a body")
+	}
+	if request.State == reviewComment && empty && len(request.Comments) == 0 {
+		return store.InvalidError("a comment review needs a body or line comments")
+	}
+	return nil
+}
+
+func (s *Server) reviewPull(
+	r *http.Request,
+	repo string,
+	number int64,
+	request reviewRequest,
+) (store.Review, int64, error) {
+	ctx := r.Context()
 	id := identityFrom(r)
-	stored, ok := reviewStates[state]
-	if !ok {
-		return store.Review{}, 0, store.InvalidError("state must be approve, request_changes or comment")
+	if err := checkReview(request); err != nil {
+		return store.Review{}, 0, err
 	}
-	if problem := checkText(nil, &body); problem != "" {
-		return store.Review{}, 0, store.InvalidError(problem)
-	}
-	if state == "request_changes" && strings.TrimSpace(body) == "" {
-		return store.Review{}, 0, store.InvalidError("requesting changes needs a body")
-	}
-	if state == "comment" && strings.TrimSpace(body) == "" && len(comments) == 0 {
-		return store.Review{}, 0, store.InvalidError("a comment review needs a body or line comments")
-	}
-	pull, err := s.store.Pull(repo, number)
+	pull, err := s.store.Pull(ctx, repo, number)
 	if err != nil {
 		return store.Review{}, 0, err
 	}
-	if state != "comment" && isAuthor(pull, id.actor) {
+	if request.State != reviewComment && isAuthor(pull, id.actor) {
 		return store.Review{}, 0, store.InvalidError("the author of a pull request can't approve it or request changes")
 	}
 	lines := []*store.LineRef{}
-	for index := range comments {
-		if strings.TrimSpace(comments[index].Body) == "" {
+	for index := range request.Comments {
+		if strings.TrimSpace(request.Comments[index].Body) == "" {
 			return store.Review{}, 0, store.InvalidError("line comments need a body")
 		}
-		lines = append(lines, &comments[index].LineRef)
+		lines = append(lines, &request.Comments[index].LineRef)
 	}
-	if err := s.checkLines(repo, pull, lines); err != nil {
+	if err := s.checkLines(ctx, repo, pull, lines); err != nil {
 		return store.Review{}, 0, err
 	}
-	return s.store.CreateReview(repo, number, id.actor, stored, body, pull.HeadSHA, comments)
+	return s.store.CreateReview(
+		ctx,
+		repo,
+		number,
+		id.actor,
+		reviewStates[request.State],
+		request.Body,
+		pull.HeadSHA,
+		request.Comments,
+	)
 }
 
-func (s *Server) uiReviewPull(w http.ResponseWriter, r *http.Request) {
-	repo, item, ok := s.uiItem(w, r, "pr", true)
-	if !ok {
-		return
+func (s *Server) uiReviewPull(w http.ResponseWriter, r *http.Request) error {
+	repo, item, err := s.uiItem(r, kindPull, true)
+	if err != nil {
+		return err
 	}
-	if _, _, err := s.reviewPull(r, repo.Name, item.Number, r.FormValue("state"), r.FormValue("body"), nil); err != nil {
-		s.renderStoreError(w, r, err, "Pull request not found.")
-		return
+	request := reviewRequest{State: r.FormValue("state"), Body: r.FormValue("body")}
+	if _, _, err := s.reviewPull(r, repo.Name, item.Number, request); err != nil {
+		return missing(err, "Pull request not found.")
 	}
 	http.Redirect(w, r, fmt.Sprintf("/%s/pulls/%d", repo.Name, item.Number), http.StatusSeeOther)
+	return nil
 }

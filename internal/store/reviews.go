@@ -22,26 +22,53 @@ type LineComment struct {
 	Body string `json:"body"`
 }
 
+type reviewEvent struct {
+	Body      string    `json:"body"`
+	Comments  []Comment `json:"comments"`
+	CommitSHA string    `json:"commit_sha"`
+	Number    int64     `json:"number"`
+	Review    int64     `json:"review"`
+	State     string    `json:"state"`
+}
+
 func reviewFromRow(row queries.Review) Review {
 	return Review{
-		ID: row.ID, State: row.State, Body: row.Body, CommitSHA: row.CommitSha, Comments: []Comment{},
-		Author: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session}, CreatedAt: row.CreatedAt,
+		ID:        row.ID,
+		State:     row.State,
+		Body:      row.Body,
+		CommitSHA: row.CommitSha,
+		Comments:  []Comment{},
+		Author:    Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
+		CreatedAt: row.CreatedAt,
 	}
 }
 
-func (s *Store) CreateReview(repo string, number int64, actor Actor, state, body, commitSHA string, comments []LineComment) (Review, int64, error) {
+func (s *Store) CreateReview(
+	ctx context.Context,
+	repo string,
+	number int64,
+	actor Actor,
+	state, body, commitSHA string,
+	comments []LineComment,
+) (Review, int64, error) {
 	var review Review
 	var eventID int64
-	err := s.inTx(func(q *queries.Queries) error {
-		ctx := context.Background()
-		row, err := getPull(q, repo, number)
+	err := s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := getPull(ctx, q, repo, number)
 		if err != nil {
 			return err
 		}
 		at := now()
 		created, err := q.CreateReview(ctx, queries.CreateReviewParams{
-			ItemID: row.Item.ID, State: state, Body: body, CommitSha: commitSHA,
-			User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: at,
+			ItemID:    row.Item.ID,
+			State:     state,
+			Body:      body,
+			CommitSha: commitSHA,
+			User:      actor.User,
+			Via:       actor.Via,
+			Agent:     actor.Agent,
+			Session:   actor.Session,
+			CreatedAt: at,
 		})
 		if err != nil {
 			return err
@@ -50,7 +77,7 @@ func (s *Store) CreateReview(repo string, number int64, actor Actor, state, body
 		for _, comment := range comments {
 			line := comment.LineRef
 			line.CommitSHA = commitSHA
-			saved, err := createComment(q, row.Item.ID, actor, comment.Body, created.ID, line, at)
+			saved, err := createComment(ctx, q, row.Item.ID, actor, comment.Body, created.ID, line, at)
 			if err != nil {
 				return err
 			}
@@ -59,16 +86,20 @@ func (s *Store) CreateReview(repo string, number int64, actor Actor, state, body
 		if err := q.TouchItem(ctx, queries.TouchItemParams{UpdatedAt: at, ID: row.Item.ID}); err != nil {
 			return err
 		}
-		eventID, err = addEvent(q, "pr.review", repo, number, actor, map[string]any{
-			"number": number, "review": created.ID, "state": state, "body": body, "commit_sha": commitSHA, "comments": review.Comments,
+		eventID, err = addEvent(ctx, q, "pr.review", repo, number, actor, reviewEvent{
+			Body:      body,
+			Comments:  review.Comments,
+			CommitSHA: commitSHA,
+			Number:    number,
+			Review:    created.ID,
+			State:     state,
 		})
 		return err
 	})
 	return review, eventID, err
 }
 
-func (s *Store) Reviews(item Item) ([]Review, error) {
-	ctx := context.Background()
+func (s *Store) Reviews(ctx context.Context, item Item) ([]Review, error) {
 	rows, err := s.queries.ListReviews(ctx, item.id)
 	if err != nil {
 		return nil, err

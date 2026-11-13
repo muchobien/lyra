@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/muchobien/lyra/internal/store"
 )
+
+var pullStates = []string{stateOpen, stateClosed, stateMerged, stateAll}
 
 type pullView struct {
 	store.Pull
@@ -17,56 +20,72 @@ type pullView struct {
 	Checks     store.Checks    `json:"checks"`
 }
 
-func (s *Server) mergeStatus(repo string, pull store.Pull) (*mergePlan, string) {
-	if pull.State != "open" {
+type createPullRequest struct {
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	Head      string   `json:"head"`
+	Base      string   `json:"base"`
+	Labels    []string `json:"labels"`
+	Assignees []string `json:"assignees"`
+}
+
+type pullBranches struct {
+	base    string
+	head    string
+	headSHA string
+	baseSHA string
+}
+
+func pullRef(number int64) string {
+	return fmt.Sprintf("refs/pull/%d/head", number)
+}
+
+func (s *Server) mergeStatus(ctx context.Context, repo string, pull store.Pull) (*mergePlan, string) {
+	if pull.State != stateOpen {
 		return nil, ""
 	}
-	plan, err := s.planMerge(repo, pull)
+	plan, err := s.planMerge(ctx, repo, pull)
 	if err != nil {
 		return nil, err.Error()
 	}
 	return &plan, ""
 }
 
-func (s *Server) lookupPull(w http.ResponseWriter, r *http.Request) (store.Repo, store.Pull, bool) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return repo, store.Pull{}, false
-	}
-	number, ok := itemNumber(w, r)
-	if !ok {
-		return repo, store.Pull{}, false
-	}
-	pull, err := s.store.Pull(repo.Name, number)
+func (s *Server) lookupPull(r *http.Request) (store.Repo, store.Pull, error) {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeStoreError(w, err, "pull request not found")
-		return repo, pull, false
+		return repo, store.Pull{}, err
 	}
-	return repo, pull, true
+	number, err := itemNumber(r)
+	if err != nil {
+		return repo, store.Pull{}, err
+	}
+	pull, err := s.store.Pull(r.Context(), repo.Name, number)
+	return repo, pull, missing(err, "pull request not found")
 }
 
-func (s *Server) pullRange(repo string, pull store.Pull) (string, string) {
-	if pull.State == "open" {
-		if base, err := s.git.MergeBase(s.repoDir(repo), "refs/heads/"+pull.Base, pull.HeadSHA); err == nil {
+func (s *Server) pullRange(ctx context.Context, repo string, pull store.Pull) (string, string) {
+	if pull.State == stateOpen {
+		base, err := s.git.MergeBase(ctx, s.repoDir(repo), "refs/heads/"+pull.Base, pull.HeadSHA)
+		if err == nil {
 			return base, pull.HeadSHA
 		}
 	}
 	return pull.BaseSHA, pull.HeadSHA
 }
 
-func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	query, ok := parseItemQuery(w, r, []string{"open", "closed", "merged", "all"})
-	if !ok {
-		return
-	}
-	pulls, err := s.store.Pulls(repo.Name, query.state)
+func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
+	}
+	query, err := parseItemQuery(r, pullStates)
+	if err != nil {
+		return err
+	}
+	pulls, err := s.store.Pulls(r.Context(), repo.Name, query.state)
+	if err != nil {
+		return err
 	}
 	matching := []store.Pull{}
 	for _, pull := range pulls {
@@ -74,145 +93,149 @@ func (s *Server) handleListPulls(w http.ResponseWriter, r *http.Request) {
 			matching = append(matching, pull)
 		}
 	}
-	writeJSON(w, http.StatusOK, matching)
+	return writeJSON(w, http.StatusOK, matching)
 }
 
-func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) resolvePullBranches(ctx context.Context, dir, head, base string) (pullBranches, error) {
+	branches := pullBranches{head: head, base: base}
+	if branches.base == "" {
+		branches.base = s.git.DefaultBranch(ctx, dir)
 	}
-	var body struct {
-		Title     string   `json:"title"`
-		Body      string   `json:"body"`
-		Head      string   `json:"head"`
-		Base      string   `json:"base"`
-		Labels    []string `json:"labels"`
-		Assignees []string `json:"assignees"`
+	if head == "" || head == branches.base {
+		return branches, badRequest("head must be a branch other than the base " + branches.base)
 	}
-	if !decodeBody(w, r, &body) {
-		return
+	var err error
+	if branches.headSHA, err = s.git.ResolveCommit(ctx, dir, "refs/heads/"+head); err != nil {
+		return branches, badRequest("branch " + head + " does not exist")
 	}
-	if problem := checkText(&body.Title, &body.Body); problem != "" {
-		writeError(w, http.StatusBadRequest, problem)
-		return
-	}
-	dir := s.repoDir(repo.Name)
-	if body.Base == "" {
-		body.Base = s.git.DefaultBranch(dir)
-	}
-	if body.Head == "" || body.Head == body.Base {
-		writeError(w, http.StatusBadRequest, "head must be a branch other than the base "+body.Base)
-		return
-	}
-	headSHA, err := s.git.ResolveCommit(dir, "refs/heads/"+body.Head)
+	baseTip, err := s.git.ResolveCommit(ctx, dir, "refs/heads/"+branches.base)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "branch "+body.Head+" does not exist")
-		return
+		return branches, badRequest("branch " + branches.base + " does not exist")
 	}
-	baseTip, err := s.git.ResolveCommit(dir, "refs/heads/"+body.Base)
+	contained, err := s.git.IsAncestor(ctx, dir, branches.headSHA, baseTip)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "branch "+body.Base+" does not exist")
-		return
-	}
-	contained, err := s.git.IsAncestor(dir, headSHA, baseTip)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return branches, err
 	}
 	if contained {
-		writeError(w, http.StatusBadRequest, body.Base+" already contains every commit on "+body.Head)
-		return
+		return branches, badRequest(branches.base + " already contains every commit on " + head)
 	}
-	baseSHA, err := s.git.MergeBase(dir, baseTip, headSHA)
+	if branches.baseSHA, err = s.git.MergeBase(ctx, dir, baseTip, branches.headSHA); err != nil {
+		return branches, badRequest(head + " and " + branches.base + " share no history")
+	}
+	return branches, nil
+}
+
+func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, err := s.lookupRepo(r, scopeWrite)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, body.Head+" and "+body.Base+" share no history")
-		return
+		return err
+	}
+	body, err := decodeBody[createPullRequest](w, r)
+	if err != nil {
+		return err
+	}
+	if err := checkText(&body.Title, &body.Body); err != nil {
+		return err
+	}
+	dir := s.repoDir(repo.Name)
+	branches, err := s.resolvePullBranches(ctx, dir, body.Head, body.Base)
+	if err != nil {
+		return err
 	}
 	id := identityFrom(r)
-	pull, eventID, err := s.store.CreatePull(repo.Name, id.actor, body.Title, body.Body, body.Base, body.Head, headSHA, baseSHA, body.Labels, id.resolve(body.Assignees))
+	pull, eventID, err := s.store.CreatePull(
+		ctx,
+		repo.Name,
+		id.actor,
+		body.Title,
+		body.Body,
+		branches.base,
+		branches.head,
+		branches.headSHA,
+		branches.baseSHA,
+		body.Labels,
+		id.resolve(body.Assignees),
+	)
 	if err != nil {
-		writeStoreError(w, err, "repository not found")
-		return
+		return missing(err, "repository not found")
 	}
-	if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", pull.Number), headSHA, ""); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if err := s.git.UpdateRef(ctx, dir, pullRef(pull.Number), branches.headSHA, ""); err != nil {
+		return err
 	}
-	actions := QueuePullRuns(s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
-	if err := s.store.AnnounceChecks(repo.Name, pull.HeadSHA); err != nil {
+	actions := QueuePullRuns(ctx, s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
+	if err := s.store.AnnounceChecks(ctx, repo.Name, pull.HeadSHA); err != nil {
 		slog.Error("announce checks", "repo", repo.Name, "error", err)
 	}
-	writeJSON(w, http.StatusCreated, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
+	return writeJSON(w, http.StatusCreated, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
 }
 
-func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
-	repo, pull, ok := s.lookupPull(w, r)
-	if !ok {
-		return
-	}
-	comments, err := s.store.Comments(pull.Item)
+func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, pull, err := s.lookupPull(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	reviews, err := s.store.Reviews(pull.Item)
+	comments, err := s.store.Comments(ctx, pull.Item)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	s.markOutdated(repo.Name, pull, comments)
+	reviews, err := s.store.Reviews(ctx, pull.Item)
+	if err != nil {
+		return err
+	}
+	s.markOutdated(ctx, repo.Name, pull, comments)
 	for index := range reviews {
-		s.markOutdated(repo.Name, pull, reviews[index].Comments)
+		s.markOutdated(ctx, repo.Name, pull, reviews[index].Comments)
 	}
 	view := pullView{Pull: pull, Reviews: reviews, Comments: comments}
-	if view.Checks, err = s.store.Checks(repo.Name, pull.HeadSHA); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if view.Checks, err = s.store.Checks(ctx, repo.Name, pull.HeadSHA); err != nil {
+		return err
 	}
-	view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
-	writeJSON(w, http.StatusOK, view)
+	view.Merge, view.MergeError = s.mergeStatus(ctx, repo.Name, pull)
+	return writeJSON(w, http.StatusOK, view)
 }
 
-func (s *Server) handlePullCommits(w http.ResponseWriter, r *http.Request) {
-	repo, pull, ok := s.lookupPull(w, r)
-	if !ok {
-		return
-	}
-	base, head := s.pullRange(repo.Name, pull)
-	commits, err := s.commits(repo.Name, head, 250, base)
+func (s *Server) handlePullCommits(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, pull, err := s.lookupPull(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, commits)
+	base, head := s.pullRange(ctx, repo.Name, pull)
+	commits, err := s.commits(ctx, repo.Name, head, pullCommitLimit, base)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, commits)
 }
 
-func (s *Server) handlePullDiff(w http.ResponseWriter, r *http.Request) {
-	repo, pull, ok := s.lookupPull(w, r)
-	if !ok {
-		return
-	}
-	base, head := s.pullRange(repo.Name, pull)
-	diff, err := s.git.Diff(s.repoDir(repo.Name), base, head)
+func (s *Server) handlePullDiff(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, pull, err := s.lookupPull(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
+	}
+	base, head := s.pullRange(ctx, repo.Name, pull)
+	diff, err := s.git.Diff(ctx, s.repoDir(repo.Name), base, head)
+	if err != nil {
+		return err
 	}
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Write([]byte(diff))
+	return nil
 }
 
-func (s *Server) handlePullFiles(w http.ResponseWriter, r *http.Request) {
-	repo, pull, ok := s.lookupPull(w, r)
-	if !ok {
-		return
-	}
-	base, head := s.pullRange(repo.Name, pull)
-	files, err := s.git.DiffFiles(s.repoDir(repo.Name), base, head)
+func (s *Server) handlePullFiles(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, pull, err := s.lookupPull(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, files)
+	base, head := s.pullRange(ctx, repo.Name, pull)
+	files, err := s.git.DiffFiles(ctx, s.repoDir(repo.Name), base, head)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, files)
 }

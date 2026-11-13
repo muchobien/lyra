@@ -3,7 +3,8 @@ package server
 import (
 	"archive/tar"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -23,13 +24,60 @@ import (
 	"github.com/muchobien/lyra/internal/store"
 )
 
-const readOnlyMessage = "Lyra is read-only for maintenance; try again later"
+const (
+	readOnlyMessage = "Lyra is read-only for maintenance; try again later"
+	registryBlobs   = "/docker/registry/v2/blobs"
+)
+
+type backupCreated struct {
+	Bytes   int64 `json:"bytes"`
+	Objects int   `json:"objects"`
+	PauseMS int64 `json:"pause_ms"`
+	Repos   int   `json:"repos"`
+}
+
+type lastBackup struct {
+	At time.Time `json:"at"`
+	backupCreated
+}
+
+type statusView struct {
+	LastBackup *lastBackup `json:"last_backup"`
+	ReadOnly   bool        `json:"read_only"`
+}
+
+type readOnlyRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+type storageCheck struct {
+	Checked int                  `json:"checked"`
+	Missing []store.StoredObject `json:"missing"`
+}
+
+type registryCollected struct {
+	BlobsAfter  int   `json:"blobs_after"`
+	BlobsBefore int   `json:"blobs_before"`
+	BytesFreed  int64 `json:"bytes_freed"`
+	MS          int64 `json:"ms"`
+}
+
+type countingWriter struct {
+	writer io.Writer
+	count  int64
+}
+
+func (counter *countingWriter) Write(data []byte) (int, error) {
+	written, err := counter.writer.Write(data)
+	counter.count += int64(written)
+	return written, err
+}
 
 func isWrite(r *http.Request) bool {
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/git-upload-pack"):
 		return false
-	case r.Method == http.MethodGet && r.URL.Query().Get("service") == "git-receive-pack":
+	case r.Method == http.MethodGet && r.URL.Query().Get("service") == receivePack:
 		return true
 	}
 	return r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
@@ -44,9 +92,9 @@ func (s *Server) writeGate(next http.Handler) http.Handler {
 		if s.readOnly.Load() {
 			if strings.HasPrefix(r.URL.Path, "/v2/") {
 				registryError(w, http.StatusServiceUnavailable, "UNAVAILABLE", readOnlyMessage)
-			} else {
-				writeError(w, http.StatusServiceUnavailable, readOnlyMessage)
+				return
 			}
+			writeError(w, http.StatusServiceUnavailable, readOnlyMessage)
 			return
 		}
 		s.gate.RLock()
@@ -75,15 +123,32 @@ func linkTree(source, target string) error {
 	})
 }
 
-type countingWriter struct {
-	writer io.Writer
-	count  int64
-}
-
-func (counter *countingWriter) Write(data []byte) (int, error) {
-	written, err := counter.writer.Write(data)
-	counter.count += int64(written)
-	return written, err
+func addFile(archive *tar.Writer, file, name string, entry fs.DirEntry) error {
+	info, err := entry.Info()
+	if err != nil {
+		return err
+	}
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return err
+	}
+	header.Name = name
+	if entry.IsDir() {
+		header.Name += "/"
+	}
+	if err := archive.WriteHeader(header); err != nil {
+		return err
+	}
+	if !entry.Type().IsRegular() {
+		return nil
+	}
+	source, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	_, err = io.Copy(archive, source)
+	return err
 }
 
 func addTree(archive *tar.Writer, root, prefix string) error {
@@ -95,42 +160,18 @@ func addTree(archive *tar.Writer, root, prefix string) error {
 		if err != nil {
 			return err
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = filepath.ToSlash(filepath.Join(prefix, relative))
-		if entry.IsDir() {
-			header.Name += "/"
-		}
-		if err := archive.WriteHeader(header); err != nil {
-			return err
-		}
-		if !entry.Type().IsRegular() {
-			return nil
-		}
-		source, err := os.Open(file)
-		if err != nil {
-			return err
-		}
-		defer source.Close()
-		_, err = io.Copy(archive, source)
-		return err
+		return addFile(archive, file, filepath.ToSlash(filepath.Join(prefix, relative)), entry)
 	})
 }
 
-func (s *Server) stage(staging string) (time.Duration, error) {
+func (s *Server) stage(ctx context.Context, staging string) (time.Duration, error) {
 	start := time.Now()
 	s.gate.Lock()
 	defer s.gate.Unlock()
 	if err := os.MkdirAll(staging, 0o750); err != nil {
 		return time.Since(start), err
 	}
-	if err := s.store.Snapshot(filepath.Join(staging, "lyra.db")); err != nil {
+	if err := s.store.Snapshot(ctx, filepath.Join(staging, "lyra.db")); err != nil {
 		return time.Since(start), fmt.Errorf("snapshot: %w", err)
 	}
 	if err := linkTree(filepath.Join(s.config.DataDir, "repos"), filepath.Join(staging, "repos")); err != nil {
@@ -139,25 +180,25 @@ func (s *Server) stage(staging string) (time.Duration, error) {
 	return time.Since(start), nil
 }
 
-func (s *Server) manifest(staging string) (backup.Manifest, error) {
+func (s *Server) manifest(ctx context.Context, staging string) (backup.Manifest, error) {
 	manifest := backup.Manifest{Format: backup.Format, CreatedAt: time.Now().UTC(), Repos: []backup.Repo{}}
 	snapshot, err := store.Open(filepath.Join(staging, "lyra.db"))
 	if err != nil {
 		return manifest, err
 	}
 	defer snapshot.Close()
-	if manifest.Schema, err = snapshot.SchemaVersion(); err != nil {
+	if manifest.Schema, err = snapshot.SchemaVersion(ctx); err != nil {
 		return manifest, err
 	}
-	if manifest.Objects, err = snapshot.StoredObjects(); err != nil {
+	if manifest.Objects, err = snapshot.StoredObjects(ctx); err != nil {
 		return manifest, err
 	}
-	stored, err := snapshot.Repos()
+	stored, err := snapshot.Repos(ctx)
 	if err != nil {
 		return manifest, err
 	}
 	for _, repo := range stored {
-		refs, err := s.git.Refs(filepath.Join(staging, "repos", filepath.FromSlash(repo.Name)+".git"))
+		refs, err := s.git.Refs(ctx, filepath.Join(staging, "repos", filepath.FromSlash(repo.Name)+".git"))
 		if err != nil {
 			return manifest, fmt.Errorf("%s: %w", repo.Name, err)
 		}
@@ -166,150 +207,168 @@ func (s *Server) manifest(staging string) (backup.Manifest, error) {
 	return manifest, nil
 }
 
-func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
-	if !identityFrom(r).can("admin", "") {
-		writeError(w, http.StatusForbidden, "backups need an unrestricted admin token")
-		return
+func writeBackup(writer io.Writer, staging string, manifest backup.Manifest) error {
+	archive := tar.NewWriter(writer)
+	if err := addTree(archive, filepath.Join(staging, "lyra.db"), "lyra.db"); err != nil {
+		return err
+	}
+	if err := addTree(archive, filepath.Join(staging, "repos"), "repos"); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(manifest, jsontext.WithIndent("  "), json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	header := &tar.Header{
+		Name:     "manifest.json",
+		Mode:     0o644,
+		Size:     int64(len(encoded)),
+		ModTime:  manifest.CreatedAt,
+		Typeflag: tar.TypeReg,
+	}
+	if err := archive.WriteHeader(header); err != nil {
+		return err
+	}
+	if _, err := archive.Write(encoded); err != nil {
+		return err
+	}
+	return archive.Close()
+}
+
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	if !identityFrom(r).can(scopeAdmin, "") {
+		return forbidden("backups need an unrestricted admin token")
 	}
 	staging := filepath.Join(s.config.DataDir, "tmp", "backup-"+randomHex(8))
 	defer os.RemoveAll(staging)
-	pause, err := s.stage(staging)
+	pause, err := s.stage(ctx, staging)
 	slog.Info("backup staged", "pause", pause, "error", err)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	manifest, err := s.manifest(staging)
+	manifest, err := s.manifest(ctx, staging)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
+	filename := "lyra-" + manifest.CreatedAt.Format("20060102-150405") + ".tar"
 	w.Header().Set("Content-Type", "application/x-tar")
-	w.Header().Set("Content-Disposition", `attachment; filename="lyra-`+manifest.CreatedAt.Format("20060102-150405")+`.tar"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.Header().Set("Lyra-Backup-Pause-Ms", fmt.Sprint(pause.Milliseconds()))
 	counter := &countingWriter{writer: w}
-	archive := tar.NewWriter(counter)
-	err = addTree(archive, filepath.Join(staging, "lyra.db"), "lyra.db")
-	if err == nil {
-		err = addTree(archive, filepath.Join(staging, "repos"), "repos")
-	}
-	if err == nil {
-		var encoded []byte
-		if encoded, err = json.MarshalIndent(manifest, "", "  "); err == nil {
-			if err = archive.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o644, Size: int64(len(encoded)), ModTime: manifest.CreatedAt, Typeflag: tar.TypeReg}); err == nil {
-				_, err = archive.Write(encoded)
-			}
-		}
-	}
-	if err == nil {
-		err = archive.Close()
-	}
-	if err != nil {
+	if err := writeBackup(counter, staging, manifest); err != nil {
 		slog.Error("backup", "error", err)
-		return
+		return nil
 	}
-	if _, err := s.store.AddEvent("backup.created", "", identityFrom(r).actor, map[string]any{
-		"bytes": counter.count, "pause_ms": pause.Milliseconds(), "repos": len(manifest.Repos), "objects": len(manifest.Objects),
-	}); err != nil {
+	created := backupCreated{
+		Bytes:   counter.count,
+		Objects: len(manifest.Objects),
+		PauseMS: pause.Milliseconds(),
+		Repos:   len(manifest.Repos),
+	}
+	if _, err := s.store.AddEvent(ctx, "backup.created", "", identityFrom(r).actor, created); err != nil {
 		slog.Error("record backup", "error", err)
 	}
+	return nil
 }
 
-func (s *Server) handleReadOnly(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleReadOnly(w http.ResponseWriter, r *http.Request) error {
 	id := identityFrom(r)
-	if !id.can("admin", "") {
-		writeError(w, http.StatusForbidden, "read-only mode needs an unrestricted admin token")
-		return
+	if !id.can(scopeAdmin, "") {
+		return forbidden("read-only mode needs an unrestricted admin token")
 	}
-	var body struct {
-		Enabled bool `json:"enabled"`
-	}
-	if !decodeBody(w, r, &body) {
-		return
+	body, err := decodeBody[readOnlyRequest](w, r)
+	if err != nil {
+		return err
 	}
 	if s.readOnly.Swap(body.Enabled) != body.Enabled {
 		action := "readonly.off"
 		if body.Enabled {
 			action = "readonly.on"
 		}
-		if _, err := s.store.AddEvent(action, "", id.actor, map[string]any{}); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+		if _, err := s.store.AddEvent(r.Context(), action, "", id.actor, noData{}); err != nil {
+			return err
 		}
 	}
-	s.handleStatus(w, r)
+	return s.handleStatus(w, r)
 }
 
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !identityFrom(r).can("admin", "") {
-		writeError(w, http.StatusForbidden, "status needs an unrestricted admin token")
-		return
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) error {
+	if !identityFrom(r).can(scopeAdmin, "") {
+		return forbidden("status needs an unrestricted admin token")
 	}
-	status := map[string]any{"read_only": s.readOnly.Load(), "last_backup": nil}
-	last, err := s.store.LatestEvent("backup.created")
+	status := statusView{ReadOnly: s.readOnly.Load()}
+	last, err := s.store.LatestEvent(r.Context(), "backup.created")
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	if err == nil {
-		details := map[string]any{}
-		json.Unmarshal(last.Data, &details)
-		details["at"] = last.At
-		status["last_backup"] = details
+		status.LastBackup = &lastBackup{At: last.At}
+		if err := json.Unmarshal(last.Data, &status.LastBackup.backupCreated); err != nil {
+			return err
+		}
 	}
-	writeJSON(w, http.StatusOK, status)
+	return writeJSON(w, http.StatusOK, status)
 }
 
-func (s *Server) handleStorageCheck(w http.ResponseWriter, r *http.Request) {
-	if !identityFrom(r).can("admin", "") {
-		writeError(w, http.StatusForbidden, "the storage check needs an unrestricted admin token")
-		return
+func (s *Server) handleStorageCheck(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	if !identityFrom(r).can(scopeAdmin, "") {
+		return forbidden("the storage check needs an unrestricted admin token")
 	}
-	objects, err := s.store.StoredObjects()
+	objects, err := s.store.StoredObjects(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	missing := []store.StoredObject{}
 	for _, object := range objects {
-		info, err := s.storage.Stat(r.Context(), object.Path)
-		var notFound driver.PathNotFoundError
+		info, err := s.storage.Stat(ctx, object.Path)
+		_, absent := errors.AsType[driver.PathNotFoundError](err)
 		switch {
-		case errors.As(err, &notFound):
+		case absent:
 			missing = append(missing, object)
 		case err != nil:
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+			return err
 		case object.Size > 0 && info.Size() != object.Size:
 			missing = append(missing, object)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"checked": len(objects), "missing": missing})
+	return writeJSON(w, http.StatusOK, storageCheck{Checked: len(objects), Missing: missing})
 }
 
 func (s *Server) registryUsage(ctx context.Context) (int, int64, error) {
 	count, size := 0, int64(0)
-	err := s.storage.Walk(ctx, "/docker/registry/v2/blobs", func(info driver.FileInfo) error {
+	err := s.storage.Walk(ctx, registryBlobs, func(info driver.FileInfo) error {
 		if !info.IsDir() && path.Base(info.Path()) == "data" {
 			count++
 			size += info.Size()
 		}
 		return nil
 	})
-	var missing driver.PathNotFoundError
-	if errors.As(err, &missing) {
+	if _, absent := errors.AsType[driver.PathNotFoundError](err); absent {
 		return 0, 0, nil
 	}
 	return count, size, err
 }
 
-func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) {
-	id := identityFrom(r)
-	if !id.can("admin", "") {
-		writeError(w, http.StatusForbidden, "registry garbage collection needs an unrestricted admin token")
-		return
+func (s *Server) collectRegistry(ctx context.Context) error {
+	namespace, err := storage.NewRegistry(ctx, s.storage, storage.EnableDelete)
+	if err != nil {
+		return fmt.Errorf("garbage collection: %w", err)
 	}
+	options := storage.GCOpts{RemoveUntagged: true, Quiet: true}
+	if err := storage.MarkAndSweep(ctx, s.storage, namespace, options); err != nil {
+		return fmt.Errorf("garbage collection: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
+	id := identityFrom(r)
+	if !id.can(scopeAdmin, "") {
+		return forbidden("registry garbage collection needs an unrestricted admin token")
+	}
 	wasReadOnly := s.readOnly.Swap(true)
 	defer s.readOnly.Store(wasReadOnly)
 	s.gate.Lock()
@@ -317,28 +376,23 @@ func (s *Server) handleRegistryGC(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	blobsBefore, bytesBefore, err := s.registryUsage(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	namespace, err := storage.NewRegistry(ctx, s.storage, storage.EnableDelete)
-	if err == nil {
-		err = storage.MarkAndSweep(ctx, s.storage, namespace, storage.GCOpts{RemoveUntagged: true, Quiet: true})
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "garbage collection: "+err.Error())
-		return
+	if err := s.collectRegistry(ctx); err != nil {
+		return err
 	}
 	blobsAfter, bytesAfter, err := s.registryUsage(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	result := map[string]any{
-		"blobs_before": blobsBefore, "blobs_after": blobsAfter, "bytes_freed": bytesBefore - bytesAfter, "ms": time.Since(start).Milliseconds(),
+	result := registryCollected{
+		BlobsAfter:  blobsAfter,
+		BlobsBefore: blobsBefore,
+		BytesFreed:  bytesBefore - bytesAfter,
+		MS:          time.Since(start).Milliseconds(),
 	}
-	if _, err := s.store.AddEvent("registry.gc", "", id.actor, result); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if _, err := s.store.AddEvent(ctx, "registry.gc", "", id.actor, result); err != nil {
+		return err
 	}
-	writeJSON(w, http.StatusOK, result)
+	return writeJSON(w, http.StatusOK, result)
 }

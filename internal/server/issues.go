@@ -1,7 +1,7 @@
 package server
 
 import (
-	"errors"
+	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,24 +14,79 @@ import (
 const (
 	maxTitle = 256
 	maxBody  = 65536
+
+	kindIssue = "issue"
+	kindPull  = "pr"
+
+	stateOpen   = "open"
+	stateClosed = "closed"
+	stateMerged = "merged"
+	stateAll    = "all"
 )
 
-var nouns = map[string]string{"issue": "issue", "pr": "pull request"}
+var nouns = map[string]string{kindIssue: "issue", kindPull: "pull request"}
+
+var issueStates = []string{stateOpen, stateClosed, stateAll}
 
 type itemWrite struct {
 	store.Item
-	EventID int64 `json:"event_id,omitempty"`
+	EventID int64 `json:"event_id,omitzero"`
 }
 
 type pullWrite struct {
 	store.Pull
-	EventID int64    `json:"event_id,omitempty"`
+	EventID int64    `json:"event_id,omitzero"`
 	Actions []string `json:"actions,omitempty"`
 }
 
 type itemView struct {
 	store.Item
 	Comments []store.Comment `json:"comments"`
+}
+
+type commentWrite struct {
+	store.Comment
+	EventID int64 `json:"event_id"`
+}
+
+type labelWrite struct {
+	store.Label
+	EventID int64 `json:"event_id"`
+}
+
+type deletedWithEvent struct {
+	Deleted string `json:"deleted"`
+	EventID int64  `json:"event_id"`
+}
+
+type createIssueRequest struct {
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	Labels    []string `json:"labels"`
+	Assignees []string `json:"assignees"`
+}
+
+type editItemRequest struct {
+	Title           *string  `json:"title"`
+	Body            *string  `json:"body"`
+	State           *string  `json:"state"`
+	AddLabels       []string `json:"add_labels"`
+	RemoveLabels    []string `json:"remove_labels"`
+	AddAssignees    []string `json:"add_assignees"`
+	RemoveAssignees []string `json:"remove_assignees"`
+}
+
+type commentRequest struct {
+	Body string `json:"body"`
+	Path string `json:"path"`
+	Line int64  `json:"line"`
+	Side string `json:"side"`
+}
+
+type createLabelRequest struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
 }
 
 type itemQuery struct {
@@ -41,95 +96,66 @@ type itemQuery struct {
 	assignees []string
 }
 
-func (id *identity) name() string {
-	if id.actor.Agent != "" {
-		return id.actor.Agent
-	}
-	return id.actor.User
-}
-
-func (id *identity) resolve(names []string) []string {
-	resolved := []string{}
-	for _, name := range names {
-		if name == "@me" {
-			name = id.name()
-		}
-		resolved = append(resolved, name)
-	}
-	return resolved
-}
-
-func checkText(title *string, body *string) string {
+func checkText(title *string, body *string) error {
 	if title != nil {
 		*title = strings.TrimSpace(*title)
 		if *title == "" || utf8.RuneCountInString(*title) > maxTitle {
-			return "title must be 1 to 256 characters"
+			return badRequest("title must be 1 to 256 characters")
 		}
 	}
 	if body != nil && len(*body) > maxBody {
-		return "body must be at most 64 KiB"
+		return badRequest("body must be at most 64 KiB")
 	}
-	return ""
+	return nil
 }
 
-func writeStoreError(w http.ResponseWriter, err error, missing string) {
-	var invalid store.InvalidError
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, missing)
-	case errors.As(err, &invalid):
-		writeError(w, http.StatusBadRequest, invalid.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, err.Error())
-	}
-}
-
-func itemNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func itemNumber(r *http.Request) (int64, error) {
 	number, err := strconv.ParseInt(r.PathValue("number"), 10, 64)
 	if err != nil || number <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid number "+r.PathValue("number"))
-		return 0, false
+		return 0, badRequest("invalid number " + r.PathValue("number"))
 	}
-	return number, true
+	return number, nil
 }
 
-func parseItemQuery(w http.ResponseWriter, r *http.Request, states []string) (itemQuery, bool) {
+func parseItemQuery(r *http.Request, states []string) (itemQuery, error) {
 	query := r.URL.Query()
-	parsed := itemQuery{state: query.Get("state"), labels: query["label"], assignees: identityFrom(r).resolve(query["assignee"])}
+	parsed := itemQuery{
+		state:     query.Get("state"),
+		limit:     queryLimit(r, 100, math.MaxInt),
+		labels:    query["label"],
+		assignees: identityFrom(r).resolve(query["assignee"]),
+	}
 	if parsed.state == "" {
-		parsed.state = "open"
+		parsed.state = stateOpen
 	}
 	if !slices.Contains(states, parsed.state) {
-		writeError(w, http.StatusBadRequest, "state must be one of "+strings.Join(states, ", "))
-		return parsed, false
+		return parsed, badRequest("state must be one of " + strings.Join(states, ", "))
 	}
-	limit, err := strconv.Atoi(query.Get("limit"))
-	if err != nil || limit <= 0 {
-		limit = 100
-	}
-	parsed.limit = limit
-	return parsed, true
+	return parsed, nil
+}
+
+func containsAll(have, want []string) bool {
+	return !slices.ContainsFunc(want, func(value string) bool {
+		return !slices.Contains(have, value)
+	})
 }
 
 func (query itemQuery) matches(item store.Item) bool {
-	hasLabels := !slices.ContainsFunc(query.labels, func(label string) bool { return !slices.Contains(item.Labels, label) })
-	hasAssignees := !slices.ContainsFunc(query.assignees, func(assignee string) bool { return !slices.Contains(item.Assignees, assignee) })
-	return hasLabels && hasAssignees
+	return containsAll(item.Labels, query.labels) && containsAll(item.Assignees, query.assignees)
 }
 
-func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	query, ok := parseItemQuery(w, r, []string{"open", "closed", "all"})
-	if !ok {
-		return
-	}
-	items, err := s.store.Items("issue", repo.Name, query.state)
+func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
+	}
+	query, err := parseItemQuery(r, issueStates)
+	if err != nil {
+		return err
+	}
+	items, err := s.store.Items(r.Context(), kindIssue, repo.Name, query.state)
+	if err != nil {
+		return err
 	}
 	matching := []store.Item{}
 	for _, item := range items {
@@ -137,213 +163,184 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 			matching = append(matching, item)
 		}
 	}
-	writeJSON(w, http.StatusOK, matching)
+	return writeJSON(w, http.StatusOK, matching)
 }
 
-func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
 	}
-	var body struct {
-		Title     string   `json:"title"`
-		Body      string   `json:"body"`
-		Labels    []string `json:"labels"`
-		Assignees []string `json:"assignees"`
+	body, err := decodeBody[createIssueRequest](w, r)
+	if err != nil {
+		return err
 	}
-	if !decodeBody(w, r, &body) {
-		return
-	}
-	if problem := checkText(&body.Title, &body.Body); problem != "" {
-		writeError(w, http.StatusBadRequest, problem)
-		return
+	if err := checkText(&body.Title, &body.Body); err != nil {
+		return err
 	}
 	id := identityFrom(r)
-	item, eventID, err := s.store.CreateItem("issue", repo.Name, id.actor, body.Title, body.Body, body.Labels, id.resolve(body.Assignees))
+	item, eventID, err := s.store.CreateItem(
+		r.Context(),
+		kindIssue,
+		repo.Name,
+		id.actor,
+		body.Title,
+		body.Body,
+		body.Labels,
+		id.resolve(body.Assignees),
+	)
 	if err != nil {
-		writeStoreError(w, err, "repository not found")
-		return
+		return missing(err, "repository not found")
 	}
-	writeJSON(w, http.StatusCreated, itemWrite{Item: item, EventID: eventID})
+	return writeJSON(w, http.StatusCreated, itemWrite{Item: item, EventID: eventID})
 }
 
-func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	number, ok := itemNumber(w, r)
-	if !ok {
-		return
-	}
-	item, err := s.store.Item("issue", repo.Name, number)
+func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeStoreError(w, err, "issue not found")
-		return
+		return err
 	}
-	comments, err := s.store.Comments(item)
+	number, err := itemNumber(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, itemView{Item: item, Comments: comments})
+	item, err := s.store.Item(ctx, kindIssue, repo.Name, number)
+	if err != nil {
+		return missing(err, "issue not found")
+	}
+	comments, err := s.store.Comments(ctx, item)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, itemView{Item: item, Comments: comments})
 }
 
-func (s *Server) handleEditItem(kind string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		repo, ok := s.lookupRepo(w, r, "write")
-		if !ok {
-			return
+func (s *Server) handleEditItem(kind string) handler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := r.Context()
+		repo, err := s.lookupRepo(r, scopeWrite)
+		if err != nil {
+			return err
 		}
-		number, ok := itemNumber(w, r)
-		if !ok {
-			return
+		number, err := itemNumber(r)
+		if err != nil {
+			return err
 		}
-		var body struct {
-			Title           *string  `json:"title"`
-			Body            *string  `json:"body"`
-			State           *string  `json:"state"`
-			AddLabels       []string `json:"add_labels"`
-			RemoveLabels    []string `json:"remove_labels"`
-			AddAssignees    []string `json:"add_assignees"`
-			RemoveAssignees []string `json:"remove_assignees"`
+		body, err := decodeBody[editItemRequest](w, r)
+		if err != nil {
+			return err
 		}
-		if !decodeBody(w, r, &body) {
-			return
-		}
-		if problem := checkText(body.Title, body.Body); problem != "" {
-			writeError(w, http.StatusBadRequest, problem)
-			return
+		if err := checkText(body.Title, body.Body); err != nil {
+			return err
 		}
 		wasOpen := true
-		if kind == "pr" {
-			if before, err := s.store.Pull(repo.Name, number); err == nil {
-				wasOpen = before.State == "open"
-				if problem := s.reopenProblem(repo.Name, before, body.State); problem != "" {
-					writeError(w, http.StatusConflict, problem)
-					return
-				}
+		if kind == kindPull {
+			if wasOpen, err = s.checkReopen(ctx, repo.Name, number, body.State); err != nil {
+				return err
 			}
 		}
 		id := identityFrom(r)
-		item, eventID, err := s.store.EditItem(kind, repo.Name, number, id.actor, store.ItemEdit{
-			Title: body.Title, Body: body.Body, State: body.State,
-			AddLabels: body.AddLabels, RemoveLabels: body.RemoveLabels,
-			AddAssignees: id.resolve(body.AddAssignees), RemoveAssignees: id.resolve(body.RemoveAssignees),
+		item, eventID, err := s.store.EditItem(ctx, kind, repo.Name, number, id.actor, store.ItemEdit{
+			Title:           body.Title,
+			Body:            body.Body,
+			State:           body.State,
+			AddLabels:       body.AddLabels,
+			RemoveLabels:    body.RemoveLabels,
+			AddAssignees:    id.resolve(body.AddAssignees),
+			RemoveAssignees: id.resolve(body.RemoveAssignees),
 		})
 		if err != nil {
-			writeStoreError(w, err, nouns[kind]+" not found")
-			return
+			return missing(err, nouns[kind]+" not found")
 		}
-		if kind == "issue" {
-			writeJSON(w, http.StatusOK, itemWrite{Item: item, EventID: eventID})
-			return
+		if kind == kindIssue {
+			return writeJSON(w, http.StatusOK, itemWrite{Item: item, EventID: eventID})
 		}
-		actions := s.queueReopened(repo.Name, number, wasOpen, id.actor)
-		pull, err := s.store.Pull(repo.Name, number)
+		actions := s.queueReopened(ctx, repo.Name, number, wasOpen, id.actor)
+		pull, err := s.store.Pull(ctx, repo.Name, number)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+			return err
 		}
-		writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
+		return writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
 	}
 }
 
-func (s *Server) handleCommentItem(kind string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		repo, ok := s.lookupRepo(w, r, "write")
-		if !ok {
-			return
+func (s *Server) handleCommentItem(kind string) handler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := r.Context()
+		repo, err := s.lookupRepo(r, scopeWrite)
+		if err != nil {
+			return err
 		}
-		number, ok := itemNumber(w, r)
-		if !ok {
-			return
+		number, err := itemNumber(r)
+		if err != nil {
+			return err
 		}
-		var body struct {
-			Body string `json:"body"`
-			Path string `json:"path"`
-			Line int64  `json:"line"`
-			Side string `json:"side"`
-		}
-		if !decodeBody(w, r, &body) {
-			return
+		body, err := decodeBody[commentRequest](w, r)
+		if err != nil {
+			return err
 		}
 		if strings.TrimSpace(body.Body) == "" {
-			writeError(w, http.StatusBadRequest, "comment body is empty")
-			return
+			return badRequest("comment body is empty")
 		}
-		if problem := checkText(nil, &body.Body); problem != "" {
-			writeError(w, http.StatusBadRequest, problem)
-			return
+		if err := checkText(nil, &body.Body); err != nil {
+			return err
 		}
-		line, err := s.commentLine(repo.Name, kind, number, body.Path, body.Line, body.Side)
+		anchor := store.LineRef{Path: body.Path, Line: body.Line, Side: body.Side}
+		line, err := s.commentLine(ctx, repo.Name, kind, number, anchor)
 		if err != nil {
-			writeStoreError(w, err, nouns[kind]+" not found")
-			return
+			return missing(err, nouns[kind]+" not found")
 		}
-		comment, eventID, err := s.store.AddComment(kind, repo.Name, number, identityFrom(r).actor, body.Body, line)
+		actor := identityFrom(r).actor
+		comment, eventID, err := s.store.AddComment(ctx, kind, repo.Name, number, actor, body.Body, line)
 		if err != nil {
-			writeStoreError(w, err, nouns[kind]+" not found")
-			return
+			return missing(err, nouns[kind]+" not found")
 		}
-		writeJSON(w, http.StatusCreated, struct {
-			store.Comment
-			EventID int64 `json:"event_id"`
-		}{comment, eventID})
+		return writeJSON(w, http.StatusCreated, commentWrite{Comment: comment, EventID: eventID})
 	}
 }
 
-func (s *Server) handleListLabels(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "read")
-	if !ok {
-		return
-	}
-	labels, err := s.store.Labels(repo.Name)
+func (s *Server) handleListLabels(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, labels)
+	labels, err := s.store.Labels(r.Context(), repo.Name)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, labels)
 }
 
-func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
 	}
-	var body struct {
-		Name        string `json:"name"`
-		Color       string `json:"color"`
-		Description string `json:"description"`
+	body, err := decodeBody[createLabelRequest](w, r)
+	if err != nil {
+		return err
 	}
-	if !decodeBody(w, r, &body) {
-		return
-	}
-	label, eventID, err := s.store.CreateLabel(repo.Name, identityFrom(r).actor, body.Name, body.Color, body.Description)
+	actor := identityFrom(r).actor
+	label, eventID, err := s.store.CreateLabel(r.Context(), repo.Name, actor, body.Name, body.Color, body.Description)
 	if store.IsUniqueViolation(err) {
-		writeError(w, http.StatusConflict, "label "+body.Name+" already exists")
-		return
+		return conflict("label " + body.Name + " already exists")
 	}
 	if err != nil {
-		writeStoreError(w, err, "repository not found")
-		return
+		return missing(err, "repository not found")
 	}
-	writeJSON(w, http.StatusCreated, struct {
-		store.Label
-		EventID int64 `json:"event_id"`
-	}{label, eventID})
+	return writeJSON(w, http.StatusCreated, labelWrite{Label: label, EventID: eventID})
 }
 
-func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) {
-	repo, ok := s.lookupRepo(w, r, "write")
-	if !ok {
-		return
+func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeWrite)
+	if err != nil {
+		return err
 	}
 	name := r.PathValue("label")
-	eventID, err := s.store.DeleteLabel(repo.Name, identityFrom(r).actor, name)
+	eventID, err := s.store.DeleteLabel(r.Context(), repo.Name, identityFrom(r).actor, name)
 	if err != nil {
-		writeStoreError(w, err, "label not found")
-		return
+		return missing(err, "label not found")
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": name, "event_id": eventID})
+	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
 }
