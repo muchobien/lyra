@@ -172,9 +172,22 @@ func TestPulls(test *testing.T) {
 	if output := push("acme/other"); strings.Contains(output, "#4") {
 		test.Errorf("push to a closed pr's branch printed:\n%s", output)
 	}
-	if reopened := pr("reopen", "acme/demo", "4"); reopened.State != "open" || reopened.HeadSHA != other.HeadSHA {
-		test.Errorf("pr reopen = %+v", reopened)
+	if reopened := pr("reopen", "acme/demo", "4"); reopened.State != "open" || reopened.HeadSHA != mustGit(test, src, "rev-parse", "HEAD") || reopened.HeadSHA == other.HeadSHA {
+		test.Errorf("pr reopen did not resync the head: %+v", reopened)
 	}
+	if ref := mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "ls-remote", remote, "refs/pull/4/head"); !strings.HasPrefix(ref, mustGit(test, src, "rev-parse", "HEAD")) {
+		test.Errorf("refs/pull/4/head after reopen: %s", ref)
+	}
+	mustGit(test, src, "switch", "-q", "-c", "gone", "main")
+	commitFile(test, src, "gone.txt", "gone\n", "Short-lived")
+	push("gone")
+	pr("create", "acme/demo", "--head", "gone", "--title", "Gone")
+	pr("close", "acme/demo", "5")
+	push("--delete", "gone")
+	if result := runLyra(test, srv, token, "pr", "reopen", "acme/demo", "5"); result.code != 1 || !strings.Contains(result.stderr, "branch gone no longer exists") {
+		test.Errorf("reopen without its branch: %+v", result)
+	}
+	mustGit(test, src, "switch", "-q", "acme/other")
 
 	push("--delete", "feature")
 	lyraJSON(test, srv, token, &commits, "pr", "commits", "acme/demo", "2")

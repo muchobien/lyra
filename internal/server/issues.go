@@ -219,6 +219,10 @@ func (s *Server) handleEditItem(kind string) http.HandlerFunc {
 		if kind == "pr" {
 			if before, err := s.store.Pull(repo.Name, number); err == nil {
 				wasOpen = before.State == "open"
+				if problem := s.reopenProblem(repo.Name, before, body.State); problem != "" {
+					writeError(w, http.StatusConflict, problem)
+					return
+				}
 			}
 		}
 		id := identityFrom(r)
@@ -235,12 +239,13 @@ func (s *Server) handleEditItem(kind string) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, itemWrite{Item: item, EventID: eventID})
 			return
 		}
+		actions := s.queueReopened(repo.Name, number, wasOpen, id.actor)
 		pull, err := s.store.Pull(repo.Name, number)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID, Actions: s.queueReopened(repo.Name, number, wasOpen, id.actor)})
+		writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
 	}
 }
 

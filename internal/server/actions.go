@@ -483,5 +483,29 @@ func (s *Server) queueReopened(repo string, number int64, wasOpen bool, actor st
 	if err != nil || pull.State != "open" {
 		return nil
 	}
-	return QueuePullRuns(s.store, s.git, s.repoDir(repo), repo, actor, pull, "reopened")
+	dir := s.repoDir(repo)
+	if tip, err := s.git.ResolveCommit(dir, "refs/heads/"+pull.Head); err == nil && tip != pull.HeadSHA {
+		base, err := s.git.MergeBase(dir, "refs/heads/"+pull.Base, tip)
+		if err != nil {
+			base = pull.BaseSHA
+		}
+		if err := s.git.UpdateRef(dir, fmt.Sprintf("refs/pull/%d/head", number), tip, ""); err != nil {
+			return []string{"sync: " + err.Error()}
+		}
+		if _, err := s.store.SyncPull(repo, number, actor, tip, base); err != nil {
+			return []string{"sync: " + err.Error()}
+		}
+		pull.HeadSHA, pull.BaseSHA = tip, base
+	}
+	return QueuePullRuns(s.store, s.git, dir, repo, actor, pull, "reopened")
+}
+
+func (s *Server) reopenProblem(repo string, pull store.Pull, state *string) string {
+	if pull.State != "closed" || state == nil || *state != "open" {
+		return ""
+	}
+	if _, err := s.git.ResolveCommit(s.repoDir(repo), "refs/heads/"+pull.Head); err != nil {
+		return "branch " + pull.Head + " no longer exists; push it again to reopen this pull request"
+	}
+	return ""
 }

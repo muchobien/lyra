@@ -357,6 +357,14 @@ func (s *Server) uiEditItem(kind string) http.HandlerFunc {
 			wanted := id.resolve(splitList(r.PostForm.Get("assignees")))
 			edit.AddAssignees, edit.RemoveAssignees = difference(wanted, item.Assignees), difference(item.Assignees, wanted)
 		}
+		if kind == "pr" {
+			if before, err := s.store.Pull(repo.Name, item.Number); err == nil {
+				if problem := s.reopenProblem(repo.Name, before, edit.State); problem != "" {
+					s.renderError(w, r, http.StatusConflict, problem)
+					return
+				}
+			}
+		}
 		if _, _, err := s.store.EditItem(kind, repo.Name, item.Number, id.actor, edit); err != nil {
 			s.renderStoreError(w, r, err, "Not found.")
 			return

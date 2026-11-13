@@ -225,7 +225,8 @@ lyra image delete <name>:<tag>|<name>@<digest> --yes
   `v` (`v1.2.0` matches `1.2.0`), under `images` in its JSON and on its page.
 - **Deleting a repository** deletes its images' tags and manifests too.
 
-Issues and pull requests share one number sequence per repository. Assignees are
+Issues and pull requests share one number sequence per repository. Reopening a pull request
+syncs it with its head branch's current tip, and is refused if that branch was deleted. Assignees are
 logins or agent names; `@me` is the `Lyra-Agent` name when one is set, otherwise the
 login. Labels must exist before they are applied. Every write returns the `event_id` it
 recorded.
