@@ -10,6 +10,9 @@
 {{if .Assets}}<table class="assets">
 {{range .Assets}}<tr><td><a href="{{.DownloadURL}}">{{.Name}}</a></td><td class="right muted">{{size .Size}}</td><td class="right mono muted hide-sm" title="sha256 {{.SHA256}}">{{short .SHA256}}</td></tr>
 {{end}}</table>{{end}}
+{{if .Images}}<table class="assets">
+{{range .Images}}<tr><td class="mono">{{.Name}}:{{.Tag}}</td><td class="hide-sm"><input class="pull" readonly value="docker pull {{.Reference}}" aria-label="Pull command for {{.Name}}:{{.Tag}}"></td><td class="right mono muted" title="{{.Digest}}">{{short (digestHex .Digest)}}</td></tr>
+{{end}}</table>{{end}}
 </div>
 {{else}}<p class="muted">No releases. Create one with <code>lyra release create {{.Repo.Name}} &lt;tag&gt;</code>.</p>
 {{end}}

@@ -43,20 +43,17 @@ func registryError(w http.ResponseWriter, status int, code, message string) {
 	json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]string{{"code": code, "message": message}}})
 }
 
-func (s *Server) allowImage(w http.ResponseWriter, id *identity, name, scope string) bool {
+func (s *Server) imageProblem(id *identity, name, scope string) (int, string, string) {
 	repo, _, _ := strings.Cut(name, "/")
 	if !id.can(scope, repo) {
-		registryError(w, http.StatusForbidden, "DENIED", "token lacks "+scope+" access to "+repo)
-		return false
+		return http.StatusForbidden, "DENIED", "token lacks " + scope + " access to " + repo
 	}
 	if _, err := s.store.Repo(repo); errors.Is(err, store.ErrNotFound) {
-		registryError(w, http.StatusNotFound, "NAME_UNKNOWN", "no repository "+repo+"; image names start with a Lyra repository")
-		return false
+		return http.StatusNotFound, "NAME_UNKNOWN", "no repository " + repo + "; image names start with a Lyra repository"
 	} else if err != nil {
-		registryError(w, http.StatusInternalServerError, "UNKNOWN", err.Error())
-		return false
+		return http.StatusInternalServerError, "UNKNOWN", err.Error()
 	}
-	return true
+	return 0, "", ""
 }
 
 func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
@@ -82,11 +79,17 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		case http.MethodDelete:
 			scope = "admin"
 		}
-		if !s.allowImage(w, id, name, scope) {
+		if status, code, message := s.imageProblem(id, name, scope); status != 0 {
+			registryError(w, status, code, message)
 			return
 		}
-		if from := r.URL.Query().Get("from"); from != "" && !s.allowImage(w, id, from, "read") {
-			return
+		query := r.URL.Query()
+		if from := query.Get("from"); from != "" {
+			if status, _, _ := s.imageProblem(id, from, "read"); status != 0 {
+				query.Del("from")
+				query.Del("mount")
+				r.URL.RawQuery = query.Encode()
+			}
 		}
 	}
 	if route != v2.RouteNameManifest || (r.Method != http.MethodPut && r.Method != http.MethodDelete) {
@@ -112,12 +115,15 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) imageReference(r *http.Request, image store.Image) string {
-	host := s.config.RegistryHost
-	if host == "" {
-		host = r.Host
+func (s *Server) registryHost(r *http.Request) string {
+	if s.config.RegistryHost != "" {
+		return s.config.RegistryHost
 	}
-	return host + "/" + image.Name + ":" + image.Tag
+	return r.Host
+}
+
+func (s *Server) imageReference(r *http.Request, image store.Image) string {
+	return s.registryHost(r) + "/" + image.Name + ":" + image.Tag
 }
 
 func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
@@ -134,4 +140,24 @@ func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
 		images[index].Reference = s.imageReference(r, images[index])
 	}
 	writeJSON(w, http.StatusOK, images)
+}
+
+func (s *Server) uiImages(w http.ResponseWriter, r *http.Request) {
+	repo, ok := s.uiLookup(w, r)
+	if !ok {
+		return
+	}
+	images, err := s.store.Images(repo.Name)
+	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for index := range images {
+		images[index].Reference = s.imageReference(r, images[index])
+	}
+	view := struct {
+		Images []store.Image
+		Host   string
+	}{images, s.registryHost(r)}
+	s.render(w, r, http.StatusOK, "images", page{Title: "Images · " + repo.Name, Repo: &repo, Ref: s.git.DefaultBranch(s.repoDir(repo.Name)), CloneURL: cloneURL(r, repo.Name), Data: view})
 }

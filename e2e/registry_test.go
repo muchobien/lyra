@@ -70,8 +70,16 @@ func TestRegistry(test *testing.T) {
 	layers, _ := first.Layers()
 	layerDigest, _ := layers[0].Digest()
 	status, body := call(test, http.MethodPost, srv.url+"/v2/other/mounted/blobs/uploads/?mount="+layerDigest.String()+"&from=demo", bearer(otherWriter), "")
-	if status != http.StatusForbidden || !strings.Contains(string(body), "DENIED") {
-		test.Fatalf("mount from demo with a token for other: HTTP %d: %s", status, body)
+	if status != http.StatusAccepted {
+		test.Fatalf("mount from demo with a token for other: HTTP %d, expected 202 (a plain upload instead of the mount): %s", status, body)
+	}
+	status, body = call(test, http.MethodPost, srv.url+"/v2/other/mounted/blobs/uploads/?mount="+layerDigest.String()+"&from=missing", bearer(otherWriter), "")
+	if status != http.StatusAccepted {
+		test.Fatalf("mount from a missing repository: HTTP %d: %s", status, body)
+	}
+	status, _ = call(test, http.MethodPost, srv.url+"/v2/demo/mounted/blobs/uploads/?mount="+layerDigest.String()+"&from=demo", bearer(token), "")
+	if status != http.StatusCreated {
+		test.Fatalf("mount from demo with access: HTTP %d, expected 201", status)
 	}
 
 	index, err := random.Index(1024, 1, 2)

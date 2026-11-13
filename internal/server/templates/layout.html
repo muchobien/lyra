@@ -79,6 +79,7 @@ table.diff-table tr.line-comments td, table.diff-table tr#line-form-row td { pad
 .comment .meta { background: var(--panel); border-bottom: 1px solid var(--line); padding: 6px 12px; border-radius: 6px 6px 0 0; }
 .comment .body { padding: 0 16px; overflow-x: auto; }
 .release table.assets { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+input.pull { width: 100%; font: 12px ui-monospace, Menlo, monospace; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
 .sidebar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 12px 0; }
 @media (max-width: 640px) { .sidebar { grid-template-columns: 1fr; } }
 {{codeCSS}}
@@ -89,7 +90,7 @@ table.diff-table tr.line-comments td, table.diff-table tr#line-form-row td { pad
 <main>
 {{with .Repo}}
 <h1>{{.Name}}{{with .Description}} <span class="muted">· {{.}}</span>{{end}}</h1>
-<nav class="tabs"><a href="/{{esc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{esc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{esc .Name}}/tags">Tags</a><a href="/{{esc .Name}}/releases">Releases</a><a href="/{{esc .Name}}/issues">Issues</a><a href="/{{esc .Name}}/pulls">Pull requests</a></nav>
+<nav class="tabs"><a href="/{{esc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{esc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{esc .Name}}/tags">Tags</a><a href="/{{esc .Name}}/releases">Releases</a><a href="/{{esc .Name}}/images">Images</a><a href="/{{esc .Name}}/issues">Issues</a><a href="/{{esc .Name}}/pulls">Pull requests</a></nav>
 {{end}}
 {{template "content" .}}
 </main>

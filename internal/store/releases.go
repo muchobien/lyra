@@ -23,6 +23,7 @@ type Release struct {
 	Commit      string     `json:"commit"`
 	Author      Actor      `json:"author"`
 	Assets      []Asset    `json:"assets"`
+	Images      []Image    `json:"images,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	PublishedAt *time.Time `json:"published_at"`
 }

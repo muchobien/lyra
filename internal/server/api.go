@@ -166,9 +166,11 @@ func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var missing driver.PathNotFoundError
-	if err := s.storage.Delete(r.Context(), releasesPath(repo.Name)); err != nil && !errors.As(err, &missing) {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	for _, prefix := range []string{releasesPath(repo.Name), "/docker/registry/v2/repositories/" + repo.Name} {
+		if err := s.storage.Delete(r.Context(), prefix); err != nil && !errors.As(err, &missing) {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	if _, err := s.store.AddEvent("repo.delete", repo.Name, identityFrom(r).actor, map[string]string{}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

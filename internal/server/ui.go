@@ -64,6 +64,13 @@ var templateFuncs = template.FuncMap{
 		}
 		return dir + "/" + name
 	},
+	"digestHex": func(digest string) string {
+		_, hex, found := strings.Cut(digest, ":")
+		if !found {
+			return digest
+		}
+		return hex
+	},
 	"size": func(bytes int64) string {
 		value, unit := float64(bytes), 0
 		units := []string{"B", "KB", "MB", "GB", "TB"}
@@ -129,7 +136,7 @@ func init() {
 		return template.HTML(rendered.String())
 	}
 
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "error"} {
+	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "images", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }

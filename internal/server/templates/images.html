@@ -1,0 +1,7 @@
+{{define "content"}}
+<table>
+{{range .Data.Images}}<tr><td><span class="mono"><strong>{{.Name}}</strong>:{{.Tag}}</span><br><span class="muted">{{with .Pusher.Agent}}{{.}} · {{end}}{{.Pusher.User}} · {{.PushedAt.Format "2006-01-02 15:04"}}</span></td><td class="hide-sm"><input class="pull" readonly value="docker pull {{.Reference}}" aria-label="Pull command for {{.Name}}:{{.Tag}}"></td><td class="right mono muted" title="{{.Digest}}">{{short (digestHex .Digest)}}</td></tr>
+{{else}}<tr><td class="muted">No images. Push one as <code>{{.Data.Host}}/{{.Repo.Name}}:&lt;tag&gt;</code>.</td></tr>
+{{end}}
+</table>
+{{end}}

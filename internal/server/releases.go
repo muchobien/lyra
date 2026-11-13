@@ -55,9 +55,20 @@ func downloadURL(r *http.Request, repo, tag, name string) string {
 	return baseURL(r) + "/" + repo + "/releases/download/" + strings.Join(segments, "/") + "/" + url.PathEscape(name)
 }
 
-func withDownloadURLs(r *http.Request, release store.Release) store.Release {
+func (s *Server) releaseLinks(r *http.Request, release store.Release) store.Release {
 	for index := range release.Assets {
 		release.Assets[index].DownloadURL = downloadURL(r, release.Repo, release.Tag, release.Assets[index].Name)
+	}
+	images, err := s.store.Images(release.Repo)
+	if err != nil {
+		slog.Error("images for release", "repo", release.Repo, "tag", release.Tag, "error", err)
+	}
+	release.Images = []store.Image{}
+	for _, image := range images {
+		if image.Tag == release.Tag || "v"+image.Tag == release.Tag {
+			image.Reference = s.imageReference(r, image)
+			release.Images = append(release.Images, image)
+		}
 	}
 	return release
 }
@@ -155,7 +166,7 @@ func (s *Server) handleListReleases(w http.ResponseWriter, r *http.Request) {
 	visible := []store.Release{}
 	for _, release := range releases {
 		if drafts || !release.Draft {
-			visible = append(visible, withDownloadURLs(r, release))
+			visible = append(visible, s.releaseLinks(r, release))
 		}
 	}
 	writeJSON(w, http.StatusOK, visible)
@@ -171,7 +182,7 @@ func (s *Server) handleLatestRelease(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err, "no published release")
 		return
 	}
-	writeJSON(w, http.StatusOK, withDownloadURLs(r, release))
+	writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
 }
 
 func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +197,7 @@ func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err, "no release for tag "+tag)
 		return
 	}
-	writeJSON(w, http.StatusOK, withDownloadURLs(r, release))
+	writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
 }
 
 func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +205,7 @@ func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, withDownloadURLs(r, release))
+	writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
 }
 
 func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +287,7 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, struct {
 		store.Release
 		EventID int64 `json:"event_id"`
-	}{withDownloadURLs(r, created), eventID})
+	}{s.releaseLinks(r, created), eventID})
 }
 
 func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) {
@@ -346,7 +357,7 @@ func (s *Server) handleEditRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		store.Release
 		EventID int64 `json:"event_id"`
-	}{withDownloadURLs(r, updated), eventID})
+	}{s.releaseLinks(r, updated), eventID})
 }
 
 func (s *Server) deleteObject(r *http.Request, repo string, asset store.Asset) {
@@ -662,7 +673,7 @@ func (s *Server) uiReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, release := range releases {
 		if drafts || !release.Draft {
-			view.Releases = append(view.Releases, withDownloadURLs(r, release))
+			view.Releases = append(view.Releases, s.releaseLinks(r, release))
 		}
 	}
 	title := "Releases · " + repo.Name

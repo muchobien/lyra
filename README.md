@@ -189,7 +189,8 @@ lyra image delete <name>:<tag>|<name>@<digest> --yes
 ```
 
 - **Access:** pulling needs `read` on the repository, pushing `write`, deleting `admin`.
-  Mounting a layer from another repository also needs `read` there. The catalog
+  Mounting a layer from another repository needs `read` there; without it, the client
+  uploads the layer instead. The catalog
   (`/v2/_catalog`) needs a token that isn't limited to some repositories.
 - **Login:** behind `tailscale-auth`, clients on the tailnet need no login. Otherwise
   any user name works, with a token as the password.
@@ -198,6 +199,9 @@ lyra image delete <name>:<tag>|<name>@<digest> --yes
   manifests of a multi-arch image, aren't listed.
 - **Deleting:** `lyra image delete` removes a tag, or a manifest and every tag pointing at
   it. Layers stay in storage; there's no garbage collection yet.
+- **Releases:** a release lists the images tagged with its tag, with or without a leading
+  `v` (`v1.2.0` matches `1.2.0`), under `images` in its JSON and on its page.
+- **Deleting a repository** deletes its images' tags and manifests too.
 
 Issues and pull requests share one number sequence per repository. Assignees are
 logins or agent names; `@me` is the `Lyra-Agent` name when one is set, otherwise the
@@ -381,7 +385,8 @@ The stream's filters:
 `/{name}/commits/{ref}`, `/{name}/commit/{sha}` and `/{name}/tags`.
 
 `/{name}/releases` lists releases, drafts first and only with write access, with their
-notes and assets; `/{name}/releases/tag/{tag}` shows one.
+notes, assets and images; `/{name}/releases/tag/{tag}` shows one. `/{name}/images` lists the
+repository's image tags with a `docker pull` command.
 
 `/{name}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
 open one. `/{name}/issues/{number}` shows the issue and its comments, rendered as

@@ -122,7 +122,6 @@ func New(config Config) (*Server, error) {
 			driverName: driverParams,
 			"delete":   configuration.Parameters{"enabled": true},
 			"redirect": configuration.Parameters{"disable": true},
-			"cache":    configuration.Parameters{"blobdescriptor": "inmemory"},
 		},
 		HTTP:    configuration.HTTP{Secret: hex.EncodeToString(secret)},
 		Catalog: configuration.Catalog{MaxEntries: 1000},
@@ -284,6 +283,7 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/commit/{sha}", s.uiCommit)
 		repo.Get("/tags", s.uiTags)
 		repo.Get("/releases", s.uiReleases)
+		repo.Get("/images", s.uiImages)
 		repo.Get("/releases/tag/*", s.uiReleases)
 		repo.Get("/releases/download/*", s.handleStableDownload)
 		repo.Get("/releases/latest/download/{name}", s.handleLatestDownload)
