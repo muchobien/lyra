@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"unicode/utf8"
 
@@ -50,7 +51,12 @@ var templateFuncs = template.FuncMap{
 		}
 		return sha
 	},
-	"esc": url.PathEscape,
+	"esc":  url.PathEscape,
+	"base": path.Base,
+	"ownerOf": func(name string) string {
+		owner, _, _ := strings.Cut(name, "/")
+		return owner
+	},
 	"pathesc": func(path string) string {
 		segments := strings.Split(path, "/")
 		for index, segment := range segments {
@@ -155,7 +161,7 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 }
 
 func (s *Server) uiLookup(w http.ResponseWriter, r *http.Request) (store.Repo, bool) {
-	name := r.PathValue("repo")
+	name := r.PathValue("owner") + "/" + r.PathValue("repo")
 	if !identityFrom(r).can("read", name) {
 		s.renderError(w, r, http.StatusForbidden, "This token cannot read "+name+".")
 		return store.Repo{}, false
@@ -173,19 +179,12 @@ func (s *Server) uiLookup(w http.ResponseWriter, r *http.Request) (store.Repo, b
 }
 
 func (s *Server) uiRepoList(w http.ResponseWriter, r *http.Request) {
-	id := identityFrom(r)
-	all, err := s.store.Repos()
+	groups, err := s.ownerGroups(identityFrom(r), "")
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	visible := []store.Repo{}
-	for _, repo := range all {
-		if id.can("read", repo.Name) {
-			visible = append(visible, repo)
-		}
-	}
-	s.render(w, r, http.StatusOK, "repos", page{Title: "Repositories", Data: visible})
+	s.render(w, r, http.StatusOK, "repos", page{Title: "Repositories", Data: groups})
 }
 
 func (s *Server) uiRepo(w http.ResponseWriter, r *http.Request) {

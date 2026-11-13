@@ -40,7 +40,7 @@ docker run -p 8080:8080 -v lyra-data:/data \
   ghcr.io/muchobien/lyra:main
 ```
 
-The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/pre-receive` and `hooks/post-receive`
+The data directory holds `lyra.db`, `repos/<owner>/<repo>.git`, `hooks/pre-receive` and `hooks/post-receive`
 (written at startup, applied through `core.hooksPath`), `blobs` with the default storage and,
 unless `--signing-key-file` is set, the generated `lyra_signing_key`.
 
@@ -52,14 +52,29 @@ unless `--signing-key-file` is set, the generated `lyra_signing_key`.
 - Otherwise a token is required: `Authorization: Bearer <token>`, or HTTP Basic with
   the token as the password (any username) for Git.
 - Tokens have a scope (`read` < `write` < `admin`), an optional list of repositories
+  (`owner/repo`, or `owner/*` for all of an owner's repositories)
   and an optional expiry. Only their SHA-256 hash is stored. Managing tokens and keys
   needs an admin token without a repository list.
 - `Lyra-Agent` and `Lyra-Session` headers are recorded with every write and push.
 
+## Owners
+
+Every repository belongs to an owner, a namespace such as `krosf` or `fivekoalas`, and
+is named `owner/repo` everywhere: `krosf/lyra` in the CLI, `/krosf/lyra` in the web UI,
+`/api/repos/krosf/lyra` in the API, and `https://lyra.example/krosf/lyra.git` for Git.
+
+- Owners are created with `lyra owner create` before their repositories, and can only be
+  deleted once they have none. Managing owners needs an unrestricted admin token.
+- Names are 1 to 100 letters, digits, `.`, `_` or `-`, starting with a letter or digit.
+  Owners can't be `api`, `static`, `healthz` or `v2`, and repositories can't end in
+  `.git`.
+- Owners have no members: access comes from the tailnet login or a token, and a token
+  can cover a whole owner with `owner/*`.
+
 ## Git
 
 ```sh
-git clone https://lyra.example/<name>.git
+git clone https://lyra.example/<owner>/<repo>.git
 git -c http.extraHeader="Lyra-Agent: claude" push
 ```
 
@@ -97,16 +112,18 @@ Lyra signs the squash commits it creates with its own SSH key:
 Output is JSON on stdout. Errors are `{"error": "..."}` on stderr with exit code 1
 (2 for usage errors, 3 when a wait times out). Every command takes `--help` and `--jq <expression>`, which
 prints strings raw and other values as JSON. `lyra completion <shell>` prints shell
-completion.
+completion. `<repo>` arguments are `owner/name`, such as `krosf/lyra`.
 
 ```
 LYRA_URL, LYRA_TOKEN, LYRA_AGENT, LYRA_SESSION
 
 lyra me
-lyra repo create <name> [--description TEXT]
+lyra owner create <owner> [--description TEXT]
+lyra owner list | view <owner> | delete <owner>
+lyra repo create <owner>/<name> [--description TEXT]
 lyra repo list
-lyra repo get <name>
-lyra repo delete <name> --yes
+lyra repo get <repo>
+lyra repo delete <repo> --yes
 lyra commit list <repo> [--ref REF] [--limit N]
 lyra commit show <repo> <rev>
 lyra tag list <repo>
@@ -171,22 +188,22 @@ A release belongs to a tag:
   reachable from the release's commit but not from the previous release: the most
   recently published release whose commit is an ancestor. Prereleases count as the
   previous release only for another prerelease. `lyra release notes` previews them.
-- **Stable URLs:** `/{repo}/releases/download/{tag}/{name}` and
-  `/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`.
+- **Stable URLs:** `/{owner}/{repo}/releases/download/{tag}/{name}` and
+  `/{owner}/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`.
 - **Events:** `release.created` (drafts), `release.published`, `release.updated`,
   `release.deleted`, and `release.asset` for each upload or deletion.
 
 ## Container registry
 
 Lyra serves the OCI distribution API at `/v2/` on any host it answers, using the embedded
-`distribution` registry. An image is named after a Lyra repository, optionally with more
-path components: `registry.example.com/lyra:v1` or `registry.example.com/lyra/runner:v1`.
+`distribution` registry. An image is named after a Lyra repository (`owner/repo`), optionally with more path
+components: `registry.example.com/krosf/lyra:v1` or `registry.example.com/krosf/lyra/runner:v1`.
 Pushing to a name whose repository doesn't exist is refused with `NAME_UNKNOWN`. Because
-the registry owns `/v2/`, no repository can be called `v2`.
+the registry owns `/v2/`, no owner can be called `v2`.
 
 ```sh
 docker login registry.example.com -u lyra --password-stdin <<< "$LYRA_TOKEN"
-docker push registry.example.com/lyra:v1
+docker push registry.example.com/krosf/lyra:v1
 lyra image list <repo>
 lyra image delete <name>:<tag>|<name>@<digest> --yes
 ```
@@ -343,49 +360,51 @@ lyra runner token list | delete <id>
 | Method and path | Scope |
 | --- | --- |
 | `GET /api/me` | any |
-| `GET /api/repos`, `POST /api/repos` | read, admin |
-| `GET /api/repos/{name}`, `DELETE /api/repos/{name}` | read, admin |
-| `GET /api/repos/{name}/commits?ref=&limit=` | read |
-| `GET /api/repos/{name}/commits/{rev}` | read |
-| `GET /api/repos/{name}/tags` | read |
+| `GET /api/owners`, `GET /api/owners/{owner}` (with its repositories) | any |
+| `POST /api/owners` (`name`, `description`), `DELETE /api/owners/{owner}` | admin, unrestricted |
+| `GET /api/repos`, `POST /api/repos` (`name` as `owner/name`, `description`) | read, admin |
+| `GET /api/repos/{owner}/{repo}`, `DELETE /api/repos/{owner}/{repo}` | read, admin |
+| `GET /api/repos/{owner}/{repo}/commits?ref=&limit=` | read |
+| `GET /api/repos/{owner}/{repo}/commits/{rev}` | read |
+| `GET /api/repos/{owner}/{repo}/tags` | read |
 | `GET /api/tokens`, `POST /api/tokens`, `DELETE /api/tokens/{id}` | admin |
 | `GET /api/keys`, `POST /api/keys`, `DELETE /api/keys/{id}` | read, admin |
 | `GET /api/events?repo=&limit=` | read |
 | `GET /api/events/stream?repo=&item=&action=&assignee=&exclude_self=&since=` | read |
-| `GET /api/repos/{name}/issues?state=&label=&assignee=&limit=` | read |
-| `POST /api/repos/{name}/issues` | write |
-| `GET /api/repos/{name}/issues/{number}` | read |
-| `PATCH /api/repos/{name}/issues/{number}` | write |
-| `POST /api/repos/{name}/issues/{number}/comments` | write |
-| `GET /api/repos/{name}/labels`, `POST /api/repos/{name}/labels` | read, write |
-| `DELETE /api/repos/{name}/labels/{label}` | write |
-| `GET /api/repos/{name}/pulls?state=&label=&assignee=&limit=` | read |
-| `POST /api/repos/{name}/pulls` (`title`, `body`, `head`, `base`, `labels`, `assignees`) | write |
-| `GET /api/repos/{name}/pulls/{number}` | read |
-| `PATCH /api/repos/{name}/pulls/{number}` | write |
-| `POST /api/repos/{name}/pulls/{number}/comments` | write |
-| `GET /api/repos/{name}/pulls/{number}/commits` | read |
-| `GET /api/repos/{name}/pulls/{number}/diff` (`text/x-diff`) | read |
-| `GET /api/repos/{name}/pulls/{number}/files` | read |
-| `POST /api/repos/{name}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
+| `GET /api/repos/{owner}/{repo}/issues?state=&label=&assignee=&limit=` | read |
+| `POST /api/repos/{owner}/{repo}/issues` | write |
+| `GET /api/repos/{owner}/{repo}/issues/{number}` | read |
+| `PATCH /api/repos/{owner}/{repo}/issues/{number}` | write |
+| `POST /api/repos/{owner}/{repo}/issues/{number}/comments` | write |
+| `GET /api/repos/{owner}/{repo}/labels`, `POST /api/repos/{owner}/{repo}/labels` | read, write |
+| `DELETE /api/repos/{owner}/{repo}/labels/{label}` | write |
+| `GET /api/repos/{owner}/{repo}/pulls?state=&label=&assignee=&limit=` | read |
+| `POST /api/repos/{owner}/{repo}/pulls` (`title`, `body`, `head`, `base`, `labels`, `assignees`) | write |
+| `GET /api/repos/{owner}/{repo}/pulls/{number}` | read |
+| `PATCH /api/repos/{owner}/{repo}/pulls/{number}` | write |
+| `POST /api/repos/{owner}/{repo}/pulls/{number}/comments` | write |
+| `GET /api/repos/{owner}/{repo}/pulls/{number}/commits` | read |
+| `GET /api/repos/{owner}/{repo}/pulls/{number}/diff` (`text/x-diff`) | read |
+| `GET /api/repos/{owner}/{repo}/pulls/{number}/files` | read |
+| `POST /api/repos/{owner}/{repo}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
 | `GET /api/signing-key` | any |
-| `GET /api/repos/{name}/rules` | read |
-| `POST /api/repos/{name}/rules` (`pattern`, `require_signed`, `require_approval`, `merge_methods`) | admin |
-| `POST /api/repos/{name}/pulls/{number}/reviews` (`state`: `approve`, `request_changes` or `comment`; `body`; `comments`) | write |
+| `GET /api/repos/{owner}/{repo}/rules` | read |
+| `POST /api/repos/{owner}/{repo}/rules` (`pattern`, `require_signed`, `require_approval`, `merge_methods`) | admin |
+| `POST /api/repos/{owner}/{repo}/pulls/{number}/reviews` (`state`: `approve`, `request_changes` or `comment`; `body`; `comments`) | write |
 
 Comments on pull requests also take `path`, `line` and `side`.
-| `DELETE /api/repos/{name}/rules?pattern=` | admin |
-| `GET /api/repos/{name}/images` | read |
+| `DELETE /api/repos/{owner}/{repo}/rules?pattern=` | admin |
+| `GET /api/repos/{owner}/{repo}/images` | read |
 | `GET /api/runners`, `POST /api/runners` (`name`), `DELETE /api/runners/{id}` | admin, unrestricted |
 | `GET /api/runners/tokens`, `POST /api/runners/tokens` (`name`), `DELETE /api/runners/tokens/{id}` | admin, unrestricted |
-| `GET /api/repos/{name}/releases`, `GET /api/repos/{name}/releases/latest` | read |
-| `GET /api/repos/{name}/releases/notes?tag=&target=&prerelease=` (generated notes preview) | read |
-| `GET /api/repos/{name}/releases/tags/{tag}`, `GET /api/repos/{name}/releases/{id}` | read |
-| `POST /api/repos/{name}/releases` (`tag`, `target`, `title`, `notes`, `generate_notes`, `draft`, `prerelease`) | write |
-| `PATCH /api/repos/{name}/releases/{id}` (`title`, `notes`, `prerelease`, `target`; `draft: false` publishes) | write |
-| `DELETE /api/repos/{name}/releases/{id}?cleanup_tag=` | write |
-| `POST /api/repos/{name}/releases/{id}/assets?name=&clobber=` (the file is the body) | write |
-| `GET /api/repos/{name}/releases/{id}/assets/{asset}`, `DELETE …/assets/{asset}` | read, write |
+| `GET /api/repos/{owner}/{repo}/releases`, `GET /api/repos/{owner}/{repo}/releases/latest` | read |
+| `GET /api/repos/{owner}/{repo}/releases/notes?tag=&target=&prerelease=` (generated notes preview) | read |
+| `GET /api/repos/{owner}/{repo}/releases/tags/{tag}`, `GET /api/repos/{owner}/{repo}/releases/{id}` | read |
+| `POST /api/repos/{owner}/{repo}/releases` (`tag`, `target`, `title`, `notes`, `generate_notes`, `draft`, `prerelease`) | write |
+| `PATCH /api/repos/{owner}/{repo}/releases/{id}` (`title`, `notes`, `prerelease`, `target`; `draft: false` publishes) | write |
+| `DELETE /api/repos/{owner}/{repo}/releases/{id}?cleanup_tag=` | write |
+| `POST /api/repos/{owner}/{repo}/releases/{id}/assets?name=&clobber=` (the file is the body) | write |
+| `GET /api/repos/{owner}/{repo}/releases/{id}/assets/{asset}`, `DELETE …/assets/{asset}` | read, write |
 
 `PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
 `remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as
@@ -408,18 +427,19 @@ The stream's filters:
 
 ## Web UI
 
-`/` lists repositories; `/{name}` browses files at the default branch,
-`/{name}/tree/{ref}/{path}`, `/{name}/blob/{ref}/{path}` (`?raw` for the raw file),
-`/{name}/commits/{ref}`, `/{name}/commit/{sha}` and `/{name}/tags`.
+`/` lists owners and their repositories, and `/{owner}` one owner's. `/{owner}/{repo}` browses
+files at the default branch,
+`/{owner}/{repo}/tree/{ref}/{path}`, `/{owner}/{repo}/blob/{ref}/{path}` (`?raw` for the raw file),
+`/{owner}/{repo}/commits/{ref}`, `/{owner}/{repo}/commit/{sha}` and `/{owner}/{repo}/tags`.
 
-`/{name}/releases` lists releases, drafts first and only with write access, with their
-notes, assets and images; `/{name}/releases/tag/{tag}` shows one. `/{name}/images` lists the
+`/{owner}/{repo}/releases` lists releases, drafts first and only with write access, with their
+notes, assets and images; `/{owner}/{repo}/releases/tag/{tag}` shows one. `/{owner}/{repo}/images` lists the
 repository's image tags with a `docker pull` command.
 
-`/{name}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
-open one. `/{name}/issues/{number}` shows the issue and its comments, rendered as
+`/{owner}/{repo}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
+open one. `/{owner}/{repo}/issues/{number}` shows the issue and its comments, rendered as
 Markdown with raw HTML removed, with forms to comment, close or reopen, and set labels
-and assignees. `/{name}/pulls` and `/{name}/pulls/{number}` do the same for pull
+and assignees. `/{owner}/{repo}/pulls` and `/{owner}/{repo}/pulls/{number}` do the same for pull
 requests, with `?tab=commits` (signature status) and `?tab=files` (changed files and
 the diff). An open pull request's page has:
 

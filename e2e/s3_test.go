@@ -101,10 +101,10 @@ api_bind_addr = "[::]:3900"
 	srv := startServerAt(test, "127.0.0.1:"+freePort(test), filepath.Join(dir, "data"), "127.0.0.1",
 		"--storage", "s3", "--s3-endpoint", "http://127.0.0.1:"+s3Port, "--s3-bucket", "lyra")
 	token := adminToken(test, srv)
-	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "acme/demo")
 	src := newSource(test)
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
-	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/demo.git", "main")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main")
 
 	asset := make([]byte, 12_000_000)
 	rand.Read(asset)
@@ -112,11 +112,11 @@ api_bind_addr = "[::]:3900"
 	if err := os.WriteFile(assetPath, asset, 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "demo", "v1.0.0", "--asset", assetPath)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--asset", assetPath)
 	if count := objects(); count != 1 {
 		test.Fatalf("%d objects after the upload, expected 1", count)
 	}
-	status, data := call(test, http.MethodGet, srv.url+"/demo/releases/latest/download/big.bin", bearer(token), "")
+	status, data := call(test, http.MethodGet, srv.url+"/acme/demo/releases/latest/download/big.bin", bearer(token), "")
 	if status != http.StatusOK || !bytes.Equal(data, asset) {
 		test.Fatalf("download from S3: HTTP %d, %d bytes", status, len(data))
 	}
@@ -126,10 +126,10 @@ api_bind_addr = "[::]:3900"
 	if err != nil {
 		test.Fatal(err)
 	}
-	if err := crane.Push(image, srv.address+"/demo:v1.0.0", auth...); err != nil {
+	if err := crane.Push(image, srv.address+"/acme/demo:v1.0.0", auth...); err != nil {
 		test.Fatalf("push to S3: %v", err)
 	}
-	pulled, err := crane.Pull(srv.address+"/demo:v1.0.0", auth...)
+	pulled, err := crane.Pull(srv.address+"/acme/demo:v1.0.0", auth...)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -151,13 +151,13 @@ api_bind_addr = "[::]:3900"
 	}
 
 	before := objects()
-	if result := runLyra(test, srv, token, "release", "delete", "demo", "v1.0.0", "--yes"); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "delete", "acme/demo", "v1.0.0", "--yes"); result.code != 0 {
 		test.Fatalf("release delete: %+v", result)
 	}
 	if after := objects(); after != before-1 {
 		test.Fatalf("objects: %d before deleting the release, %d after; expected one fewer", before, after)
 	}
-	if _, err := crane.Pull(srv.address+"/demo:v1.0.0", auth...); err != nil {
+	if _, err := crane.Pull(srv.address+"/acme/demo:v1.0.0", auth...); err != nil {
 		test.Fatalf("pull after deleting the release: %v", err)
 	}
 }

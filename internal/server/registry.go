@@ -43,13 +43,21 @@ func registryError(w http.ResponseWriter, status int, code, message string) {
 	json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]string{{"code": code, "message": message}}})
 }
 
+func imageRepo(name string) string {
+	parts := strings.SplitN(name, "/", 3)
+	if len(parts) < 2 {
+		return name
+	}
+	return parts[0] + "/" + parts[1]
+}
+
 func (s *Server) imageProblem(id *identity, name, scope string) (int, string, string) {
-	repo, _, _ := strings.Cut(name, "/")
+	repo := imageRepo(name)
 	if !id.can(scope, repo) {
 		return http.StatusForbidden, "DENIED", "token lacks " + scope + " access to " + repo
 	}
 	if _, err := s.store.Repo(repo); errors.Is(err, store.ErrNotFound) {
-		return http.StatusNotFound, "NAME_UNKNOWN", "no repository " + repo + "; image names start with a Lyra repository"
+		return http.StatusNotFound, "NAME_UNKNOWN", "no repository " + repo + "; image names start with a repository's owner/name"
 	} else if err != nil {
 		return http.StatusInternalServerError, "UNKNOWN", err.Error()
 	}
@@ -98,7 +106,7 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 	recorder := &statusRecorder{ResponseWriter: w}
 	s.registry.ServeHTTP(recorder, r)
-	repo, _, _ := strings.Cut(name, "/")
+	repo := imageRepo(name)
 	reference := match.Vars["reference"]
 	byDigest := strings.Contains(reference, ":")
 	var err error

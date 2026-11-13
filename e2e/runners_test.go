@@ -119,8 +119,8 @@ type runnerResult struct {
 func TestRunners(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
-	createRepo(test, srv, token, "demo")
-	limited := createToken(test, srv, `{"name":"limited","scope":"admin","repos":["demo"]}`)
+	createRepo(test, srv, token, "acme/demo")
+	limited := createToken(test, srv, `{"name":"limited","scope":"admin","repos":["acme/demo"]}`)
 	runners := func() map[string]runnerResult {
 		test.Helper()
 		var list []runnerResult

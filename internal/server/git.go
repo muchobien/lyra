@@ -16,7 +16,7 @@ import (
 
 func (s *Server) handleGit(w http.ResponseWriter, r *http.Request) {
 	id := identityFrom(r)
-	name := strings.TrimSuffix(r.PathValue("repo"), ".git")
+	name := r.PathValue("owner") + "/" + strings.TrimSuffix(r.PathValue("repo"), ".git")
 	if _, err := s.store.Repo(name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.Error(w, "repository not found", http.StatusNotFound)
@@ -38,7 +38,7 @@ func (s *Server) handleGit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	rest := r.URL.Path[strings.Index(r.URL.Path[1:], "/")+1:]
+	rest := strings.TrimPrefix(r.URL.Path, "/"+r.PathValue("owner")+"/"+r.PathValue("repo"))
 	request := r.Clone(r.Context())
 	request.URL.Path = "/" + name + ".git" + rest
 	handler := &cgi.Handler{

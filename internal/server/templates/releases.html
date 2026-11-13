@@ -1,5 +1,5 @@
 {{define "content"}}
-{{$repo := esc .Repo.Name}}
+{{$repo := pathesc .Repo.Name}}
 {{if .Data.Single}}<p><a href="/{{$repo}}/releases">All releases</a></p>{{end}}
 {{range .Data.Releases}}
 <div class="comment release">

@@ -54,7 +54,10 @@ Environment:
   LYRA_URL      server URL (default http://localhost:8080)
   LYRA_TOKEN    API token; not needed on the tailnet behind tailscale-auth
   LYRA_AGENT    agent name recorded on writes (Lyra-Agent header)
-  LYRA_SESSION  session id recorded on writes (Lyra-Session header)`,
+  LYRA_SESSION  session id recorded on writes (Lyra-Session header)
+
+Repositories are named <owner>/<name>, such as krosf/lyra; create the owner first with
+lyra owner create.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -90,8 +93,8 @@ Environment:
 	repo := &cobra.Command{Use: "repo", Short: "Manage repositories"}
 	var description string
 	repoCreate := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a repository",
+		Use:   "create <owner>/<name>",
+		Short: "Create a repository under an existing owner",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, "/api/repos", map[string]string{"name": args[0], "description": description})
@@ -111,7 +114,7 @@ Environment:
 		Short: "Show a repository with its branches and clone URL",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0]), nil)
+			return call(cmd, http.MethodGet, repoAPI(args[0]), nil)
 		},
 	}
 	var yes bool
@@ -123,7 +126,7 @@ Environment:
 			if !yes {
 				return UsageError{errors.New("repo delete removes the repository permanently; pass --yes")}
 			}
-			return call(cmd, http.MethodDelete, "/api/repos/"+url.PathEscape(args[0]), nil)
+			return call(cmd, http.MethodDelete, repoAPI(args[0]), nil)
 		},
 	}
 	repoDelete.Flags().BoolVar(&yes, "yes", false, "confirm permanent deletion")
@@ -141,7 +144,7 @@ Environment:
 			if ref != "" {
 				query.Set("ref", ref)
 			}
-			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0])+"/commits?"+query.Encode(), nil)
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/commits?"+query.Encode(), nil)
 		},
 	}
 	commitList.Flags().StringVar(&ref, "ref", "", "branch, tag or commit (default: the default branch)")
@@ -151,7 +154,7 @@ Environment:
 		Short: "Show one commit, verified with git verify-commit",
 		Args:  exactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0])+"/commits/"+url.PathEscape(args[1]), nil)
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/commits/"+url.PathEscape(args[1]), nil)
 		},
 	}
 	commit.AddCommand(commitList, commitShow)
@@ -162,7 +165,7 @@ Environment:
 		Short: "List tags, verified with git verify-tag",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0])+"/tags", nil)
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/tags", nil)
 		},
 	})
 
@@ -325,7 +328,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 	itemCommands := func(use, segment, noun, states string) *cobra.Command {
 		parent := &cobra.Command{Use: use, Short: "Manage " + noun + "s"}
 		itemsPath := func(repo string) string {
-			return "/api/repos/" + url.PathEscape(repo) + "/" + segment
+			return repoAPI(repo) + "/" + segment
 		}
 		var itemTitle, head, base string
 		var itemLabels, itemAssignees []string
@@ -517,7 +520,7 @@ exits 3 with {"error":"timeout"} when --timeout passes.
 	issue := itemCommands("issue", "issues", "issue", "open, closed or all")
 	pr := itemCommands("pr", "pulls", "pull request", "open, closed, merged or all")
 	pullPath := func(args []string) string {
-		return "/api/repos/" + url.PathEscape(args[0]) + "/pulls/" + url.PathEscape(args[1])
+		return repoAPI(args[0]) + "/pulls/" + url.PathEscape(args[1])
 	}
 	prCommits := &cobra.Command{
 		Use:   "commits <repo> <number>",
@@ -644,7 +647,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 
 	label := &cobra.Command{Use: "label", Short: "Manage a repository's labels"}
 	labelsPath := func(repo string) string {
-		return "/api/repos/" + url.PathEscape(repo) + "/labels"
+		return repoAPI(repo) + "/labels"
 	}
 	var color, labelDescription string
 	labelCreate := &cobra.Command{
@@ -677,7 +680,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 
 	rule := &cobra.Command{Use: "rule", Short: "Manage branch rules"}
 	rulesPath := func(repo string) string {
-		return "/api/repos/" + url.PathEscape(repo) + "/rules"
+		return repoAPI(repo) + "/rules"
 	}
 	var requireSigned, requireApproval bool
 	var allowedMethods []string
@@ -720,7 +723,7 @@ merged. Rules apply to admins as well. Setting a pattern again replaces its rule
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call))
 	return root
 }
 
@@ -731,7 +734,7 @@ func imageCommands(call func(*cobra.Command, string, string, any) error, emit fu
 		Short: "List a repository's image tags with their digests and pull references",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0])+"/images", nil)
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/images", nil)
 		},
 	}
 	var yes bool
@@ -779,7 +782,7 @@ type releaseInfo struct {
 func releaseCommands(call func(*cobra.Command, string, string, any) error, emit func(*cobra.Command, []byte) error) *cobra.Command {
 	release := &cobra.Command{Use: "release", Short: "Manage releases and their assets"}
 	releasesPath := func(repo string) string {
-		return "/api/repos/" + url.PathEscape(repo) + "/releases"
+		return repoAPI(repo) + "/releases"
 	}
 	find := func(repo, tag string) (releaseInfo, string, error) {
 		path := releasesPath(repo) + "/tags/" + strings.ReplaceAll(url.PathEscape(tag), "%2F", "/")
@@ -1377,4 +1380,49 @@ Deleting it doesn't remove the runners it registered.`,
 	token.AddCommand(tokenCreate, tokenList, tokenDelete)
 	runner.AddCommand(create, list, remove, token)
 	return runner
+}
+
+func repoAPI(name string) string {
+	owner, repo, _ := strings.Cut(name, "/")
+	return "/api/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo)
+}
+
+func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	owner := &cobra.Command{Use: "owner", Short: "Manage owners, the namespaces repositories live in"}
+	var description string
+	create := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create an owner, such as krosf, for repositories named <owner>/<name>",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, "/api/owners", map[string]string{"name": args[0], "description": description})
+		},
+	}
+	create.Flags().StringVar(&description, "description", "", "owner description")
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List owners with their repositories",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/owners", nil)
+		},
+	}
+	view := &cobra.Command{
+		Use:   "view <name>",
+		Short: "Show an owner with its repositories",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/owners/"+url.PathEscape(args[0]), nil)
+		},
+	}
+	remove := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete an owner that has no repositories",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, "/api/owners/"+url.PathEscape(args[0]), nil)
+		},
+	}
+	owner.AddCommand(create, list, view, remove)
+	return owner
 }

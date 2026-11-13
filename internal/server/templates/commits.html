@@ -1,8 +1,8 @@
 {{define "content"}}
 <table>
-{{range .Data.Commits}}<tr><td><a href="/{{esc $.Repo.Name}}/commit/{{.SHA}}">{{.Subject}}</a><br><span class="muted">{{.Author.Name}} · {{day .Committer.Date}}</span></td><td class="right">{{template "sig" .Signature}}{{with .Signature.KeyAgent}}<br><span class="muted">agent {{.}}</span>{{end}}</td><td class="right mono hide-sm"><a href="/{{esc $.Repo.Name}}/commit/{{.SHA}}">{{short .SHA}}</a></td></tr>
+{{range .Data.Commits}}<tr><td><a href="/{{pathesc $.Repo.Name}}/commit/{{.SHA}}">{{.Subject}}</a><br><span class="muted">{{.Author.Name}} · {{day .Committer.Date}}</span></td><td class="right">{{template "sig" .Signature}}{{with .Signature.KeyAgent}}<br><span class="muted">agent {{.}}</span>{{end}}</td><td class="right mono hide-sm"><a href="/{{pathesc $.Repo.Name}}/commit/{{.SHA}}">{{short .SHA}}</a></td></tr>
 {{else}}<tr><td class="muted">No commits.</td></tr>
 {{end}}
 </table>
-{{with .Data.Older}}<p><a href="/{{esc $.Repo.Name}}/commits/{{.}}">Older commits →</a></p>{{end}}
+{{with .Data.Older}}<p><a href="/{{pathesc $.Repo.Name}}/commits/{{.}}">Older commits →</a></p>{{end}}
 {{end}}

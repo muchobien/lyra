@@ -86,11 +86,11 @@ input.pull { width: 100%; font: 12px ui-monospace, Menlo, monospace; padding: 2p
 </style>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="/">Lyra</a>{{with .Repo}}<a href="/{{esc .Name}}">{{.Name}}</a>{{end}}<span class="user">{{.User}}</span></div></header>
+<header><div class="bar"><a class="brand" href="/">Lyra</a>{{with .Repo}}<span><a href="/{{esc (ownerOf .Name)}}">{{ownerOf .Name}}</a> <span class="muted">/</span> <a href="/{{pathesc .Name}}">{{base .Name}}</a></span>{{end}}<span class="user">{{.User}}</span></div></header>
 <main>
 {{with .Repo}}
 <h1>{{.Name}}{{with .Description}} <span class="muted">· {{.}}</span>{{end}}</h1>
-<nav class="tabs"><a href="/{{esc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{esc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{esc .Name}}/tags">Tags</a><a href="/{{esc .Name}}/releases">Releases</a><a href="/{{esc .Name}}/images">Images</a><a href="/{{esc .Name}}/issues">Issues</a><a href="/{{esc .Name}}/pulls">Pull requests</a></nav>
+<nav class="tabs"><a href="/{{pathesc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{pathesc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{pathesc .Name}}/tags">Tags</a><a href="/{{pathesc .Name}}/releases">Releases</a><a href="/{{pathesc .Name}}/images">Images</a><a href="/{{pathesc .Name}}/issues">Issues</a><a href="/{{pathesc .Name}}/pulls">Pull requests</a></nav>
 {{end}}
 {{template "content" .}}
 </main>

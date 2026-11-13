@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,7 +51,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, value any) bool {
 }
 
 func (s *Server) lookupRepo(w http.ResponseWriter, r *http.Request, scope string) (store.Repo, bool) {
-	name := r.PathValue("repo")
+	name := r.PathValue("owner") + "/" + r.PathValue("repo")
 	if !identityFrom(r).can(scope, name) {
 		writeError(w, http.StatusForbidden, "token lacks "+scope+" access to "+name)
 		return store.Repo{}, false
@@ -105,8 +104,16 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	if !repoNamePattern.MatchString(body.Name) || strings.HasSuffix(body.Name, ".git") || slices.Contains(reservedNames, body.Name) {
-		writeError(w, http.StatusBadRequest, "invalid repository name")
+	owner, name, found := strings.Cut(body.Name, "/")
+	if !found || !repoNamePattern.MatchString(owner) || !repoNamePattern.MatchString(name) || strings.HasSuffix(name, ".git") {
+		writeError(w, http.StatusBadRequest, "repository names are owner/name; each part is 1 to 100 letters, digits, ., _ or -, starting with a letter or digit, and the name can't end in .git")
+		return
+	}
+	if _, err := s.store.Owner(owner); errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "owner "+owner+" doesn't exist; create it with lyra owner create "+owner)
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !id.can("admin", body.Name) {

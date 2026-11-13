@@ -206,7 +206,7 @@ func (s *Server) Handler() http.Handler {
 		api.Route("/repos", func(repos chi.Router) {
 			repos.Get("/", s.handleListRepos)
 			repos.Post("/", s.handleCreateRepo)
-			repos.Route("/{repo}", func(repo chi.Router) {
+			repos.Route("/{owner}/{repo}", func(repo chi.Router) {
 				repo.Get("/", s.handleGetRepo)
 				repo.Delete("/", s.handleDeleteRepo)
 				repo.Get("/commits", s.handleListCommits)
@@ -274,6 +274,12 @@ func (s *Server) Handler() http.Handler {
 		pingPath, pingHandler := pingv1connect.NewPingServiceHandler(pingService{})
 		api.Handle("/actions"+runnerPath+"*", http.StripPrefix("/api/actions", runnerHandler))
 		api.Handle("/actions"+pingPath+"*", http.StripPrefix("/api/actions", pingHandler))
+		api.Route("/owners", func(owners chi.Router) {
+			owners.Get("/", s.handleListOwners)
+			owners.Post("/", s.handleCreateOwner)
+			owners.Get("/{owner}", s.handleGetOwner)
+			owners.Delete("/{owner}", s.handleDeleteOwner)
+		})
 		api.Route("/runners", func(runners chi.Router) {
 			runners.Get("/", s.handleListRunners)
 			runners.Post("/", s.handleCreateRunner)
@@ -285,7 +291,8 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	router.Get("/", s.uiRepoList)
-	router.Route("/{repo}", func(repo chi.Router) {
+	router.Get("/{owner}", s.uiOwner)
+	router.Route("/{owner}/{repo}", func(repo chi.Router) {
 		repo.Get("/info/refs", s.handleGit)
 		repo.Post("/git-upload-pack", s.handleGit)
 		repo.Post("/git-receive-pack", s.handleGit)
@@ -390,7 +397,11 @@ func (id *identity) can(scope, repo string) bool {
 	if repo == "" {
 		return len(id.repos) == 0
 	}
-	return len(id.repos) == 0 || slices.Contains(id.repos, repo)
+	if len(id.repos) == 0 || slices.Contains(id.repos, repo) {
+		return true
+	}
+	owner, _, _ := strings.Cut(repo, "/")
+	return slices.Contains(id.repos, owner+"/*")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

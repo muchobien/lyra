@@ -1,5 +1,5 @@
 {{define "content"}}
-<p><a href="/{{esc .Repo.Name}}/tree/{{esc .Ref}}/">{{.Repo.Name}}</a>{{range $index, $crumb := .Data.Crumbs}} / {{if eq $crumb.Path $.Data.Path}}<strong>{{$crumb.Name}}</strong>{{else}}<a href="/{{esc $.Repo.Name}}/tree/{{esc $.Ref}}/{{pathesc $crumb.Path}}">{{$crumb.Name}}</a>{{end}}{{end}}
-<span class="muted">· {{.Data.Size}} B · <a href="/{{esc .Repo.Name}}/blob/{{esc .Ref}}/{{pathesc .Data.Path}}?raw">raw</a></span></p>
+<p><a href="/{{pathesc .Repo.Name}}/tree/{{esc .Ref}}/">{{.Repo.Name}}</a>{{range $index, $crumb := .Data.Crumbs}} / {{if eq $crumb.Path $.Data.Path}}<strong>{{$crumb.Name}}</strong>{{else}}<a href="/{{pathesc $.Repo.Name}}/tree/{{esc $.Ref}}/{{pathesc $crumb.Path}}">{{$crumb.Name}}</a>{{end}}{{end}}
+<span class="muted">· {{.Data.Size}} B · <a href="/{{pathesc .Repo.Name}}/blob/{{esc .Ref}}/{{pathesc .Data.Path}}?raw">raw</a></span></p>
 {{if .Data.Binary}}<p class="muted">Binary or large file not shown.</p>{{else}}{{.Data.Code}}{{end}}
 {{end}}

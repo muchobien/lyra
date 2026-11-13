@@ -277,6 +277,10 @@ func fingerprint(test *testing.T, publicKey string) string {
 
 func createRepo(test *testing.T, srv server, token, name string) {
 	test.Helper()
+	owner, _, _ := strings.Cut(name, "/")
+	if result := runLyra(test, srv, token, "owner", "create", owner); result.code != 0 && !strings.Contains(result.stderr, "already exists") {
+		test.Fatalf("owner create %s: %+v", owner, result)
+	}
 	var repo store.Repo
 	lyraJSON(test, srv, token, &repo, "repo", "create", name)
 }
@@ -344,13 +348,59 @@ func TestCLI(test *testing.T) {
 		Branches      []repos.Ref `json:"branches"`
 		CloneURL      string      `json:"clone_url"`
 	}
-	lyraJSON(test, srv, token, &created, "repo", "create", "demo", "--description", "Demo repo")
-	if created.Name != "demo" || created.Description != "Demo repo" || created.DefaultBranch != "main" || created.CloneURL != srv.url+"/demo.git" || len(created.Branches) != 0 || created.CreatedBy != login {
+	if result := runLyra(test, srv, token, "repo", "create", "acme/demo"); result.code != 1 || !strings.Contains(result.stderr, "owner acme doesn't exist") {
+		test.Errorf("repo without its owner: %+v", result)
+	}
+	for _, owner := range []string{"acme", "beta"} {
+		if result := runLyra(test, srv, token, "owner", "create", owner, "--description", "Owner "+owner); result.code != 0 {
+			test.Fatalf("owner create %s: %+v", owner, result)
+		}
+	}
+	if result := runLyra(test, srv, token, "owner", "create", "acme"); result.code != 1 || !strings.Contains(result.stderr, "already exists") {
+		test.Errorf("duplicate owner: %+v", result)
+	}
+	for _, reserved := range []string{"v2", "api", "_x", "a/b"} {
+		if result := runLyra(test, srv, token, "owner", "create", reserved); result.code != 1 || !strings.Contains(result.stderr, "owner names are") {
+			test.Errorf("owner %q: %+v", reserved, result)
+		}
+	}
+	lyraJSON(test, srv, token, &created, "repo", "create", "acme/demo", "--description", "Demo repo")
+	createRepo(test, srv, token, "beta/tool")
+	if created.Name != "acme/demo" || created.Description != "Demo repo" || created.DefaultBranch != "main" || created.CloneURL != srv.url+"/acme/demo.git" || len(created.Branches) != 0 || created.CreatedBy != login {
 		test.Errorf("repo create = %+v", created)
 	}
 
-	if result := runLyra(test, srv, token, "repo", "create", "bad/name"); result.code != 1 || !strings.Contains(result.stderr, `"error":"invalid repository name`) {
-		test.Errorf("invalid name: exit %d stderr %s", result.code, result.stderr)
+	for _, invalid := range []string{"nameless", "acme/x.git", "acme/a/b", "acme/.hidden"} {
+		if result := runLyra(test, srv, token, "repo", "create", invalid); result.code != 1 || !strings.Contains(result.stderr, "repository names are owner/name") {
+			test.Errorf("invalid name %q: exit %d stderr %s", invalid, result.code, result.stderr)
+		}
+	}
+	scoped := createToken(test, srv, `{"name":"acme","scope":"read","repos":["acme/*"]}`)
+	if result := runLyra(test, srv, scoped, "repo", "get", "acme/demo"); result.code != 0 {
+		test.Errorf("acme/* token reads acme/demo: %+v", result)
+	}
+	if result := runLyra(test, srv, scoped, "repo", "get", "beta/tool"); result.code != 1 || !strings.Contains(result.stderr, "lacks read") {
+		test.Errorf("acme/* token reads beta/tool: %+v", result)
+	}
+	if result := runLyra(test, srv, scoped, "owner", "list", "--jq", ".[].name"); result.stdout != "acme\n" {
+		test.Errorf("owners for an acme/* token: %q", result.stdout)
+	}
+	if result := runLyra(test, srv, token, "owner", "view", "acme", "--jq", ".repos[].name"); result.stdout != "acme/demo\n" {
+		test.Errorf("owner view acme: %q", result.stdout)
+	}
+	status, page := call(test, http.MethodGet, srv.url+"/", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(string(page), `<a href="/acme/demo">demo</a>`) || !strings.Contains(string(page), `<a href="/beta">beta</a>`) {
+		test.Errorf("root page: HTTP %d:\n%s", status, page)
+	}
+	status, page = call(test, http.MethodGet, srv.url+"/beta", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(string(page), `<a href="/beta/tool">tool</a>`) || strings.Contains(string(page), "acme/demo") {
+		test.Errorf("owner page: HTTP %d:\n%s", status, page)
+	}
+	if status, _ := call(test, http.MethodGet, srv.url+"/nobody", tailnet(), ""); status != http.StatusNotFound {
+		test.Errorf("missing owner page: HTTP %d", status)
+	}
+	if result := runLyra(test, srv, token, "owner", "delete", "beta"); result.code != 1 || !strings.Contains(result.stderr, "still has repositories") {
+		test.Errorf("delete an owner with repositories: %+v", result)
 	}
 	if result := runLyra(test, srv, token, "repo", "get"); result.code != 2 {
 		test.Errorf("missing argument: exit %d, want 2", result.code)
@@ -358,58 +408,64 @@ func TestCLI(test *testing.T) {
 	if result := runLyra(test, srv, token, "repo", "list", "--bogus"); result.code != 2 {
 		test.Errorf("unknown flag: exit %d, want 2", result.code)
 	}
-	if result := runLyra(test, srv, token, "repo", "list", "--jq", ".[].name"); result.stdout != "demo\n" {
+	if result := runLyra(test, srv, token, "repo", "list", "--jq", ".[].name"); result.stdout != "acme/demo\nbeta/tool\n" {
 		test.Errorf("--jq output %q", result.stdout)
 	}
 	if result := runLyra(test, srv, token, "me", "--jq", ".actor.via"); result.stdout != "token:admin\n" {
 		test.Errorf("me via %q", result.stdout)
 	}
 
-	if result := runLyra(test, srv, token, "repo", "delete", "demo"); result.code != 2 {
+	if result := runLyra(test, srv, token, "repo", "delete", "acme/demo"); result.code != 2 {
 		test.Errorf("delete without --yes: exit %d, want 2", result.code)
 	}
-	if result := runLyra(test, srv, token, "repo", "delete", "demo", "--yes"); result.code != 0 {
+	if result := runLyra(test, srv, token, "repo", "delete", "acme/demo", "--yes"); result.code != 0 {
 		test.Fatalf("delete: exit %d: %s", result.code, result.stderr)
 	}
-	if _, err := os.Stat(filepath.Join(srv.data, "repos", "demo.git")); !os.IsNotExist(err) {
-		test.Errorf("demo.git still on disk: %v", err)
+	if _, err := os.Stat(filepath.Join(srv.data, "repos", "acme/demo.git")); !os.IsNotExist(err) {
+		test.Errorf("acme/demo.git still on disk: %v", err)
+	}
+	if result := runLyra(test, srv, token, "repo", "delete", "beta/tool", "--yes"); result.code != 0 {
+		test.Fatalf("delete beta/tool: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "owner", "delete", "beta"); result.code != 0 {
+		test.Errorf("delete an empty owner: %+v", result)
 	}
 }
 
 func TestGitTransport(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
-	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "acme/demo")
 	src := newSource(test)
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
 
 	auth := "http.extraHeader=Authorization: Bearer " + token
-	mustGit(test, src, "-c", auth, "-c", "http.extraHeader=Lyra-Agent: e2e-agent", "-c", "http.extraHeader=Lyra-Session: session-123", "push", "-q", srv.url+"/demo.git", "main")
+	mustGit(test, src, "-c", auth, "-c", "http.extraHeader=Lyra-Agent: e2e-agent", "-c", "http.extraHeader=Lyra-Session: session-123", "push", "-q", srv.url+"/acme/demo.git", "main")
 
 	blob := make([]byte, 3_000_000)
 	rand.Read(blob)
 	commitFile(test, src, "blob.bin", string(blob), "Add random blob")
-	mustGit(test, src, "-c", auth, "-c", "http.postBuffer=1024", "push", "-q", srv.url+"/demo.git", "main")
+	mustGit(test, src, "-c", auth, "-c", "http.postBuffer=1024", "push", "-q", srv.url+"/acme/demo.git", "main")
 
-	if output, err := gitCommand("", nil, "clone", "-q", srv.url+"/demo.git", filepath.Join(test.TempDir(), "anonymous")); err == nil {
+	if output, err := gitCommand("", nil, "clone", "-q", srv.url+"/acme/demo.git", filepath.Join(test.TempDir(), "anonymous")); err == nil {
 		test.Errorf("clone without credentials succeeded: %s", output)
 	}
 
 	clone := filepath.Join(test.TempDir(), "clone")
 	helper := "credential.helper=!f() { echo username=lyra; echo password=" + token + "; }; f"
-	mustGit(test, "", "-c", "credential.helper=", "-c", helper, "clone", "-q", srv.url+"/demo", clone)
+	mustGit(test, "", "-c", "credential.helper=", "-c", helper, "clone", "-q", srv.url+"/acme/demo", clone)
 	if got, want := mustGit(test, clone, "rev-parse", "HEAD"), mustGit(test, src, "rev-parse", "HEAD"); got != want {
 		test.Errorf("clone HEAD %s, want %s", got, want)
 	}
 
 	tailnetClone := filepath.Join(test.TempDir(), "tailnet")
 	header := "http.extraHeader=Tailscale-User-Login: " + login
-	mustGit(test, "", "-c", header, "clone", "-q", srv.url+"/demo.git", tailnetClone)
+	mustGit(test, "", "-c", header, "clone", "-q", srv.url+"/acme/demo.git", tailnetClone)
 	mustGit(test, tailnetClone, "commit", "-q", "--allow-empty", "-m", "Pushed over the tailnet header")
 	mustGit(test, tailnetClone, "-c", header, "-c", "http.extraHeader=Lyra-Agent: tailnet-agent", "push", "-q", "origin", "main")
 
 	var events []store.Event
-	lyraJSON(test, srv, token, &events, "event", "list", "--repo", "demo")
+	lyraJSON(test, srv, token, &events, "event", "list", "--repo", "acme/demo")
 	pushes := []store.Actor{}
 	for _, event := range events {
 		if event.Action == "push" {
@@ -429,36 +485,36 @@ func TestGitTransport(test *testing.T) {
 func TestTokens(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	admin := adminToken(test, srv)
-	createRepo(test, srv, admin, "demo")
-	createRepo(test, srv, admin, "other")
+	createRepo(test, srv, admin, "acme/demo")
+	createRepo(test, srv, admin, "acme/other")
 	src := newSource(test)
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
-	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+admin, "push", "-q", srv.url+"/demo.git", "main")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+admin, "push", "-q", srv.url+"/acme/demo.git", "main")
 
 	var created struct {
 		Token  store.Token `json:"token"`
 		Secret string      `json:"secret"`
 	}
-	lyraJSON(test, srv, admin, &created, "token", "create", "--name", "ci-read", "--scope", "read", "--repo", "demo", "--expires", "1h")
+	lyraJSON(test, srv, admin, &created, "token", "create", "--name", "ci-read", "--scope", "read", "--repo", "acme/demo", "--expires", "1h")
 	read := created.Secret
-	if created.Token.Scope != "read" || fmt.Sprint(created.Token.Repos) != "[demo]" || created.Token.ExpiresAt == nil || !strings.HasPrefix(read, "lyra_") {
+	if created.Token.Scope != "read" || fmt.Sprint(created.Token.Repos) != "[acme/demo]" || created.Token.ExpiresAt == nil || !strings.HasPrefix(read, "lyra_") {
 		test.Errorf("token create = %+v", created.Token)
 	}
 
-	if result := runLyra(test, srv, read, "repo", "list", "--jq", "[.[].name] | join(\",\")"); result.stdout != "demo\n" {
+	if result := runLyra(test, srv, read, "repo", "list", "--jq", "[.[].name] | join(\",\")"); result.stdout != "acme/demo\n" {
 		test.Errorf("read token repo list %q", result.stdout)
 	}
-	if status, _ := call(test, http.MethodGet, srv.url+"/api/repos/other", bearer(read), ""); status != http.StatusForbidden {
+	if status, _ := call(test, http.MethodGet, srv.url+"/api/repos/acme/other", bearer(read), ""); status != http.StatusForbidden {
 		test.Errorf("read token on other repo: HTTP %d, want 403", status)
 	}
 	readHeader := "http.extraHeader=Authorization: Bearer " + read
 	clone := filepath.Join(test.TempDir(), "clone")
-	mustGit(test, "", "-c", readHeader, "clone", "-q", srv.url+"/demo.git", clone)
+	mustGit(test, "", "-c", readHeader, "clone", "-q", srv.url+"/acme/demo.git", clone)
 	mustGit(test, clone, "commit", "-q", "--allow-empty", "-m", "Rejected")
 	if output, err := gitCommand(clone, nil, "-c", readHeader, "push", "-q", "origin", "main"); err == nil || !strings.Contains(output, "403") {
 		test.Errorf("read token push: err %v output %s", err, output)
 	}
-	if result := runLyra(test, srv, read, "repo", "create", "sneaky"); result.code != 1 || !strings.Contains(result.stderr, "lacks admin") {
+	if result := runLyra(test, srv, read, "repo", "create", "acme/sneaky"); result.code != 1 || !strings.Contains(result.stderr, "lacks admin") {
 		test.Errorf("read token repo create: exit %d stderr %s", result.code, result.stderr)
 	}
 
@@ -494,7 +550,7 @@ func TestTokens(test *testing.T) {
 func TestSignatures(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
-	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "acme/demo")
 	agentKey := newKey(test, "agent")
 	strangerKey := newKey(test, "stranger")
 	src := newSource(test)
@@ -540,13 +596,13 @@ func TestSignatures(test *testing.T) {
 		test.Fatal(wrongNamespace)
 	}
 
-	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/demo.git",
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git",
 		"main", "--tags", tampered+":refs/heads/tampered", wrongNamespace+":refs/heads/wrong-namespace")
 
 	commitStatus := func(rev string) repos.Signature {
 		test.Helper()
 		var commit repos.Commit
-		lyraJSON(test, srv, token, &commit, "commit", "show", "demo", rev)
+		lyraJSON(test, srv, token, &commit, "commit", "show", "acme/demo", rev)
 		return commit.Signature
 	}
 	if status := commitStatus(signed).Status; status != repos.Unverified {
@@ -564,7 +620,7 @@ func TestSignatures(test *testing.T) {
 	}
 
 	var commits []repos.Commit
-	lyraJSON(test, srv, token, &commits, "commit", "list", "demo")
+	lyraJSON(test, srv, token, &commits, "commit", "list", "acme/demo")
 	got := map[string]repos.Signature{}
 	for _, commit := range commits {
 		got[commit.Subject] = commit.Signature
@@ -584,7 +640,7 @@ func TestSignatures(test *testing.T) {
 	}
 
 	var tags []repos.Tag
-	lyraJSON(test, srv, token, &tags, "tag", "list", "demo")
+	lyraJSON(test, srv, token, &tags, "tag", "list", "acme/demo")
 	wantTags := map[string]string{"v0.1.0": repos.Verified, "side-v1": repos.Verified, "v0.0.1": repos.Unsigned, "lightweight": repos.Unsigned}
 	for _, tag := range tags {
 		if tag.Signature.Status != wantTags[tag.Name] {
@@ -598,7 +654,7 @@ func TestSignatures(test *testing.T) {
 		}
 	}
 
-	bare := filepath.Join(srv.data, "repos", "demo.git")
+	bare := filepath.Join(srv.data, "repos", "acme/demo.git")
 	allowedSigners := filepath.Join(test.TempDir(), "allowed_signers")
 	publicKey, err := os.ReadFile(agentPublic)
 	if err != nil {
@@ -632,7 +688,7 @@ func TestSignatures(test *testing.T) {
 	if result := runLyra(test, srv, token, "key", "delete", fmt.Sprint(key.ID)); result.code != 0 {
 		test.Fatalf("key delete: %s", result.stderr)
 	}
-	if result := runLyra(test, srv, token, "commit", "list", "demo", "--jq", `[.[] | select(.signature.status == "verified")] | length`); result.stdout != "0\n" {
+	if result := runLyra(test, srv, token, "commit", "list", "acme/demo", "--jq", `[.[] | select(.signature.status == "verified")] | length`); result.stdout != "0\n" {
 		test.Errorf("verified commits after deleting the key: %s", result.stdout)
 	}
 }
@@ -640,8 +696,8 @@ func TestSignatures(test *testing.T) {
 func TestEvents(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
-	createRepo(test, srv, token, "demo")
-	createRepo(test, srv, token, "other")
+	createRepo(test, srv, token, "acme/demo")
+	createRepo(test, srv, token, "acme/other")
 	auth := "http.extraHeader=Authorization: Bearer " + token
 	src := newSource(test)
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
@@ -653,36 +709,36 @@ func TestEvents(test *testing.T) {
 	}
 
 	cursor := fmt.Sprint(latest())
-	waiting := startLyra(test, srv, token, "event", "wait", "--repo", "demo", "--action", "push", "--since", cursor, "--timeout", "30s")
-	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/other.git", "main")
-	createRepo(test, srv, token, "third")
-	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/demo.git", "main")
+	waiting := startLyra(test, srv, token, "event", "wait", "--repo", "acme/demo", "--action", "push", "--since", cursor, "--timeout", "30s")
+	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/acme/other.git", "main")
+	createRepo(test, srv, token, "acme/third")
+	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/acme/demo.git", "main")
 	result := waiting()
 	var pushed store.Event
 	if err := json.Unmarshal([]byte(result.stdout), &pushed); err != nil || result.code != 0 {
 		test.Fatalf("wait for push: exit %d: %v: %s %s", result.code, err, result.stdout, result.stderr)
 	}
-	if pushed.Action != "push" || pushed.Repo != "demo" || pushed.Actor.Via != "token:admin" || !strings.Contains(string(pushed.Data), "refs/heads/main") {
+	if pushed.Action != "push" || pushed.Repo != "acme/demo" || pushed.Actor.Via != "token:admin" || !strings.Contains(string(pushed.Data), "refs/heads/main") {
 		test.Errorf("wait for push = %+v %s", pushed, pushed.Data)
 	}
 
 	var again store.Event
-	lyraJSON(test, srv, token, &again, "event", "wait", "--repo", "demo", "--action", "push", "--since", cursor, "--timeout", "5s")
+	lyraJSON(test, srv, token, &again, "event", "wait", "--repo", "acme/demo", "--action", "push", "--since", cursor, "--timeout", "5s")
 	if again.ID != pushed.ID {
 		test.Errorf("wait --since after the push returned event %d, want %d", again.ID, pushed.ID)
 	}
-	if result := runLyra(test, srv, token, "event", "wait", "--since", cursor, "--action", "repo.*", "--timeout", "5s", "--jq", ".repo"); result.stdout != "third\n" {
+	if result := runLyra(test, srv, token, "event", "wait", "--since", cursor, "--action", "repo.*", "--timeout", "5s", "--jq", ".repo"); result.stdout != "acme/third\n" {
 		test.Errorf("wait for repo.* = %q %s", result.stdout, result.stderr)
 	}
 	if result := runLyra(test, srv, token, "event", "wait", "--action", "repo.*", "--timeout", "1s"); result.code != 3 || strings.TrimSpace(result.stderr) != `{"error":"timeout"}` {
 		test.Errorf("wait without --since matched an earlier event: exit %d stdout %s stderr %s", result.code, result.stdout, result.stderr)
 	}
 
-	scoped := createToken(test, srv, `{"name":"other-only","scope":"read","repos":["other"]}`)
-	if result := runLyra(test, srv, scoped, "event", "wait", "--repo", "demo", "--timeout", "5s"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 403") {
+	scoped := createToken(test, srv, `{"name":"other-only","scope":"read","repos":["acme/other"]}`)
+	if result := runLyra(test, srv, scoped, "event", "wait", "--repo", "acme/demo", "--timeout", "5s"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 403") {
 		test.Errorf("scoped token waiting on demo: exit %d stderr %s", result.code, result.stderr)
 	}
-	if result := runLyra(test, srv, scoped, "event", "wait", "--since", "0", "--timeout", "5s", "--jq", `[.action, .repo] | join(" ")`); result.stdout != "repo.create other\n" {
+	if result := runLyra(test, srv, scoped, "event", "wait", "--since", "0", "--timeout", "5s", "--jq", `[.action, .repo] | join(" ")`); result.stdout != "repo.create acme/other\n" {
 		test.Errorf("scoped token first visible event = %q %s", result.stdout, result.stderr)
 	}
 	if result := runLyra(test, srv, token, "event", "wait", "--since", "-1"); result.code != 2 {
@@ -693,12 +749,12 @@ func TestEvents(test *testing.T) {
 	}
 
 	before := latest()
-	waiting = startLyra(test, srv, token, "event", "wait", "--repo", "demo", "--action", "push", "--timeout", "30s")
+	waiting = startLyra(test, srv, token, "event", "wait", "--repo", "acme/demo", "--action", "push", "--timeout", "30s")
 	time.Sleep(time.Second)
 	srv.stop()
 	restarted := startServerAt(test, srv.address, srv.data, "127.0.0.1")
 	commitFile(test, src, "second.md", "second\n", "Second commit")
-	mustGit(test, src, "-c", auth, "push", "-q", restarted.url+"/demo.git", "main")
+	mustGit(test, src, "-c", auth, "push", "-q", restarted.url+"/acme/demo.git", "main")
 	result = waiting()
 	if err := json.Unmarshal([]byte(result.stdout), &pushed); err != nil || result.code != 0 || pushed.Action != "push" || pushed.ID <= before {
 		test.Errorf("wait across a restart: exit %d: %s %s", result.code, result.stdout, result.stderr)

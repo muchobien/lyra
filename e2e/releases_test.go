@@ -27,9 +27,9 @@ func TestReleases(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
 	reader := createToken(test, srv, `{"name":"reader","scope":"read"}`)
-	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "acme/demo")
 	auth := "http.extraHeader=Authorization: Bearer " + token
-	remote := srv.url + "/demo.git"
+	remote := srv.url + "/acme/demo.git"
 	src := newSource(test)
 	push := func(args ...string) {
 		test.Helper()
@@ -50,7 +50,7 @@ func TestReleases(test *testing.T) {
 	objects := func() []string {
 		test.Helper()
 		found := []string{}
-		root := filepath.Join(srv.data, "blobs", "lyra", "releases", "demo")
+		root := filepath.Join(srv.data, "blobs", "lyra", "releases", "acme/demo")
 		filepath.WalkDir(root, func(file string, entry fs.DirEntry, err error) error {
 			if err == nil && !entry.IsDir() {
 				found = append(found, file)
@@ -83,32 +83,32 @@ func TestReleases(test *testing.T) {
 		test.Fatal(err)
 	}
 
-	draft := release("create", "demo", "v1.0.0", "--draft", "--notes", "First release", "--asset", archivePath)
+	draft := release("create", "acme/demo", "v1.0.0", "--draft", "--notes", "First release", "--asset", archivePath)
 	if !draft.Draft || draft.Commit != "" || draft.Target != "main" || len(draft.Assets) != 1 || draft.Assets[0].SHA256 != hex.EncodeToString(sum[:]) {
 		test.Fatalf("draft: %+v", draft)
 	}
 	if sha := remoteTag("v1.0.0"); sha != "" {
 		test.Fatalf("a draft created tag v1.0.0 at %s", sha)
 	}
-	if result := runLyra(test, srv, reader, "release", "view", "demo", "v1.0.0"); result.code != 1 || !strings.Contains(result.stderr, "no release for tag v1.0.0") {
+	if result := runLyra(test, srv, reader, "release", "view", "acme/demo", "v1.0.0"); result.code != 1 || !strings.Contains(result.stderr, "no release for tag v1.0.0") {
 		test.Fatalf("reader sees the draft: %+v", result)
 	}
-	if result := runLyra(test, srv, reader, "release", "list", "demo"); strings.TrimSpace(result.stdout) != "[]" {
+	if result := runLyra(test, srv, reader, "release", "list", "acme/demo"); strings.TrimSpace(result.stdout) != "[]" {
 		test.Fatalf("reader lists drafts: %+v", result)
 	}
-	if status, _ := download("/demo/releases/download/v1.0.0/app.tar.gz", bearer(reader)); status != http.StatusNotFound {
+	if status, _ := download("/acme/demo/releases/download/v1.0.0/app.tar.gz", bearer(reader)); status != http.StatusNotFound {
 		test.Fatalf("reader downloads a draft asset: HTTP %d", status)
 	}
 
 	commitFile(test, src, "README.md", "# Demo\n\nThird.\n", "Third commit")
 	push("main")
-	published := release("publish", "demo", "v1.0.0")
+	published := release("publish", "acme/demo", "v1.0.0")
 	third := mustGit(test, src, "rev-parse", "HEAD")
 	if published.Draft || published.PublishedAt == nil || published.Commit != third || remoteTag("v1.0.0") != third {
 		test.Fatalf("published at %s, tag at %s, expected %s: %+v", published.Commit, remoteTag("v1.0.0"), third, published)
 	}
 
-	status, data := call(test, http.MethodGet, srv.url+"/api/events?repo=demo&limit=100", bearer(token), "")
+	status, data := call(test, http.MethodGet, srv.url+"/api/events?repo=acme/demo&limit=100", bearer(token), "")
 	if status != http.StatusOK {
 		test.Fatalf("events: HTTP %d: %s", status, data)
 	}
@@ -134,7 +134,7 @@ func TestReleases(test *testing.T) {
 		test.Fatalf("release events: %v", actions)
 	}
 
-	for _, target := range []string{"/demo/releases/download/v1.0.0/app.tar.gz", "/demo/releases/latest/download/app.tar.gz", published.Assets[0].DownloadURL[len(srv.url):]} {
+	for _, target := range []string{"/acme/demo/releases/download/v1.0.0/app.tar.gz", "/acme/demo/releases/latest/download/app.tar.gz", published.Assets[0].DownloadURL[len(srv.url):]} {
 		request, err := http.NewRequest(http.MethodGet, srv.url+target, nil)
 		if err != nil {
 			test.Fatal(err)
@@ -154,14 +154,14 @@ func TestReleases(test *testing.T) {
 			test.Fatalf("%s headers: %v", target, response.Header)
 		}
 	}
-	if status, _ := call(test, http.MethodGet, srv.url+"/demo/releases/download/v1.0.0/app.tar.gz", map[string]string{"Authorization": "Bearer " + reader, "If-None-Match": `"` + hex.EncodeToString(sum[:]) + `"`}, ""); status != http.StatusNotModified {
+	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/releases/download/v1.0.0/app.tar.gz", map[string]string{"Authorization": "Bearer " + reader, "If-None-Match": `"` + hex.EncodeToString(sum[:]) + `"`}, ""); status != http.StatusNotModified {
 		test.Fatalf("If-None-Match: HTTP %d", status)
 	}
-	if status, _ := call(test, http.MethodPost, srv.url+"/api/repos/demo/releases/"+fmt.Sprint(published.ID)+"/assets?name=x", bearer(reader), "x"); status != http.StatusForbidden {
+	if status, _ := call(test, http.MethodPost, srv.url+"/api/repos/acme/demo/releases/"+fmt.Sprint(published.ID)+"/assets?name=x", bearer(reader), "x"); status != http.StatusForbidden {
 		test.Fatalf("reader uploads: HTTP %d", status)
 	}
 
-	if result := runLyra(test, srv, token, "release", "upload", "demo", "v1.0.0", archivePath); result.code != 1 || !strings.Contains(result.stderr, "already exists") {
+	if result := runLyra(test, srv, token, "release", "upload", "acme/demo", "v1.0.0", archivePath); result.code != 1 || !strings.Contains(result.stderr, "already exists") {
 		test.Fatalf("upload over an existing asset: %+v", result)
 	}
 	if count := len(objects()); count != 1 {
@@ -170,10 +170,10 @@ func TestReleases(test *testing.T) {
 	if err := os.WriteFile(archivePath, []byte("replaced\n"), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	if result := runLyra(test, srv, token, "release", "upload", "demo", "v1.0.0", archivePath, checksumsPath, "--clobber"); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "upload", "acme/demo", "v1.0.0", archivePath, checksumsPath, "--clobber"); result.code != 0 {
 		test.Fatalf("upload --clobber: %+v", result)
 	}
-	if status, data := download("/demo/releases/download/v1.0.0/app.tar.gz", bearer(reader)); status != http.StatusOK || string(data) != "replaced\n" {
+	if status, data := download("/acme/demo/releases/download/v1.0.0/app.tar.gz", bearer(reader)); status != http.StatusOK || string(data) != "replaced\n" {
 		test.Fatalf("after clobber: HTTP %d: %q", status, data)
 	}
 	if count := len(objects()); count != 2 {
@@ -185,7 +185,7 @@ func TestReleases(test *testing.T) {
 		Name string `json:"name"`
 		Path string `json:"path"`
 	}
-	lyraJSON(test, srv, reader, &downloaded, "release", "download", "demo", "v1.0.0", "--dir", out, "--pattern", "*.txt")
+	lyraJSON(test, srv, reader, &downloaded, "release", "download", "acme/demo", "v1.0.0", "--dir", out, "--pattern", "*.txt")
 	if len(downloaded) != 1 || downloaded[0].Name != "checksums.txt" {
 		test.Fatalf("download --pattern: %+v", downloaded)
 	}
@@ -197,7 +197,7 @@ func TestReleases(test *testing.T) {
 			os.WriteFile(object, []byte("corrupt\n!"), 0o644)
 		}
 	}
-	if result := runLyra(test, srv, reader, "release", "download", "demo", "v1.0.0", "--dir", out, "--pattern", "app.*"); result.code != 1 || !strings.Contains(result.stderr, "sha256 is") {
+	if result := runLyra(test, srv, reader, "release", "download", "acme/demo", "v1.0.0", "--dir", out, "--pattern", "app.*"); result.code != 1 || !strings.Contains(result.stderr, "sha256 is") {
 		test.Fatalf("download of a corrupt asset: %+v", result)
 	}
 	if _, err := os.Stat(filepath.Join(out, "app.tar.gz")); err == nil {
@@ -206,74 +206,74 @@ func TestReleases(test *testing.T) {
 
 	mustGit(test, src, "tag", "v0.9.0", first)
 	push("v0.9.0")
-	if result := runLyra(test, srv, token, "release", "create", "demo", "v0.9.0", "--target", "main"); result.code != 1 || !strings.Contains(result.stderr, "already points at "+first) {
+	if result := runLyra(test, srv, token, "release", "create", "acme/demo", "v0.9.0", "--target", "main"); result.code != 1 || !strings.Contains(result.stderr, "already points at "+first) {
 		test.Fatalf("release of an existing tag at another target: %+v", result)
 	}
-	older := release("create", "demo", "v0.9.0")
+	older := release("create", "acme/demo", "v0.9.0")
 	if older.Commit != first || remoteTag("v0.9.0") != first {
 		test.Fatalf("release of an existing tag: %+v", older)
 	}
-	rc := release("create", "demo", "v2.0.0-rc.1", "--prerelease", "--target", head)
+	rc := release("create", "acme/demo", "v2.0.0-rc.1", "--prerelease", "--target", head)
 	if rc.Commit != head || remoteTag("v2.0.0-rc.1") != head {
 		test.Fatalf("prerelease at %s: %+v", head, rc)
 	}
-	if latest := release("view", "demo", "latest"); latest.Tag != "v0.9.0" {
+	if latest := release("view", "acme/demo", "latest"); latest.Tag != "v0.9.0" {
 		test.Fatalf("latest is %s, expected v0.9.0 (the prerelease must not count)", latest.Tag)
 	}
-	if result := runLyra(test, srv, token, "release", "create", "demo", "v0.9.0"); result.code != 1 || !strings.Contains(result.stderr, "already exists") {
+	if result := runLyra(test, srv, token, "release", "create", "acme/demo", "v0.9.0"); result.code != 1 || !strings.Contains(result.stderr, "already exists") {
 		test.Fatalf("second release for a tag: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "release", "create", "demo", "bad tag"); result.code != 1 || !strings.Contains(result.stderr, "invalid tag name") {
+	if result := runLyra(test, srv, token, "release", "create", "acme/demo", "bad tag"); result.code != 1 || !strings.Contains(result.stderr, "invalid tag name") {
 		test.Fatalf("invalid tag: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "release", "create", "demo", "v3.0.0", "--target", "nope"); result.code != 1 || !strings.Contains(result.stderr, "target nope not found") || remoteTag("v3.0.0") != "" {
+	if result := runLyra(test, srv, token, "release", "create", "acme/demo", "v3.0.0", "--target", "nope"); result.code != 1 || !strings.Contains(result.stderr, "target nope not found") || remoteTag("v3.0.0") != "" {
 		test.Fatalf("unknown target: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "release", "edit", "demo", "v0.9.0", "--target", "main"); result.code != 1 || !strings.Contains(result.stderr, "can't change") {
+	if result := runLyra(test, srv, token, "release", "edit", "acme/demo", "v0.9.0", "--target", "main"); result.code != 1 || !strings.Contains(result.stderr, "can't change") {
 		test.Fatalf("target of a published release: %+v", result)
 	}
-	edited := release("edit", "demo", "v0.9.0", "--title", "Beta", "--notes", "Notes")
+	edited := release("edit", "acme/demo", "v0.9.0", "--title", "Beta", "--notes", "Notes")
 	if edited.Title != "Beta" || edited.Notes != "Notes" || edited.Commit != first {
 		test.Fatalf("edit: %+v", edited)
 	}
 
-	slashed := release("create", "demo", "release/1.0", "--asset", checksumsPath)
-	if !strings.HasSuffix(slashed.Assets[0].DownloadURL, "/demo/releases/download/release/1.0/checksums.txt") {
+	slashed := release("create", "acme/demo", "release/1.0", "--asset", checksumsPath)
+	if !strings.HasSuffix(slashed.Assets[0].DownloadURL, "/acme/demo/releases/download/release/1.0/checksums.txt") {
 		test.Fatalf("download URL of a tag with a slash: %s", slashed.Assets[0].DownloadURL)
 	}
-	if status, data := download("/demo/releases/download/release/1.0/checksums.txt", bearer(reader)); status != http.StatusOK || !strings.HasSuffix(string(data), "  app.tar.gz\n") {
+	if status, data := download("/acme/demo/releases/download/release/1.0/checksums.txt", bearer(reader)); status != http.StatusOK || !strings.HasSuffix(string(data), "  app.tar.gz\n") {
 		test.Fatalf("download from a tag with a slash: HTTP %d: %s", status, data)
 	}
-	if viewed := release("view", "demo", "release/1.0"); viewed.ID != slashed.ID {
+	if viewed := release("view", "acme/demo", "release/1.0"); viewed.ID != slashed.ID {
 		test.Fatalf("view a tag with a slash: %+v", viewed)
 	}
 
-	if result := runLyra(test, srv, token, "release", "delete-asset", "demo", "release/1.0", "checksums.txt"); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "delete-asset", "acme/demo", "release/1.0", "checksums.txt"); result.code != 0 {
 		test.Fatalf("delete-asset: %+v", result)
 	}
-	if status, _ := download("/demo/releases/download/release/1.0/checksums.txt", bearer(reader)); status != http.StatusNotFound {
+	if status, _ := download("/acme/demo/releases/download/release/1.0/checksums.txt", bearer(reader)); status != http.StatusNotFound {
 		test.Fatalf("deleted asset: HTTP %d", status)
 	}
-	if result := runLyra(test, srv, token, "release", "delete", "demo", "v1.0.0"); result.code != 2 {
+	if result := runLyra(test, srv, token, "release", "delete", "acme/demo", "v1.0.0"); result.code != 2 {
 		test.Fatalf("delete without --yes: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "release", "delete", "demo", "v1.0.0", "--cleanup-tag", "--yes"); result.code != 0 || !strings.Contains(result.stdout, `"tag_deleted": true`) {
+	if result := runLyra(test, srv, token, "release", "delete", "acme/demo", "v1.0.0", "--cleanup-tag", "--yes"); result.code != 0 || !strings.Contains(result.stdout, `"tag_deleted": true`) {
 		test.Fatalf("delete --cleanup-tag: %+v", result)
 	}
 	if remoteTag("v1.0.0") != "" || len(objects()) != 0 {
 		test.Fatalf("after delete: tag %q, objects %v", remoteTag("v1.0.0"), objects())
 	}
 
-	if result := runLyra(test, srv, token, "release", "upload", "demo", "v0.9.0", checksumsPath); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "upload", "acme/demo", "v0.9.0", checksumsPath); result.code != 0 {
 		test.Fatalf("upload: %+v", result)
 	}
 	if len(objects()) != 1 {
 		test.Fatalf("objects before repo delete: %v", objects())
 	}
-	if result := runLyra(test, srv, token, "repo", "delete", "demo", "--yes"); result.code != 0 {
+	if result := runLyra(test, srv, token, "repo", "delete", "acme/demo", "--yes"); result.code != 0 {
 		test.Fatalf("repo delete: %+v", result)
 	}
-	if _, err := os.Stat(filepath.Join(srv.data, "blobs", "lyra", "releases", "demo")); err == nil {
+	if _, err := os.Stat(filepath.Join(srv.data, "blobs", "lyra", "releases", "acme/demo")); err == nil {
 		test.Fatal("repo delete left its release assets")
 	}
 }

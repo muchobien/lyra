@@ -108,6 +108,13 @@ type Label struct {
 	Description string `json:"description"`
 }
 
+type Owner struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	User        string    `json:"user"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Pull struct {
 	ItemID   int64        `json:"item_id"`
 	Base     string       `json:"base"`

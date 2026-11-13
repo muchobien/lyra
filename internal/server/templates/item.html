@@ -3,14 +3,14 @@
 {{define "comment"}}<div class="comment" id="comment-{{.ID}}"><div class="meta">{{template "author" .Author}} <span class="muted">· {{.CreatedAt.Format "2006-01-02 15:04"}}</span>{{if .Path}} <span class="mono muted">{{.Path}}:{{.Line}}{{if eq .Side "old"}} (old){{end}}</span>{{end}}{{if .Outdated}} <span class="badge unsigned">Outdated</span>{{end}}</div><div class="body">{{markdown .Body}}</div></div>{{end}}
 {{define "content"}}
 {{$item := .Data.Item}}
-{{$base := printf "/%s/%s/%d" (esc .Repo.Name) .Data.Path $item.Number}}
+{{$base := printf "/%s/%s/%d" (pathesc .Repo.Name) .Data.Path $item.Number}}
 <h1>{{$item.Title}} <span class="muted">#{{$item.Number}}</span></h1>
 <p><span class="badge {{$item.State}}">{{if eq $item.State "open"}}Open{{else if eq $item.State "merged"}}Merged{{else}}Closed{{end}}</span> <span class="muted">opened by {{template "author" $item.Author}} on {{$item.CreatedAt.Format "2006-01-02 15:04"}}</span>
-{{with .Data.Pull}}<br><span class="muted">wants to merge</span> <span class="mono">{{.Head}}</span> <span class="muted">into</span> <span class="mono">{{.Base}}</span>{{with .MergeSHA}} <span class="muted">· merged as</span> <a class="mono" href="/{{esc $.Repo.Name}}/commit/{{.}}">{{short .}}</a>{{end}}{{end}}</p>
+{{with .Data.Pull}}<br><span class="muted">wants to merge</span> <span class="mono">{{.Head}}</span> <span class="muted">into</span> <span class="mono">{{.Base}}</span>{{with .MergeSHA}} <span class="muted">· merged as</span> <a class="mono" href="/{{pathesc $.Repo.Name}}/commit/{{.}}">{{short .}}</a>{{end}}{{end}}</p>
 {{if .Data.Pull}}<nav class="tabs"><a href="{{$base}}">{{if eq .Data.Tab ""}}<strong>Conversation</strong>{{else}}Conversation{{end}}</a><a href="{{$base}}?tab=commits">{{if eq .Data.Tab "commits"}}<strong>Commits</strong>{{else}}Commits{{end}}</a><a href="{{$base}}?tab=files">{{if eq .Data.Tab "files"}}<strong>Files</strong>{{else}}Files{{end}}</a></nav>{{end}}
 {{if eq .Data.Tab "commits"}}
 <table>
-{{range .Data.Commits}}<tr><td><a href="/{{esc $.Repo.Name}}/commit/{{.SHA}}">{{.Subject}}</a><br><span class="muted">{{.Author.Name}} · {{day .Committer.Date}}</span></td><td class="right">{{template "sig" .Signature}}{{with .Signature.KeyAgent}}<br><span class="muted">agent {{.}}</span>{{end}}</td><td class="right mono hide-sm"><a href="/{{esc $.Repo.Name}}/commit/{{.SHA}}">{{short .SHA}}</a></td></tr>
+{{range .Data.Commits}}<tr><td><a href="/{{pathesc $.Repo.Name}}/commit/{{.SHA}}">{{.Subject}}</a><br><span class="muted">{{.Author.Name}} · {{day .Committer.Date}}</span></td><td class="right">{{template "sig" .Signature}}{{with .Signature.KeyAgent}}<br><span class="muted">agent {{.}}</span>{{end}}</td><td class="right mono hide-sm"><a href="/{{pathesc $.Repo.Name}}/commit/{{.SHA}}">{{short .SHA}}</a></td></tr>
 {{else}}<tr><td class="muted">No commits.</td></tr>
 {{end}}
 </table>

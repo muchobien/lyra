@@ -324,6 +324,34 @@ func (q *Queries) CreateLabel(ctx context.Context, arg CreateLabelParams) (Label
 	return i, err
 }
 
+const createOwner = `-- name: CreateOwner :one
+INSERT INTO owners (name, description, user, created_at) VALUES (?, ?, ?, ?) RETURNING name, description, user, created_at
+`
+
+type CreateOwnerParams struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	User        string    `json:"user"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateOwner(ctx context.Context, arg CreateOwnerParams) (Owner, error) {
+	row := q.db.QueryRowContext(ctx, createOwner,
+		arg.Name,
+		arg.Description,
+		arg.User,
+		arg.CreatedAt,
+	)
+	var i Owner
+	err := row.Scan(
+		&i.Name,
+		&i.Description,
+		&i.User,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createPull = `-- name: CreatePull :exec
 INSERT INTO pulls (item_id, base, head, head_sha, base_sha) VALUES (?, ?, ?, ?, ?)
 `
@@ -752,6 +780,18 @@ func (q *Queries) DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64
 	return result.RowsAffected()
 }
 
+const deleteOwner = `-- name: DeleteOwner :execrows
+DELETE FROM owners WHERE name = ?
+`
+
+func (q *Queries) DeleteOwner(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteOwner, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteRelease = `-- name: DeleteRelease :execrows
 DELETE FROM releases WHERE id = ?
 `
@@ -912,6 +952,22 @@ func (q *Queries) GetLabel(ctx context.Context, arg GetLabelParams) (Label, erro
 		&i.Name,
 		&i.Color,
 		&i.Description,
+	)
+	return i, err
+}
+
+const getOwner = `-- name: GetOwner :one
+SELECT name, description, user, created_at FROM owners WHERE name = ?
+`
+
+func (q *Queries) GetOwner(ctx context.Context, name string) (Owner, error) {
+	row := q.db.QueryRowContext(ctx, getOwner, name)
+	var i Owner
+	err := row.Scan(
+		&i.Name,
+		&i.Description,
+		&i.User,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -1529,6 +1585,38 @@ func (q *Queries) ListLabels(ctx context.Context, repo string) ([]Label, error) 
 			&i.Name,
 			&i.Color,
 			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwners = `-- name: ListOwners :many
+SELECT name, description, user, created_at FROM owners ORDER BY name
+`
+
+func (q *Queries) ListOwners(ctx context.Context) ([]Owner, error) {
+	rows, err := q.db.QueryContext(ctx, listOwners)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Owner
+	for rows.Next() {
+		var i Owner
+		if err := rows.Scan(
+			&i.Name,
+			&i.Description,
+			&i.User,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

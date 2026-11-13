@@ -13,9 +13,9 @@ func TestReleaseNotes(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)
 	reader := createToken(test, srv, `{"name":"reader","scope":"read"}`)
-	createRepo(test, srv, token, "demo")
+	createRepo(test, srv, token, "acme/demo")
 	auth := "http.extraHeader=Authorization: Bearer " + token
-	remote := srv.url + "/demo.git"
+	remote := srv.url + "/acme/demo.git"
 	src := newSource(test)
 	push := func(args ...string) {
 		test.Helper()
@@ -27,8 +27,8 @@ func TestReleaseNotes(test *testing.T) {
 		commitFile(test, src, branch+".txt", branch+"\n", title)
 		push(branch)
 		var created pullResult
-		lyraJSON(test, srv, token, &created, "pr", "create", "demo", "--head", branch, "--title", title)
-		if result := runLyra(test, srv, token, "pr", "merge", "demo", fmt.Sprint(created.Number), "--squash"); result.code != 0 {
+		lyraJSON(test, srv, token, &created, "pr", "create", "acme/demo", "--head", branch, "--title", title)
+		if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", fmt.Sprint(created.Number), "--squash"); result.code != 0 {
 			test.Fatalf("merge #%d: %+v", created.Number, result)
 		}
 		mustGit(test, src, "switch", "-q", "main")
@@ -36,7 +36,7 @@ func TestReleaseNotes(test *testing.T) {
 	}
 	notes := func(args ...string) string {
 		test.Helper()
-		return runLyra(test, srv, token, append([]string{"release", "notes", "demo"}, args...)...).stdout
+		return runLyra(test, srv, token, append([]string{"release", "notes", "acme/demo"}, args...)...).stdout
 	}
 
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
@@ -45,29 +45,29 @@ func TestReleaseNotes(test *testing.T) {
 		test.Fatalf("notes without pull requests: %q", text)
 	}
 	merged("one", "Add one")
-	v1 := releaseJSON(test, srv, token, "create", "demo", "v1.0.0", "--generate-notes", "--notes", "Intro.")
+	v1 := releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--generate-notes", "--notes", "Intro.")
 	if v1.Notes != "Intro.\n\n## Pull requests merged\n\n- Add one (#1) by e2e-agent" {
 		test.Fatalf("v1.0.0 notes: %q", v1.Notes)
 	}
 
 	merged("two", "Add two")
-	releaseJSON(test, srv, token, "create", "demo", "v1.1.0-rc.1", "--prerelease")
+	releaseJSON(test, srv, token, "create", "acme/demo", "v1.1.0-rc.1", "--prerelease")
 
 	mustGit(test, src, "switch", "-q", "-c", "three", "main")
 	commitFile(test, src, "three.txt", "three\n", "Add three")
 	push("three")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "demo", "--head", "three", "--title", "Add three")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "three", "--title", "Add three")
 	mustGit(test, src, "switch", "-q", "main")
 	mustGit(test, src, "merge", "-q", "--ff-only", "three")
 	push("main")
-	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "demo", "3", "--jq", ".state").stdout); state != "merged" {
+	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "acme/demo", "3", "--jq", ".state").stdout); state != "merged" {
 		test.Fatalf("#3 after a push to main: %s", state)
 	}
 
 	mustGit(test, src, "switch", "-q", "-c", "unmerged", "main")
 	commitFile(test, src, "four.txt", "four\n", "Add four")
 	push("unmerged")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "demo", "--head", "unmerged", "--title", "Not merged")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "unmerged", "--title", "Not merged")
 
 	if text := notes("v2.0.0", "--jq", ".notes"); text != "## Pull requests merged since v1.0.0\n\n- Add two (#2) by e2e-agent\n- Add three (#3) by e2e-agent\n" {
 		test.Fatalf("v2.0.0 notes: %q", text)
@@ -86,17 +86,17 @@ func TestReleaseNotes(test *testing.T) {
 	if err := os.WriteFile(asset, []byte(strings.Repeat("x", 1500)), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "demo", "v2.0.0", "--generate-notes", "--asset", asset)
-	releaseJSON(test, srv, token, "create", "demo", "v3.0.0", "--draft", "--title", "Secret draft")
+	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", "--asset", asset)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v3.0.0", "--draft", "--title", "Secret draft")
 
-	status, page := call(test, http.MethodGet, srv.url+"/demo/releases", tailnet(), "")
+	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases", tailnet(), "")
 	text := string(page)
 	if status != http.StatusOK {
 		test.Fatalf("releases page: HTTP %d", status)
 	}
 	for _, want := range []string{
 		"Secret draft", ">Draft<", ">Latest<", ">Prerelease<", "<li>Add two (#2) by e2e-agent</li>",
-		`href="` + srv.url + `/demo/releases/download/v2.0.0/demo.txt">demo.txt</a>`, "1.5 KB", `href="/demo/releases/tag/v1.1.0-rc.1"`,
+		`href="` + srv.url + `/acme/demo/releases/download/v2.0.0/demo.txt">demo.txt</a>`, "1.5 KB", `href="/acme/demo/releases/tag/v1.1.0-rc.1"`,
 	} {
 		if !strings.Contains(text, want) {
 			test.Fatalf("releases page lacks %q:\n%s", want, text)
@@ -105,16 +105,16 @@ func TestReleaseNotes(test *testing.T) {
 	if strings.Index(text, "Secret draft") > strings.Index(text, "v2.0.0") {
 		test.Fatal("drafts aren't listed first")
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/demo/releases", bearer(reader), ""); status != http.StatusOK || strings.Contains(string(page), "Secret draft") {
+	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases", bearer(reader), ""); status != http.StatusOK || strings.Contains(string(page), "Secret draft") {
 		test.Fatalf("reader's releases page: HTTP %d, shows the draft: %v", status, strings.Contains(string(page), "Secret draft"))
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/demo/releases/tag/v1.0.0", bearer(reader), ""); status != http.StatusOK || !strings.Contains(string(page), "<p>Intro.</p>") || strings.Contains(string(page), "v2.0.0") {
+	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v1.0.0", bearer(reader), ""); status != http.StatusOK || !strings.Contains(string(page), "<p>Intro.</p>") || strings.Contains(string(page), "v2.0.0") {
 		test.Fatalf("release page: HTTP %d:\n%s", status, page)
 	}
-	if status, _ := call(test, http.MethodGet, srv.url+"/demo/releases/tag/v3.0.0", bearer(reader), ""); status != http.StatusNotFound {
+	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v3.0.0", bearer(reader), ""); status != http.StatusNotFound {
 		test.Fatalf("reader's page for a draft: HTTP %d", status)
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/demo", tailnet(), ""); status != http.StatusOK || !strings.Contains(string(page), `href="/demo/releases">Releases</a>`) {
+	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo", tailnet(), ""); status != http.StatusOK || !strings.Contains(string(page), `href="/acme/demo/releases">Releases</a>`) {
 		test.Fatalf("repo page lacks the Releases tab: HTTP %d", status)
 	}
 }

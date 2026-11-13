@@ -277,3 +277,15 @@ SELECT * FROM runners ORDER BY id;
 
 -- name: DeleteRunner :execrows
 DELETE FROM runners WHERE id = ?;
+
+-- name: CreateOwner :one
+INSERT INTO owners (name, description, user, created_at) VALUES (?, ?, ?, ?) RETURNING *;
+
+-- name: GetOwner :one
+SELECT * FROM owners WHERE name = ?;
+
+-- name: ListOwners :many
+SELECT * FROM owners ORDER BY name;
+
+-- name: DeleteOwner :execrows
+DELETE FROM owners WHERE name = ?;

@@ -1,5 +1,5 @@
 {{define "content"}}
-{{$base := printf "/%s/%s" (esc .Repo.Name) .Data.Path}}
+{{$base := printf "/%s/%s" (pathesc .Repo.Name) .Data.Path}}
 <p>{{if eq .Data.State "open"}}<strong>Open</strong> · <a href="{{$base}}?state=closed">Closed</a>{{else}}<a href="{{$base}}">Open</a> · <strong>Closed</strong>{{end}}</p>
 <table>
 {{range .Data.Rows}}{{$item := .Item}}<tr><td>{{if ne $item.State "open"}}<span class="badge {{$item.State}}">{{if eq $item.State "merged"}}Merged{{else}}Closed{{end}}</span> {{end}}<a href="{{$base}}/{{$item.Number}}">{{$item.Title}}</a>{{range $item.Labels}} <span class="badge label">{{.}}</span>{{end}}<br><span class="muted">#{{$item.Number}}{{with .Pull}} · <span class="mono">{{.Head}} → {{.Base}}</span>{{end}} · {{with $item.Author.Agent}}{{.}} · {{end}}{{$item.Author.User}} · {{$item.CreatedAt.Format "2006-01-02 15:04"}}{{with $item.Assignees}} · assigned to {{range $index, $name := .}}{{if $index}}, {{end}}{{$name}}{{end}}{{end}}</span></td><td class="right muted hide-sm">{{if $item.CommentCount}}{{$item.CommentCount}} comment{{if ne $item.CommentCount 1}}s{{end}}{{end}}</td></tr>
@@ -8,7 +8,7 @@
 </table>
 {{if and .Data.CanWrite (eq .Data.Kind "issue")}}
 <details><summary>New issue</summary>
-<form class="stack" method="post" action="/{{esc .Repo.Name}}/issues">
+<form class="stack" method="post" action="/{{pathesc .Repo.Name}}/issues">
 <input type="text" name="title" placeholder="Title" required maxlength="256">
 <textarea name="body" placeholder="Description (Markdown)"></textarea>
 <div><button type="submit">Create issue</button></div>
