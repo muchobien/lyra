@@ -478,3 +478,8 @@ func (g Git) Blob(dir, sha, path string) ([]byte, error) {
 	}
 	return stdout, nil
 }
+
+func (g Git) ValidRef(ref string) bool {
+	_, _, err := g.run("", "check-ref-format", ref)
+	return err == nil
+}

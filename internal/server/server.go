@@ -19,6 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/ssh"
 
@@ -31,14 +35,19 @@ type Config struct {
 	TrustedProxies []netip.Prefix
 	AllowedLogins  []string
 	SigningKeyFile string
+	Storage        string
+	S3Endpoint     string
+	S3Bucket       string
+	S3Region       string
 }
 
 type Server struct {
-	config Config
-	store  *store.Store
-	git    repos.Git
-	dbPath string
-	signer ssh.Signer
+	config  Config
+	store   *store.Store
+	git     repos.Git
+	dbPath  string
+	signer  ssh.Signer
+	storage driver.StorageDriver
 }
 
 const lyraUser = "lyra"
@@ -81,6 +90,20 @@ func New(config Config) (*Server, error) {
 		store:  db,
 		git:    repos.Git{},
 		dbPath: dbPath,
+	}
+	switch config.Storage {
+	case "", "filesystem":
+		server.storage, err = factory.Create(context.Background(), "filesystem", map[string]any{"rootdirectory": filepath.Join(config.DataDir, "blobs")})
+	case "s3":
+		server.storage, err = factory.Create(context.Background(), "s3aws", map[string]any{
+			"regionendpoint": config.S3Endpoint, "bucket": config.S3Bucket, "region": config.S3Region, "forcepathstyle": true,
+		})
+	default:
+		err = fmt.Errorf("unknown storage %q: use filesystem or s3", config.Storage)
+	}
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("storage: %w", err)
 	}
 	keyFile := config.SigningKeyFile
 	if keyFile == "" {
@@ -183,6 +206,18 @@ func (s *Server) Handler() http.Handler {
 					pulls.Post("/{number}/merge", s.handleMergePull)
 					pulls.Post("/{number}/reviews", s.handleReviewPull)
 				})
+				repo.Route("/releases", func(releases chi.Router) {
+					releases.Get("/", s.handleListReleases)
+					releases.Post("/", s.handleCreateRelease)
+					releases.Get("/latest", s.handleLatestRelease)
+					releases.Get("/tags/*", s.handleReleaseByTag)
+					releases.Get("/{id}", s.handleGetRelease)
+					releases.Patch("/{id}", s.handleEditRelease)
+					releases.Delete("/{id}", s.handleDeleteRelease)
+					releases.Post("/{id}/assets", s.handleUploadAsset)
+					releases.Get("/{id}/assets/{name}", s.handleDownloadAsset)
+					releases.Delete("/{id}/assets/{name}", s.handleDeleteAsset)
+				})
 				repo.Route("/rules", func(rules chi.Router) {
 					rules.Get("/", s.handleListRules)
 					rules.Post("/", s.handleSetRule)
@@ -223,6 +258,8 @@ func (s *Server) Handler() http.Handler {
 		repo.Get("/commits/{ref}", s.uiCommits)
 		repo.Get("/commit/{sha}", s.uiCommit)
 		repo.Get("/tags", s.uiTags)
+		repo.Get("/releases/download/*", s.handleStableDownload)
+		repo.Get("/releases/latest/download/{name}", s.handleLatestDownload)
 		repo.Post("/issues", s.uiCreateIssue)
 		repo.Post("/pulls/{number}/merge", s.uiMergePull)
 		repo.Post("/pulls/{number}/reviews", s.uiReviewPull)

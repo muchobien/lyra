@@ -186,3 +186,45 @@ ON CONFLICT (repo, item, user, via, agent, session) DO UPDATE SET event_id = MAX
 
 -- name: ListWaitCursors :many
 SELECT * FROM wait_cursors WHERE repo = ? AND item = ?;
+
+-- name: CreateRelease :one
+INSERT INTO releases (repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetRelease :one
+SELECT * FROM releases WHERE repo = ? AND id = ?;
+
+-- name: GetReleaseByTag :one
+SELECT * FROM releases WHERE repo = ? AND tag = ?;
+
+-- name: ListReleases :many
+SELECT * FROM releases WHERE repo = ?
+ORDER BY published_at IS NULL DESC, published_at DESC, id DESC;
+
+-- name: LatestRelease :one
+SELECT * FROM releases WHERE repo = ? AND NOT draft AND NOT prerelease
+ORDER BY published_at DESC, id DESC
+LIMIT 1;
+
+-- name: UpdateRelease :one
+UPDATE releases SET title = ?, notes = ?, draft = ?, prerelease = ?, target = ?, commit_sha = ?, published_at = ?
+WHERE id = ?
+RETURNING *;
+
+-- name: DeleteRelease :execrows
+DELETE FROM releases WHERE id = ?;
+
+-- name: CreateAsset :one
+INSERT INTO release_assets (release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetAsset :one
+SELECT * FROM release_assets WHERE release_id = ? AND name = ?;
+
+-- name: ListAssets :many
+SELECT * FROM release_assets WHERE release_id = ? ORDER BY name;
+
+-- name: DeleteAsset :execrows
+DELETE FROM release_assets WHERE id = ?;

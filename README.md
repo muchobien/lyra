@@ -15,6 +15,13 @@ lyra serve --listen :8080 --data /var/lib/lyra \
 Flags also read `LYRA_LISTEN`, `LYRA_DATA`, `LYRA_TRUSTED_PROXY`, `LYRA_ALLOW_LOGIN` and
 `LYRA_SIGNING_KEY_FILE`. The server needs `git` on `PATH`.
 
+Release assets are stored in `<data>/blobs` by default. To store them in S3 (Garage, for
+example), pass `--storage s3 --s3-endpoint http://garage:3900 --s3-bucket lyra` (or
+`LYRA_STORAGE`, `LYRA_S3_ENDPOINT`, `LYRA_S3_BUCKET`; `--s3-region` defaults to `garage`), with
+credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Lyra uses path-style
+requests and serves every download itself, so the bucket doesn't need to be reachable by
+clients.
+
 ### Container image
 
 `ghcr.io/muchobien/lyra` is built for `linux/amd64` and `linux/arm64`, tagged `main` and
@@ -28,8 +35,8 @@ docker run -p 8080:8080 -v lyra-data:/data \
 ```
 
 The data directory holds `lyra.db`, `repos/<name>.git`, `hooks/pre-receive` and `hooks/post-receive`
-(written at startup, applied through `core.hooksPath`) and, unless
-`--signing-key-file` is set, the generated `lyra_signing_key`.
+(written at startup, applied through `core.hooksPath`), `blobs` with the default storage and,
+unless `--signing-key-file` is set, the generated `lyra_signing_key`.
 
 ## Authentication
 
@@ -129,6 +136,34 @@ lyra label create <repo> <name> [--color d73a4a] [--description TEXT]
 lyra label list <repo>
 lyra label delete <repo> <name>
 ```
+
+```
+lyra release create <repo> <tag> [--target REF] [--title T] [--notes ...|--notes-file F|-]
+                    [--draft] [--prerelease] [--asset FILE]...
+lyra release list <repo>
+lyra release view <repo> <tag|latest>
+lyra release edit <repo> <tag> [--title T] [--notes ...] [--prerelease=true|false] [--target REF]
+lyra release publish <repo> <tag>
+lyra release upload <repo> <tag> FILE... [--clobber]
+lyra release download <repo> <tag|latest> [--pattern GLOB] [--dir D]
+lyra release delete-asset <repo> <tag> <name>
+lyra release delete <repo> <tag> --yes [--cleanup-tag]
+```
+
+A release belongs to a tag:
+
+- **Tags:** if the tag doesn't exist, publishing creates it as a lightweight tag at
+  `--target` (default: the default branch). A draft doesn't create its tag until it's
+  published. An existing tag is never moved: `--target` must match it.
+- **Drafts** are visible only with `write` access.
+- **Assets:** `--asset` creates the release as a draft, uploads the files, then publishes
+  it, so `release.published` fires once with every asset present. Uploading a name that
+  exists needs `--clobber`. `download` checks each file's sha256 before keeping it.
+- **Latest** is the most recently published release that isn't a prerelease.
+- **Stable URLs:** `/{repo}/releases/download/{tag}/{name}` and
+  `/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`.
+- **Events:** `release.created` (drafts), `release.published`, `release.updated`,
+  `release.deleted`, and `release.asset` for each upload or deletion.
 
 Issues and pull requests share one number sequence per repository. Assignees are
 logins or agent names; `@me` is the `Lyra-Agent` name when one is set, otherwise the
@@ -276,6 +311,13 @@ the server restarts.
 
 Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{name}/rules?pattern=` | admin |
+| `GET /api/repos/{name}/releases`, `GET /api/repos/{name}/releases/latest` | read |
+| `GET /api/repos/{name}/releases/tags/{tag}`, `GET /api/repos/{name}/releases/{id}` | read |
+| `POST /api/repos/{name}/releases` (`tag`, `target`, `title`, `notes`, `draft`, `prerelease`) | write |
+| `PATCH /api/repos/{name}/releases/{id}` (`title`, `notes`, `prerelease`, `target`; `draft: false` publishes) | write |
+| `DELETE /api/repos/{name}/releases/{id}?cleanup_tag=` | write |
+| `POST /api/repos/{name}/releases/{id}/assets?name=&clobber=` (the file is the body) | write |
+| `GET /api/repos/{name}/releases/{id}/assets/{asset}`, `DELETE …/assets/{asset}` | read, write |
 
 `PATCH` on an issue or pull request takes any of `title`, `body`, `state` (`open` or `closed`), `add_labels`,
 `remove_labels`, `add_assignees` and `remove_assignees`. Each change is recorded as

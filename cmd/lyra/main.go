@@ -25,13 +25,16 @@ func main() {
 	root := cli.Root()
 
 	var listen, dataDir, signingKey string
+	var storage, s3Endpoint, s3Bucket, s3Region string
 	var proxies, logins []string
 	serveCommand := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the Lyra server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return serve(listen, dataDir, signingKey, proxies, logins)
+			return serve(listen, proxies, logins, server.Config{
+				DataDir: dataDir, SigningKeyFile: signingKey, Storage: storage, S3Endpoint: s3Endpoint, S3Bucket: s3Bucket, S3Region: s3Region,
+			})
 		},
 	}
 	serveCommand.Flags().StringVar(&signingKey, "signing-key-file", os.Getenv("LYRA_SIGNING_KEY_FILE"), "SSH private key Lyra signs merge commits with (LYRA_SIGNING_KEY_FILE; default: generated in the data directory)")
@@ -39,6 +42,10 @@ func main() {
 	serveCommand.Flags().StringVar(&dataDir, "data", envOr("LYRA_DATA", "data"), "data directory (LYRA_DATA)")
 	serveCommand.Flags().StringSliceVar(&proxies, "trusted-proxy", splitEnv("LYRA_TRUSTED_PROXY"), "IPs or CIDRs allowed to set Tailscale-User-Login (LYRA_TRUSTED_PROXY, comma-separated)")
 	serveCommand.Flags().StringSliceVar(&logins, "allow-login", splitEnv("LYRA_ALLOW_LOGIN"), "Tailscale logins allowed in (LYRA_ALLOW_LOGIN, comma-separated)")
+	serveCommand.Flags().StringVar(&storage, "storage", envOr("LYRA_STORAGE", "filesystem"), "where release assets and registry blobs are stored: filesystem (in the data directory) or s3 (LYRA_STORAGE)")
+	serveCommand.Flags().StringVar(&s3Endpoint, "s3-endpoint", os.Getenv("LYRA_S3_ENDPOINT"), "S3 endpoint URL, such as http://garage:3900 (LYRA_S3_ENDPOINT); credentials come from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+	serveCommand.Flags().StringVar(&s3Bucket, "s3-bucket", os.Getenv("LYRA_S3_BUCKET"), "S3 bucket (LYRA_S3_BUCKET)")
+	serveCommand.Flags().StringVar(&s3Region, "s3-region", envOr("LYRA_S3_REGION", "garage"), "S3 region (LYRA_S3_REGION)")
 
 	hookCommand := &cobra.Command{Use: "hook", Short: "Git hooks run by the server", Hidden: true}
 	for _, name := range []string{"pre-receive", "post-receive"} {
@@ -80,9 +87,8 @@ func splitEnv(name string) []string {
 	return nil
 }
 
-func serve(listen, dataDir, signingKey string, proxies, logins []string) error {
-	config := server.Config{SigningKeyFile: signingKey}
-	absolute, err := filepath.Abs(dataDir)
+func serve(listen string, proxies, logins []string, config server.Config) error {
+	absolute, err := filepath.Abs(config.DataDir)
 	if err != nil {
 		return err
 	}
@@ -115,7 +121,7 @@ func serve(listen, dataDir, signingKey string, proxies, logins []string) error {
 		return err
 	}
 	defer instance.Close()
-	slog.Info("listening", "addr", listen, "data", config.DataDir, "trusted_proxies", config.TrustedProxies)
+	slog.Info("listening", "addr", listen, "data", config.DataDir, "trusted_proxies", config.TrustedProxies, "storage", config.Storage)
 	httpServer := &http.Server{Addr: listen, Handler: instance.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	return httpServer.ListenAndServe()
 }

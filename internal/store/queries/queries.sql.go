@@ -56,6 +56,58 @@ func (q *Queries) CountComments(ctx context.Context, itemID int64) (int64, error
 	return count, err
 }
 
+const createAsset = `-- name: CreateAsset :one
+INSERT INTO release_assets (release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at
+`
+
+type CreateAssetParams struct {
+	ReleaseID   int64     `json:"release_id"`
+	Name        string    `json:"name"`
+	Object      string    `json:"object"`
+	Size        int64     `json:"size"`
+	Sha256      string    `json:"sha256"`
+	ContentType string    `json:"content_type"`
+	User        string    `json:"user"`
+	Via         string    `json:"via"`
+	Agent       string    `json:"agent"`
+	Session     string    `json:"session"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (ReleaseAsset, error) {
+	row := q.db.QueryRowContext(ctx, createAsset,
+		arg.ReleaseID,
+		arg.Name,
+		arg.Object,
+		arg.Size,
+		arg.Sha256,
+		arg.ContentType,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i ReleaseAsset
+	err := row.Scan(
+		&i.ID,
+		&i.ReleaseID,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.ContentType,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createComment = `-- name: CreateComment :one
 INSERT INTO comments (item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -295,6 +347,67 @@ func (q *Queries) CreatePull(ctx context.Context, arg CreatePullParams) error {
 	return err
 }
 
+const createRelease = `-- name: CreateRelease :one
+INSERT INTO releases (repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at
+`
+
+type CreateReleaseParams struct {
+	Repo        string       `json:"repo"`
+	Tag         string       `json:"tag"`
+	Title       string       `json:"title"`
+	Notes       string       `json:"notes"`
+	Draft       bool         `json:"draft"`
+	Prerelease  bool         `json:"prerelease"`
+	Target      string       `json:"target"`
+	CommitSha   string       `json:"commit_sha"`
+	User        string       `json:"user"`
+	Via         string       `json:"via"`
+	Agent       string       `json:"agent"`
+	Session     string       `json:"session"`
+	CreatedAt   time.Time    `json:"created_at"`
+	PublishedAt sql.NullTime `json:"published_at"`
+}
+
+func (q *Queries) CreateRelease(ctx context.Context, arg CreateReleaseParams) (Release, error) {
+	row := q.db.QueryRowContext(ctx, createRelease,
+		arg.Repo,
+		arg.Tag,
+		arg.Title,
+		arg.Notes,
+		arg.Draft,
+		arg.Prerelease,
+		arg.Target,
+		arg.CommitSha,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+		arg.PublishedAt,
+	)
+	var i Release
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Tag,
+		&i.Title,
+		&i.Notes,
+		&i.Draft,
+		&i.Prerelease,
+		&i.Target,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.PublishedAt,
+	)
+	return i, err
+}
+
 const createRepo = `-- name: CreateRepo :one
 INSERT INTO repos (name, description, created_at, created_by)
 VALUES (?, ?, ?, ?)
@@ -415,6 +528,18 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token
 	return i, err
 }
 
+const deleteAsset = `-- name: DeleteAsset :execrows
+DELETE FROM release_assets WHERE id = ?
+`
+
+func (q *Queries) DeleteAsset(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteAsset, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteKey = `-- name: DeleteKey :execrows
 DELETE FROM keys WHERE user = ? AND id = ?
 `
@@ -443,6 +568,18 @@ type DeleteLabelParams struct {
 
 func (q *Queries) DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteLabel, arg.Repo, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteRelease = `-- name: DeleteRelease :execrows
+DELETE FROM releases WHERE id = ?
+`
+
+func (q *Queries) DeleteRelease(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteRelease, id)
 	if err != nil {
 		return 0, err
 	}
@@ -493,6 +630,35 @@ func (q *Queries) DeleteToken(ctx context.Context, arg DeleteTokenParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const getAsset = `-- name: GetAsset :one
+SELECT id, release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at FROM release_assets WHERE release_id = ? AND name = ?
+`
+
+type GetAssetParams struct {
+	ReleaseID int64  `json:"release_id"`
+	Name      string `json:"name"`
+}
+
+func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (ReleaseAsset, error) {
+	row := q.db.QueryRowContext(ctx, getAsset, arg.ReleaseID, arg.Name)
+	var i ReleaseAsset
+	err := row.Scan(
+		&i.ID,
+		&i.ReleaseID,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.ContentType,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getItem = `-- name: GetItem :one
@@ -593,6 +759,70 @@ func (q *Queries) GetPullItem(ctx context.Context, arg GetPullItemParams) (GetPu
 	return i, err
 }
 
+const getRelease = `-- name: GetRelease :one
+SELECT id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at FROM releases WHERE repo = ? AND id = ?
+`
+
+type GetReleaseParams struct {
+	Repo string `json:"repo"`
+	ID   int64  `json:"id"`
+}
+
+func (q *Queries) GetRelease(ctx context.Context, arg GetReleaseParams) (Release, error) {
+	row := q.db.QueryRowContext(ctx, getRelease, arg.Repo, arg.ID)
+	var i Release
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Tag,
+		&i.Title,
+		&i.Notes,
+		&i.Draft,
+		&i.Prerelease,
+		&i.Target,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.PublishedAt,
+	)
+	return i, err
+}
+
+const getReleaseByTag = `-- name: GetReleaseByTag :one
+SELECT id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at FROM releases WHERE repo = ? AND tag = ?
+`
+
+type GetReleaseByTagParams struct {
+	Repo string `json:"repo"`
+	Tag  string `json:"tag"`
+}
+
+func (q *Queries) GetReleaseByTag(ctx context.Context, arg GetReleaseByTagParams) (Release, error) {
+	row := q.db.QueryRowContext(ctx, getReleaseByTag, arg.Repo, arg.Tag)
+	var i Release
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Tag,
+		&i.Title,
+		&i.Notes,
+		&i.Draft,
+		&i.Prerelease,
+		&i.Target,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.PublishedAt,
+	)
+	return i, err
+}
+
 const getRepo = `-- name: GetRepo :one
 SELECT name, description, created_at, created_by FROM repos WHERE name = ?
 `
@@ -618,6 +848,75 @@ func (q *Queries) LatestEventID(ctx context.Context) (int64, error) {
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const latestRelease = `-- name: LatestRelease :one
+SELECT id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at FROM releases WHERE repo = ? AND NOT draft AND NOT prerelease
+ORDER BY published_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) LatestRelease(ctx context.Context, repo string) (Release, error) {
+	row := q.db.QueryRowContext(ctx, latestRelease, repo)
+	var i Release
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Tag,
+		&i.Title,
+		&i.Notes,
+		&i.Draft,
+		&i.Prerelease,
+		&i.Target,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.PublishedAt,
+	)
+	return i, err
+}
+
+const listAssets = `-- name: ListAssets :many
+SELECT id, release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at FROM release_assets WHERE release_id = ? ORDER BY name
+`
+
+func (q *Queries) ListAssets(ctx context.Context, releaseID int64) ([]ReleaseAsset, error) {
+	rows, err := q.db.QueryContext(ctx, listAssets, releaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReleaseAsset
+	for rows.Next() {
+		var i ReleaseAsset
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReleaseID,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+			&i.ContentType,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listComments = `-- name: ListComments :many
@@ -1010,6 +1309,50 @@ func (q *Queries) ListPullItems(ctx context.Context, arg ListPullItemsParams) ([
 			&i.Pull.BaseSha,
 			&i.Pull.MergeSha,
 			&i.Pull.MergedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReleases = `-- name: ListReleases :many
+SELECT id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at FROM releases WHERE repo = ?
+ORDER BY published_at IS NULL DESC, published_at DESC, id DESC
+`
+
+func (q *Queries) ListReleases(ctx context.Context, repo string) ([]Release, error) {
+	rows, err := q.db.QueryContext(ctx, listReleases, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Release
+	for rows.Next() {
+		var i Release
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Tag,
+			&i.Title,
+			&i.Notes,
+			&i.Draft,
+			&i.Prerelease,
+			&i.Target,
+			&i.CommitSha,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+			&i.PublishedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1498,6 +1841,55 @@ type UpdatePullHeadParams struct {
 func (q *Queries) UpdatePullHead(ctx context.Context, arg UpdatePullHeadParams) error {
 	_, err := q.db.ExecContext(ctx, updatePullHead, arg.HeadSha, arg.BaseSha, arg.ItemID)
 	return err
+}
+
+const updateRelease = `-- name: UpdateRelease :one
+UPDATE releases SET title = ?, notes = ?, draft = ?, prerelease = ?, target = ?, commit_sha = ?, published_at = ?
+WHERE id = ?
+RETURNING id, repo, tag, title, notes, draft, prerelease, target, commit_sha, user, via, agent, session, created_at, published_at
+`
+
+type UpdateReleaseParams struct {
+	Title       string       `json:"title"`
+	Notes       string       `json:"notes"`
+	Draft       bool         `json:"draft"`
+	Prerelease  bool         `json:"prerelease"`
+	Target      string       `json:"target"`
+	CommitSha   string       `json:"commit_sha"`
+	PublishedAt sql.NullTime `json:"published_at"`
+	ID          int64        `json:"id"`
+}
+
+func (q *Queries) UpdateRelease(ctx context.Context, arg UpdateReleaseParams) (Release, error) {
+	row := q.db.QueryRowContext(ctx, updateRelease,
+		arg.Title,
+		arg.Notes,
+		arg.Draft,
+		arg.Prerelease,
+		arg.Target,
+		arg.CommitSha,
+		arg.PublishedAt,
+		arg.ID,
+	)
+	var i Release
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Tag,
+		&i.Title,
+		&i.Notes,
+		&i.Draft,
+		&i.Prerelease,
+		&i.Target,
+		&i.CommitSha,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.PublishedAt,
+	)
+	return i, err
 }
 
 const useToken = `-- name: UseToken :one

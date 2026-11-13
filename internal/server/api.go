@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/hiddeco/sshsig"
 	"golang.org/x/crypto/ssh"
 
@@ -28,11 +29,7 @@ type repoView struct {
 }
 
 func cloneURL(r *http.Request, name string) string {
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host + "/" + name + ".git"
+	return baseURL(r) + "/" + name + ".git"
 }
 
 func (s *Server) repoView(r *http.Request, repo store.Repo) (repoView, error) {
@@ -165,6 +162,11 @@ func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := os.RemoveAll(s.repoDir(repo.Name)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var missing driver.PathNotFoundError
+	if err := s.storage.Delete(r.Context(), releasesPath(repo.Name)); err != nil && !errors.As(err, &missing) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

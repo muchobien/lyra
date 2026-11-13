@@ -104,6 +104,39 @@ type Pull struct {
 	MergedAt sql.NullTime `json:"merged_at"`
 }
 
+type Release struct {
+	ID          int64        `json:"id"`
+	Repo        string       `json:"repo"`
+	Tag         string       `json:"tag"`
+	Title       string       `json:"title"`
+	Notes       string       `json:"notes"`
+	Draft       bool         `json:"draft"`
+	Prerelease  bool         `json:"prerelease"`
+	Target      string       `json:"target"`
+	CommitSha   string       `json:"commit_sha"`
+	User        string       `json:"user"`
+	Via         string       `json:"via"`
+	Agent       string       `json:"agent"`
+	Session     string       `json:"session"`
+	CreatedAt   time.Time    `json:"created_at"`
+	PublishedAt sql.NullTime `json:"published_at"`
+}
+
+type ReleaseAsset struct {
+	ID          int64     `json:"id"`
+	ReleaseID   int64     `json:"release_id"`
+	Name        string    `json:"name"`
+	Object      string    `json:"object"`
+	Size        int64     `json:"size"`
+	Sha256      string    `json:"sha256"`
+	ContentType string    `json:"content_type"`
+	User        string    `json:"user"`
+	Via         string    `json:"via"`
+	Agent       string    `json:"agent"`
+	Session     string    `json:"session"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Repo struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`

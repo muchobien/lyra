@@ -4,13 +4,17 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -332,7 +336,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 				if itemTitle == "" {
 					return UsageError{errors.New(use + " create needs --title")}
 				}
-				body, _, err := readBody(cmd)
+				body, _, err := readText(cmd, "body")
 				if err != nil {
 					return err
 				}
@@ -351,7 +355,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 			createCommand.Flags().StringVar(&head, "head", "", "branch with the changes (required)")
 			createCommand.Flags().StringVar(&base, "base", "", "branch to merge into (default: the default branch)")
 		}
-		addBodyFlags(createCommand)
+		addTextFlags(createCommand, "body", "body text in Markdown")
 		createCommand.Flags().StringArrayVar(&itemLabels, "label", nil, "add this label, which must exist (repeatable)")
 		createCommand.Flags().StringArrayVar(&itemAssignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
 
@@ -388,7 +392,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 			Short: "Comment on a " + noun,
 			Args:  exactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				body, set, err := readBody(cmd)
+				body, set, err := readText(cmd, "body")
 				if err != nil {
 					return err
 				}
@@ -402,7 +406,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 				return call(cmd, http.MethodPost, itemsPath(args[0])+"/"+url.PathEscape(args[1])+"/comments", comment)
 			},
 		}
-		addBodyFlags(commentCommand)
+		addTextFlags(commentCommand, "body", "body text in Markdown")
 		if segment == "pulls" {
 			commentCommand.Long = "Comment on a pull request, or with --path and --line on one line of its diff."
 			commentCommand.Flags().StringVar(&commentPath, "path", "", "file the comment is on")
@@ -421,7 +425,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 				if cmd.Flags().Changed("title") {
 					edit["title"] = editTitle
 				}
-				body, set, err := readBody(cmd)
+				body, set, err := readText(cmd, "body")
 				if err != nil {
 					return err
 				}
@@ -440,7 +444,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 			},
 		}
 		editCommand.Flags().StringVar(&editTitle, "title", "", "new title")
-		addBodyFlags(editCommand)
+		addTextFlags(editCommand, "body", "body text in Markdown")
 		editCommand.Flags().StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
 		editCommand.Flags().StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")
 		editCommand.Flags().StringArrayVar(&addAssignees, "add-assignee", nil, "assign a login or agent name, or @me (repeatable)")
@@ -553,7 +557,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 			}
 			request := map[string]any{"method": "ff", "head_sha": mergeHead, "delete_branch": deleteBranch}
 			if squash {
-				body, set, err := readBody(cmd)
+				body, set, err := readText(cmd, "body")
 				if err != nil {
 					return err
 				}
@@ -570,7 +574,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 	prMerge.Flags().BoolVar(&deleteBranch, "delete-branch", false, "delete the head branch after merging")
 	prMerge.Flags().StringVar(&mergeHead, "head", "", "merge only if the head branch is at this commit")
 	prMerge.Flags().StringVar(&mergeTitle, "title", "", "squash commit title (default: the pull request title and number)")
-	addBodyFlags(prMerge)
+	addTextFlags(prMerge, "body", "body text in Markdown")
 	var approve, requestChanges, commentOnly bool
 	var commentsFile string
 	prReview := &cobra.Command{
@@ -595,7 +599,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 			default:
 				return UsageError{errors.New("pr review needs exactly one of --approve, --request-changes or --comment")}
 			}
-			body, _, err := readBody(cmd)
+			body, _, err := readText(cmd, "body")
 			if err != nil {
 				return err
 			}
@@ -623,7 +627,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	prReview.Flags().BoolVar(&requestChanges, "request-changes", false, "request changes before merging")
 	prReview.Flags().BoolVar(&commentOnly, "comment", false, "comment without approving")
 	prReview.Flags().StringVar(&commentsFile, "comments-file", "", "JSON file with line comments, or - for stdin")
-	addBodyFlags(prReview)
+	addTextFlags(prReview, "body", "body text in Markdown")
 	pr.AddCommand(prCommits, prDiff, prMerge, prReview)
 
 	signingKey := &cobra.Command{
@@ -715,22 +719,358 @@ merged. Rules apply to admins as well. Setting a pattern again replaces its rule
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule)
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit))
 	return root
 }
 
-func addBodyFlags(cmd *cobra.Command) {
-	cmd.Flags().String("body", "", "body text in Markdown")
-	cmd.Flags().String("body-file", "", "read the body from this file, or - for stdin")
+type releaseInfo struct {
+	ID     int64  `json:"id"`
+	Tag    string `json:"tag"`
+	Draft  bool   `json:"draft"`
+	Assets []struct {
+		Name   string `json:"name"`
+		Size   int64  `json:"size"`
+		SHA256 string `json:"sha256"`
+	} `json:"assets"`
 }
 
-func readBody(cmd *cobra.Command) (string, bool, error) {
-	flags := cmd.Flags()
-	if flags.Changed("body") && flags.Changed("body-file") {
-		return "", false, UsageError{errors.New("pass --body or --body-file, not both")}
+func releaseCommands(call func(*cobra.Command, string, string, any) error, emit func(*cobra.Command, []byte) error) *cobra.Command {
+	release := &cobra.Command{Use: "release", Short: "Manage releases and their assets"}
+	releasesPath := func(repo string) string {
+		return "/api/repos/" + url.PathEscape(repo) + "/releases"
 	}
-	if flags.Changed("body-file") {
-		file, _ := flags.GetString("body-file")
+	find := func(repo, tag string) (releaseInfo, string, error) {
+		path := releasesPath(repo) + "/tags/" + strings.ReplaceAll(url.PathEscape(tag), "%2F", "/")
+		if tag == "latest" {
+			path = releasesPath(repo) + "/latest"
+		}
+		var found releaseInfo
+		output, err := request(http.MethodGet, path, nil)
+		if err != nil {
+			return found, "", err
+		}
+		if err := json.Unmarshal(output, &found); err != nil {
+			return found, "", err
+		}
+		return found, releasesPath(repo) + "/" + fmt.Sprint(found.ID), nil
+	}
+
+	var target, title string
+	var draft, prerelease bool
+	var assets []string
+	create := &cobra.Command{
+		Use:   "create <repo> <tag>",
+		Short: "Create a release, uploading its assets before it's published",
+		Long: `Create a release for a tag. If the tag doesn't exist, publishing creates it at --target
+(default: the default branch). A draft doesn't create the tag until it's published.
+
+With --asset, the release is created as a draft, the assets are uploaded, and then it is
+published, so release.published fires once with every asset present. If an upload fails,
+the release stays a draft; finish it with lyra release upload and lyra release publish.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			notes, _, err := readText(cmd, "notes")
+			if err != nil {
+				return err
+			}
+			for _, file := range assets {
+				if _, err := os.Stat(file); err != nil {
+					return UsageError{err}
+				}
+			}
+			output, err := request(http.MethodPost, releasesPath(args[0]), map[string]any{
+				"tag": args[1], "target": target, "title": title, "notes": notes, "draft": draft || len(assets) > 0, "prerelease": prerelease,
+			})
+			if err != nil {
+				return err
+			}
+			if len(assets) == 0 {
+				return emit(cmd, output)
+			}
+			var created releaseInfo
+			if err := json.Unmarshal(output, &created); err != nil {
+				return err
+			}
+			path := releasesPath(args[0]) + "/" + fmt.Sprint(created.ID)
+			for _, file := range assets {
+				if _, err := uploadAsset(path, file, false); err != nil {
+					return fmt.Errorf("upload %s: %w; the release is still a draft", file, err)
+				}
+			}
+			if draft {
+				return call(cmd, http.MethodGet, path, nil)
+			}
+			return call(cmd, http.MethodPatch, path, map[string]any{"draft": false})
+		},
+	}
+	create.Flags().StringVar(&target, "target", "", "branch or commit to tag if the tag doesn't exist (default: the default branch)")
+	create.Flags().StringVar(&title, "title", "", "release title (default: the tag)")
+	addTextFlags(create, "notes", "release notes in Markdown")
+	create.Flags().BoolVar(&draft, "draft", false, "keep the release as a draft")
+	create.Flags().BoolVar(&prerelease, "prerelease", false, "mark as a prerelease, so it's never the latest release")
+	create.Flags().StringArrayVar(&assets, "asset", nil, "file to upload as an asset (repeatable)")
+
+	list := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List releases, drafts first (drafts need write access)",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, releasesPath(args[0]), nil)
+		},
+	}
+	view := &cobra.Command{
+		Use:   "view <repo> <tag|latest>",
+		Short: "Show a release with its assets and download URLs",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodGet, path, nil)
+		},
+	}
+	var editTitle, editTarget string
+	var editPrerelease bool
+	edit := &cobra.Command{
+		Use:   "edit <repo> <tag>",
+		Short: "Change a release's title, notes or prerelease flag, or a draft's target",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			changes := map[string]any{}
+			if cmd.Flags().Changed("title") {
+				changes["title"] = editTitle
+			}
+			if cmd.Flags().Changed("target") {
+				changes["target"] = editTarget
+			}
+			if cmd.Flags().Changed("prerelease") {
+				changes["prerelease"] = editPrerelease
+			}
+			notes, set, err := readText(cmd, "notes")
+			if err != nil {
+				return err
+			}
+			if set {
+				changes["notes"] = notes
+			}
+			if len(changes) == 0 {
+				return UsageError{errors.New("nothing to change; pass --title, --notes, --notes-file, --prerelease or --target")}
+			}
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodPatch, path, changes)
+		},
+	}
+	edit.Flags().StringVar(&editTitle, "title", "", "release title")
+	edit.Flags().StringVar(&editTarget, "target", "", "branch or commit a draft's tag is created at")
+	edit.Flags().BoolVar(&editPrerelease, "prerelease", false, "mark as a prerelease (--prerelease=false to clear)")
+	addTextFlags(edit, "notes", "release notes in Markdown")
+	publish := &cobra.Command{
+		Use:   "publish <repo> <tag>",
+		Short: "Publish a draft, creating its tag if needed",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodPatch, path, map[string]any{"draft": false})
+		},
+	}
+	var cleanupTag, yes bool
+	remove := &cobra.Command{
+		Use:   "delete <repo> <tag>",
+		Short: "Delete a release and its assets; the tag stays unless --cleanup-tag",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return UsageError{errors.New("release delete removes its assets permanently; pass --yes")}
+			}
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if cleanupTag {
+				path += "?cleanup_tag=true"
+			}
+			return call(cmd, http.MethodDelete, path, nil)
+		},
+	}
+	remove.Flags().BoolVar(&cleanupTag, "cleanup-tag", false, "delete the tag too")
+	remove.Flags().BoolVar(&yes, "yes", false, "confirm permanent deletion")
+	var clobber bool
+	upload := &cobra.Command{
+		Use:   "upload <repo> <tag> <file>...",
+		Short: "Upload files as assets of a release, named after the file",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 3 {
+				return UsageError{fmt.Errorf("%s takes a repo, a tag and at least one file; see %s --help", cmd.CommandPath(), cmd.CommandPath())}
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			uploaded := []json.RawMessage{}
+			for _, file := range args[2:] {
+				output, err := uploadAsset(path, file, clobber)
+				if err != nil {
+					return fmt.Errorf("upload %s: %w", file, err)
+				}
+				uploaded = append(uploaded, output)
+			}
+			encoded, err := json.MarshalIndent(uploaded, "", "  ")
+			if err != nil {
+				return err
+			}
+			return emit(cmd, append(encoded, '\n'))
+		},
+	}
+	upload.Flags().BoolVar(&clobber, "clobber", false, "replace assets that already exist")
+	var pattern, dir string
+	download := &cobra.Command{
+		Use:   "download <repo> <tag|latest>",
+		Short: "Download a release's assets and check their sha256",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := filepath.Match(pattern, ""); err != nil {
+				return UsageError{fmt.Errorf("--pattern: %w", err)}
+			}
+			found, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			type downloaded struct {
+				Name   string `json:"name"`
+				Path   string `json:"path"`
+				Size   int64  `json:"size"`
+				SHA256 string `json:"sha256"`
+			}
+			files := []downloaded{}
+			for _, asset := range found.Assets {
+				if matched, _ := filepath.Match(pattern, asset.Name); pattern != "" && !matched {
+					continue
+				}
+				file := filepath.Join(dir, asset.Name)
+				if err := downloadAsset(path+"/assets/"+url.PathEscape(asset.Name), file, asset.SHA256); err != nil {
+					return fmt.Errorf("download %s: %w", asset.Name, err)
+				}
+				files = append(files, downloaded{Name: asset.Name, Path: file, Size: asset.Size, SHA256: asset.SHA256})
+			}
+			if pattern != "" && len(files) == 0 {
+				return fmt.Errorf("no asset of %s matches %s", found.Tag, pattern)
+			}
+			encoded, err := json.MarshalIndent(files, "", "  ")
+			if err != nil {
+				return err
+			}
+			return emit(cmd, append(encoded, '\n'))
+		},
+	}
+	download.Flags().StringVar(&pattern, "pattern", "", "only assets whose name matches this glob")
+	download.Flags().StringVar(&dir, "dir", ".", "directory to write the files to")
+	deleteAsset := &cobra.Command{
+		Use:   "delete-asset <repo> <tag> <name>",
+		Short: "Delete one asset of a release",
+		Args:  exactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, path, err := find(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return call(cmd, http.MethodDelete, path+"/assets/"+url.PathEscape(args[2]), nil)
+		},
+	}
+	release.AddCommand(create, list, view, edit, publish, remove, upload, download, deleteAsset)
+	return release
+}
+
+func uploadAsset(path, file string, clobber bool) ([]byte, error) {
+	handle, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer handle.Close()
+	info, err := handle.Stat()
+	if err != nil {
+		return nil, err
+	}
+	query := url.Values{"name": {filepath.Base(file)}}
+	if clobber {
+		query.Set("clobber", "true")
+	}
+	req, err := newRequest(context.Background(), http.MethodPost, path+"/assets?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Body = handle
+	req.ContentLength = info.Size()
+	contentType := mime.TypeByExtension(filepath.Ext(file))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	req.Header.Set("Content-Type", contentType)
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		return nil, responseError(response)
+	}
+	return io.ReadAll(response.Body)
+}
+
+func downloadAsset(path, file, sha string) error {
+	req, err := newRequest(context.Background(), http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Del("Accept")
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		return responseError(response)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(file), ".lyra-download-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary.Name())
+	hash := sha256.New()
+	_, err = io.Copy(io.MultiWriter(temporary, hash), response.Body)
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != sha {
+		return fmt.Errorf("sha256 is %s, expected %s", got, sha)
+	}
+	return os.Rename(temporary.Name(), file)
+}
+
+func addTextFlags(cmd *cobra.Command, name, usage string) {
+	cmd.Flags().String(name, "", usage)
+	cmd.Flags().String(name+"-file", "", "read the "+name+" from this file, or - for stdin")
+}
+
+func readText(cmd *cobra.Command, name string) (string, bool, error) {
+	flags := cmd.Flags()
+	if flags.Changed(name) && flags.Changed(name+"-file") {
+		return "", false, UsageError{fmt.Errorf("pass --%s or --%s-file, not both", name, name)}
+	}
+	if flags.Changed(name + "-file") {
+		file, _ := flags.GetString(name + "-file")
 		var data []byte
 		var err error
 		if file == "-" {
@@ -740,8 +1080,8 @@ func readBody(cmd *cobra.Command) (string, bool, error) {
 		}
 		return string(data), true, err
 	}
-	body, _ := flags.GetString("body")
-	return body, flags.Changed("body"), nil
+	text, _ := flags.GetString(name)
+	return text, flags.Changed(name), nil
 }
 
 func filter(out io.Writer, output []byte, expression string) error {
