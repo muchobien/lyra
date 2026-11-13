@@ -1,6 +1,31 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Copy, Check } from "lucide-react";
 import styles from "./Controls.module.css";
+
+type ScrollNavigationProps = {
+  label: string;
+  active: string;
+  className: string;
+  children: ReactNode;
+};
+export function ScrollNavigation({ label, active, className, children }: ScrollNavigationProps) {
+  const navigation = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = navigation.current;
+    const selected = element?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!element || !selected || element.scrollWidth <= element.clientWidth) {
+      return;
+    }
+    const offset = selected.getBoundingClientRect().left - element.getBoundingClientRect().left;
+    element.scrollLeft += offset - (element.clientWidth - selected.clientWidth) / 2;
+  }, [active]);
+  return (
+    <nav ref={navigation} className={className} aria-label={label}>
+      {children}
+    </nav>
+  );
+}
 
 export function formValue(form: FormData, name: string) {
   const value = form.get(name);

@@ -79,22 +79,36 @@ function validateScreenSearch(search: Record<string, unknown>) {
 const sectionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$owner/$repo/$section",
-  component: RepositoryScreen,
   validateSearch: validateScreenSearch,
 });
+const sectionIndexRoute = createRoute({
+  getParentRoute: () => sectionRoute,
+  path: "/",
+  component: RepositoryScreen,
+});
 const detailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/$owner/$repo/$section/$",
+  getParentRoute: () => sectionRoute,
+  path: "$",
   component: RepositoryScreen,
   validateSearch: validateScreenSearch,
 });
 const router = createRouter({
+  parseSearch: (search) => Object.fromEntries(new URLSearchParams(search)),
+  stringifySearch: (search) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(search)) {
+      if (typeof value === "string") {
+        params.set(key, value);
+      }
+    }
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  },
   routeTree: rootRoute.addChildren([
     indexRoute,
     ownerRoute,
     repositoryRoute,
-    sectionRoute,
-    detailRoute,
+    sectionRoute.addChildren([sectionIndexRoute, detailRoute]),
   ]),
   scrollRestoration: true,
   defaultPreload: "intent",

@@ -10,7 +10,7 @@ import {
   type Repository,
   type Tag,
 } from "./api";
-import { CopyButton, ErrorNotice } from "./Controls";
+import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
 import controls from "./Controls.module.css";
@@ -19,7 +19,7 @@ import styles from "./Workspace.module.css";
 type CodeNavigationProps = { owner: string; repo: string; reference: string; active: string };
 export function CodeNavigation({ owner, repo, reference, active }: CodeNavigationProps) {
   return (
-    <nav className={styles.tabs} aria-label="Code sections">
+    <ScrollNavigation className={styles.tabs} label="Code sections" active={active}>
       <Link
         to="/$owner/$repo"
         params={{ owner, repo }}
@@ -47,7 +47,7 @@ export function CodeNavigation({ owner, repo, reference, active }: CodeNavigatio
         <Tags size={15} />
         Tags
       </Link>
-    </nav>
+    </ScrollNavigation>
   );
 }
 

@@ -20,10 +20,17 @@
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: 550;
+    &::before {
+      content: "▸";
+      color: var(--muted);
+    }
     & span {
       margin-left: auto;
       color: var(--muted);
     }
+  }
+  &[open] > summary::before {
+    rotate: 90deg;
   }
   & nav {
     padding: 0 0.35rem 0.35rem;
@@ -69,7 +76,6 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1rem;
   cursor: pointer;
@@ -77,12 +83,21 @@
   background: var(--raised);
   border-radius: 0.65rem 0.65rem 0 0;
   font-size: 0.75rem;
+  &::before {
+    content: "▸";
+    color: var(--muted);
+    flex-shrink: 0;
+  }
   & code {
+    margin-right: auto;
     overflow-wrap: anywhere;
   }
   & code > span {
     color: var(--muted);
   }
+}
+.file[open] > .fileHeading::before {
+  rotate: 90deg;
 }
 .fileStats {
   display: flex;
@@ -198,8 +213,15 @@
 }
 .files[data-layout="split"] {
   & .line {
+    background: var(--surface);
     grid-template-columns: 2.8rem minmax(max-content, 1fr) 2.8rem minmax(max-content, 1fr);
     grid-template-areas: "oldnumber oldcode newnumber code";
+  }
+  & .line[data-old-kind="delete"] > :is(.oldNumber, .oldCode) {
+    background: light-dark(#fdecef, #3b232c);
+  }
+  & .line[data-new-kind="add"] > :is(.newNumber, .code) {
+    background: light-dark(#e8f5ed, #183027);
   }
   & .newNumber {
     border-inline-start: 1px solid var(--border);

@@ -146,6 +146,15 @@ func tailnet() map[string]string {
 	return map[string]string{"Tailscale-User-Login": login}
 }
 
+func compactJSON(test *testing.T, data []byte) string {
+	test.Helper()
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, data); err != nil {
+		test.Fatal(err)
+	}
+	return compact.String()
+}
+
 func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }

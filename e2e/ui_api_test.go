@@ -110,4 +110,36 @@ func TestEmbeddedUI(test *testing.T) {
 	if status != http.StatusOK || !strings.Contains(string(body), ":root[data-theme=dark]") {
 		test.Fatalf("highlight theme styles: HTTP %d", status)
 	}
+	for _, target := range []string{"pulls", "issues", "runs", "releases", "images", "activity", "settings", "tags", "commits/main"} {
+		status, body := call(test, http.MethodGet, srv.url+"/acme/demo/"+target, tailnet(), "")
+		if status != http.StatusOK || !strings.Contains(string(body), `<div id="root"></div>`) {
+			test.Fatalf("workspace shell %s: HTTP %d", target, status)
+		}
+	}
+	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/releases/tag/missing"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			status, body := call(test, method, srv.url+target, tailnet(), "")
+			if status != http.StatusNotFound || (method == http.MethodHead && len(body) != 0) {
+				test.Fatalf("missing workspace %s %s: HTTP %d", method, target, status)
+			}
+			if method == http.MethodGet && !strings.Contains(string(body), `data-error-title="Not Found"`) {
+				test.Fatalf("error shell lacks its status: %s", target)
+			}
+		}
+	}
+	status, body = call(test, http.MethodGet, srv.url+"/acme/demo", bearer(reader), "")
+	if status != http.StatusForbidden || !strings.Contains(string(body), `data-error-title="Forbidden"`) {
+		test.Fatalf("forbidden workspace: HTTP %d", status)
+	}
+	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	request, _ = http.NewRequest(http.MethodGet, srv.url+"/acme/demo/blob/main/src/example.go", nil)
+	request.Header.Set("Tailscale-User-Login", login)
+	response, err = client.Do(request)
+	if err != nil {
+		test.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusTemporaryRedirect || response.Header.Get("Location") != "/acme/demo?file=src%2Fexample.go&ref=main" {
+		test.Fatalf("source deep-link redirect: HTTP %d %s", response.StatusCode, response.Header.Get("Location"))
+	}
 }

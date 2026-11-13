@@ -26,7 +26,7 @@ import {
   type SigningKey,
   type Variable,
 } from "./api";
-import { CopyButton, ErrorNotice, formValue } from "./Controls";
+import { CopyButton, ErrorNotice, ScrollNavigation, formValue } from "./Controls";
 import { ConfirmDialog, DateTime, DialogClose, FormError } from "./Workspace";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
@@ -105,7 +105,9 @@ export function Settings() {
     gcTime: 0,
     mutationFn: (change: ConfigChange) => write(change.path, change.method, change.body),
     onSuccess: async (_data, change) => {
-      document.querySelector<HTMLDialogElement>(`#${change.dialog}`)?.close();
+      const dialog = document.querySelector<HTMLDialogElement>(`#${change.dialog}`);
+      dialog?.close();
+      dialog?.querySelector("form")?.reset();
       await queryClient.invalidateQueries();
     },
   });
@@ -636,7 +638,7 @@ export function Settings() {
         <div className={common.panel}>
           {labels.data?.map((label) => (
             <article className={common.row} key={label.name}>
-              <span className={styles.labelColor} style={{ backgroundColor: label.color }} />
+              <span className={styles.labelColor} style={{ backgroundColor: `#${label.color}` }} />
               <div className={common.grow}>
                 <strong>{label.name}</strong>
                 <p className={common.meta}>{label.description}</p>
@@ -1039,7 +1041,7 @@ export function Settings() {
   }
   return (
     <div className={styles.workspace}>
-      <nav className={styles.navigation} aria-label="Settings sections">
+      <ScrollNavigation className={styles.navigation} label="Settings sections" active={area}>
         {areas
           .filter((entry) => entry.visible)
           .map((entry) => {
@@ -1057,7 +1059,7 @@ export function Settings() {
               </Link>
             );
           })}
-      </nav>
+      </ScrollNavigation>
       <div className={common.grow}>{content}</div>
       <ConfirmDialog
         id="delete-setting"

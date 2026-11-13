@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { FileCode2, Check } from "lucide-react";
-import type { DiffFile, DiscussionComment } from "./api";
+import type { DiffFile, DiffLine, DiscussionComment } from "./api";
 import { ActorName, Markdown, RichText } from "./Workspace";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
@@ -10,6 +10,12 @@ import styles from "./DiffViewer.module.css";
 
 const reviewedFiles = new Map<string, Set<string>>();
 export type CommentAnchor = { path: string; line: number; side: string; head_sha: string };
+type DiffDisplayRow = {
+  line: DiffLine;
+  old?: DiffLine;
+  next?: DiffLine;
+  comments: DiscussionComment[];
+};
 type DiffProps = {
   files: DiffFile[];
   owner: string;
@@ -50,6 +56,42 @@ export function DiffViewer({
   const split = search.layout === "split" && wide;
   const selected = files.find((file) => file.path === search.file);
   const visible = selected ? [selected] : files;
+  const displayedFiles = visible.map((file) => {
+    const rows: DiffDisplayRow[] = [];
+    const lines = file.lines || [];
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      if (split && line.kind === "delete") {
+        const deleted: DiffLine[] = [];
+        const added: DiffLine[] = [];
+        while (lines[index]?.kind === "delete") {
+          deleted.push(lines[index++]);
+        }
+        while (lines[index]?.kind === "add") {
+          added.push(lines[index++]);
+        }
+        index--;
+        for (let position = 0; position < Math.max(deleted.length, added.length); position++) {
+          const old = deleted[position];
+          const next = added[position];
+          rows.push({
+            line: old || next,
+            old,
+            next,
+            comments: [...(old?.comments || []), ...(next?.comments || [])],
+          });
+        }
+      } else {
+        rows.push({
+          line,
+          old: split && line.kind === "add" ? undefined : line,
+          next: split && line.kind === "delete" ? undefined : line,
+          comments: line.comments || [],
+        });
+      }
+    }
+    return { file, rows };
+  });
   const commentHTML = new Map(comments.map((comment) => [comment.id, comment.html]));
   function layoutChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
@@ -138,11 +180,11 @@ export function DiffViewer({
           </nav>
         </details>
         <div className={styles.files} data-layout={split ? "split" : "unified"}>
-          {visible.map((file) => (
+          {displayedFiles.map(({ file, rows }) => (
             <details className={styles.file} key={file.path} open>
               <summary className={styles.fileHeading}>
                 <code>
-                  {file.old_path && <span>{file.old_path} / </span>}
+                  {file.old_path && <span>{file.old_path} renamed to </span>}
                   {file.path}
                 </code>
                 <span className={styles.fileStats}>
@@ -181,81 +223,88 @@ export function DiffViewer({
               {!file.binary &&
                 (!file.lines || file.lines.length <= 2000 || largeFiles.has(file.path)) && (
                   <div className={styles.codeScroll}>
-                    {file.lines?.map((line, index) => (
+                    {rows.map(({ line, old, next, comments: rowComments }, index) => (
                       <div key={index}>
                         {line.kind === "hunk" ? (
                           <div className={styles.hunk}>{line.text}</div>
                         ) : (
-                          <div className={styles.line} data-kind={line.kind}>
+                          <div
+                            className={styles.line}
+                            data-kind={line.kind}
+                            data-old-kind={old?.kind}
+                            data-new-kind={next?.kind}
+                          >
                             <div className={styles.oldNumber}>
-                              {line.old > 0 &&
+                              {old &&
+                                old.old > 0 &&
                                 (canComment ? (
                                   <button
                                     type="button"
                                     onClick={commentOnLine}
                                     data-path={file.old_path || file.path}
-                                    data-line={line.old}
+                                    data-line={old.old}
                                     data-side="old"
-                                    aria-label={`Comment on old line ${line.old} of ${file.old_path || file.path}`}
+                                    aria-label={`Comment on old line ${old.old} of ${file.old_path || file.path}`}
                                   >
-                                    {line.old}
+                                    {old.old}
                                   </button>
                                 ) : (
-                                  line.old
+                                  old.old
                                 ))}
                             </div>
                             {split && (
                               <div className={styles.oldCode}>
-                                {line.kind !== "add" && (
+                                {old && old.kind !== "add" && (
                                   <>
                                     <span aria-hidden="true">
-                                      {line.kind === "delete" ? "−" : " "}
+                                      {old.kind === "delete" ? "−" : " "}
                                     </span>
-                                    {line.html ? (
-                                      <div dangerouslySetInnerHTML={{ __html: line.html }} />
+                                    {old.html ? (
+                                      <div dangerouslySetInnerHTML={{ __html: old.html }} />
                                     ) : (
-                                      <code>{line.text}</code>
+                                      <code>{old.text}</code>
                                     )}
                                   </>
                                 )}
                               </div>
                             )}
                             <div className={styles.newNumber}>
-                              {line.new > 0 &&
+                              {next &&
+                                next.new > 0 &&
                                 (canComment ? (
                                   <button
                                     type="button"
                                     onClick={commentOnLine}
                                     data-path={file.path}
-                                    data-line={line.new}
+                                    data-line={next.new}
                                     data-side="new"
-                                    aria-label={`Comment on new line ${line.new} of ${file.path}`}
+                                    aria-label={`Comment on new line ${next.new} of ${file.path}`}
                                   >
-                                    {line.new}
+                                    {next.new}
                                   </button>
                                 ) : (
-                                  line.new
+                                  next.new
                                 ))}
                             </div>
                             <div className={styles.code}>
-                              {(!split || line.kind !== "delete") && (
+                              {next && (!split || next.kind !== "delete") && (
                                 <>
                                   <span aria-hidden="true">
                                     {({ add: "+", delete: "−" } as Record<string, string>)[
-                                      line.kind
+                                      next.kind
                                     ] || " "}
                                   </span>
-                                  {line.html ? (
-                                    <div dangerouslySetInnerHTML={{ __html: line.html }} />
+                                  {next.html ? (
+                                    <div dangerouslySetInnerHTML={{ __html: next.html }} />
                                   ) : (
-                                    <code>{line.text}</code>
+                                    <code>{next.text}</code>
                                   )}
                                 </>
                               )}
                             </div>
                           </div>
                         )}
-                        {line.comments?.map((comment) => (
+                        {rowComments.map((comment) => (
                           <article
                             className={styles.lineComment}
                             key={comment.id}

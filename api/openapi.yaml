@@ -1840,7 +1840,7 @@ components:
             $ref: "#/components/schemas/LineComment"
           type: array
         head_sha:
-          description: Reject the review if the pull request changed from this head.
+          description: Reject a review of a changed head.
           type: string
         state:
           enum:

@@ -282,7 +282,7 @@ time, size and pause, HTTP requests, and Go runtime metrics.
 
 The web interface is a React application built with Vite+, TanStack Router and Query,
 and CSS Modules. Its assets are embedded in the Go binary; Node is needed only at build
- time. It targets current stable Chrome and uses native dialogs, customizable selects,
+time. It targets current stable Chrome and uses native dialogs, customizable selects,
 popovers, and light/dark appearance.
 
 Browse repositories, branches, files, commit history, and tags. The repository sidebar
@@ -323,7 +323,6 @@ backend. These development-server variables are never included in the browser bu
 
 GoReleaser builds the frontend before compiling the release binaries, so archives and
 container images contain the same embedded UI.
-
 
 `mise install` provides the pinned Go, Node, pnpm, sqlc, golangci-lint, GoReleaser, packslip and the workflow
 linters. The schema lives in goose migrations under `internal/store/migrations`, applied

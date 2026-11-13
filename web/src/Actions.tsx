@@ -327,6 +327,7 @@ export function ActionsList() {
                         <input
                           name={`input:${name}`}
                           type={input.type === "number" ? "number" : "text"}
+                          step={input.type === "number" ? "any" : undefined}
                           defaultValue={input.default}
                           required={input.required}
                         />
@@ -382,13 +383,17 @@ export function RunDetail({ number }: RunDetailProps) {
     jobs.find((job) => String(job.id) === search.job) ||
     jobs.find((job) => job.status === "failure") ||
     jobs.find((job) => job.status === "running") ||
-    jobs[0];
+    jobs.toSorted(
+      (first, second) =>
+        (second.started_at ? Date.parse(second.started_at) : 0) -
+        (first.started_at ? Date.parse(first.started_at) : 0),
+    )[0];
   const active = !!run.data && ["waiting", "blocked", "running"].includes(run.data.status);
   const logsURL = selected ? `${endpoint}/jobs/${selected.id}/logs` : "";
-  const logKey = [logsURL, selected?.attempt || 0];
+  const logKey = [logsURL, selected?.attempt || 0, selected?.started_at || "queued"];
   const logs = useQuery({
     queryKey: logKey,
-    enabled: !!selected,
+    enabled: !!selected?.started_at,
     queryFn: async ({ signal }) => {
       const previous = queryClient.getQueryData<Logs>(logKey);
       const response = await request(`${logsURL}?offset=${previous?.offset || 0}`, signal);
@@ -474,9 +479,10 @@ export function RunDetail({ number }: RunDetailProps) {
   const data = run.data;
   const canWrite = identity?.scope !== "read";
   const logLines = logs.data?.lines || [];
-  const highlightedStep =
-    selected?.steps.find((step) => step.result === "failure") ||
-    selected?.steps.find((step) => !!step.started_at && !step.stopped_at);
+  const highlightedStep = selected?.started_at
+    ? selected.steps.find((step) => step.result === "failure") ||
+      selected.steps.find((step) => !!step.started_at && !step.stopped_at)
+    : undefined;
   const filteredLines = logLines.filter(
     (line) => !search.q || line.toLowerCase().includes(search.q.toLowerCase()),
   );
@@ -488,7 +494,15 @@ export function RunDetail({ number }: RunDetailProps) {
     push: "Push",
   };
   let logContent;
-  if (logs.error) {
+  if (selected && !selected.started_at) {
+    let waiting = "This job did not start.";
+    if (selected.status === "blocked") {
+      waiting = `Waiting for ${selected.needs.join(", ")} to finish.`;
+    } else if (selected.status === "waiting") {
+      waiting = `Waiting for a runner with the labels ${selected.runs_on.join(", ")}.`;
+    }
+    logContent = <p className={common.empty}>{waiting}</p>;
+  } else if (logs.error) {
     logContent = <ErrorNotice error={logs.error} retry={retryLogs} />;
   } else if (logs.isPending && selected) {
     logContent = <output className={common.empty}>Loading logs…</output>;
@@ -531,7 +545,9 @@ export function RunDetail({ number }: RunDetailProps) {
                 <summary>
                   <Status value={step.result || "skipped"} />
                   {step.name}
-                  <span className={common.meta}>{duration(step.started_at, step.stopped_at)}</span>
+                  <span className={`${common.meta} ${styles.stepDuration}`}>
+                    {duration(step.started_at, step.stopped_at)}
+                  </span>
                 </summary>
                 <pre className={styles.logText}>
                   {logLines

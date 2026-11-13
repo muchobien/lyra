@@ -33,7 +33,8 @@ func Serve(w http.ResponseWriter, r *http.Request, status int, message string) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if message != "" {
-		attributes := `id="root" data-error-title="` + html.EscapeString(http.StatusText(status)) + `" data-error-message="` + html.EscapeString(message) + `"`
+		attributes := `id="root" data-error-title="` + html.EscapeString(http.StatusText(status)) +
+			`" data-error-message="` + html.EscapeString(message) + `"`
 		index = bytes.Replace(index, []byte(`id="root"`), []byte(attributes), 1)
 	}
 	w.Header().Set("Cache-Control", "no-cache")

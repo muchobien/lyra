@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -186,12 +187,17 @@ func TestIssues(test *testing.T) {
 	if fromUI.State != "closed" || fmt.Sprint(fromUI.Labels) != "[ui]" || fmt.Sprint(fromUI.Assignees) != "[claude tester@example.com]" || fromUI.Author.Via != "tailscale" || len(fromUI.Comments) != 1 {
 		test.Errorf("issue changed from the UI = %+v", fromUI)
 	}
-	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/issues/3", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), "<strong>bold</strong>") || !strings.Contains(string(page), "<em>browser</em>") ||
-		strings.Contains(string(page), "<script>alert") || strings.Contains(string(page), "javascript:") {
-		test.Errorf("issue page: HTTP %d\n%s", status, page)
+	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/issues/3/view", tailnet(), "")
+	var workspace struct {
+		HTML     string `json:"html"`
+		Comments []struct {
+			HTML string `json:"html"`
+		} `json:"comments"`
 	}
-	status, page = call(test, http.MethodGet, srv.url+"/acme/demo/issues?state=closed", tailnet(), "")
+	if err := json.Unmarshal(page, &workspace); err != nil || status != http.StatusOK || !strings.Contains(workspace.HTML, "<strong>bold</strong>") || len(workspace.Comments) != 1 || !strings.Contains(workspace.Comments[0].HTML, "<em>browser</em>") || strings.Contains(workspace.HTML, "<script") || strings.Contains(workspace.HTML, "javascript:") {
+		test.Errorf("issue workspace: HTTP %d\n%s", status, page)
+	}
+	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/issues?state=closed", tailnet(), "")
 	if status != http.StatusOK || !strings.Contains(string(page), "From the browser") {
 		test.Errorf("closed issues page: HTTP %d", status)
 	}

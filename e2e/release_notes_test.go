@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -89,27 +90,35 @@ func TestReleaseNotes(test *testing.T) {
 	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", "--asset", asset)
 	releaseJSON(test, srv, token, "create", "acme/demo", "v3.0.0", "--draft", "--title", "Secret draft")
 
-	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases", tailnet(), "")
-	text := string(page)
-	if status != http.StatusOK {
-		test.Fatalf("releases page: HTTP %d", status)
+	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases", tailnet(), "")
+	var releases []releaseResult
+	if err := json.Unmarshal(page, &releases); err != nil || status != http.StatusOK || len(releases) != 4 || !releases[0].Draft || releases[0].Title != "Secret draft" {
+		test.Fatalf("release workspace list: HTTP %d %s", status, page)
 	}
-	for _, want := range []string{
-		"Secret draft", ">Draft<", ">Latest<", ">Prerelease<", "<li>Add two (#2) by e2e-agent</li>",
-		`href="` + srv.url + `/acme/demo/releases/download/v2.0.0/demo.txt">demo.txt</a>`, "1.5 KB", `href="/acme/demo/releases/tag/v1.1.0-rc.1"`,
-	} {
-		if !strings.Contains(text, want) {
-			test.Fatalf("releases page lacks %q:\n%s", want, text)
+	var stable releaseResult
+	for _, release := range releases {
+		if release.Tag == "v2.0.0" {
+			stable = release
 		}
 	}
-	if strings.Index(text, "Secret draft") > strings.Index(text, "v2.0.0") {
-		test.Fatal("drafts aren't listed first")
+	if len(stable.Assets) != 1 || stable.Assets[0].Name != "demo.txt" || stable.Assets[0].Size != 1500 || !strings.Contains(stable.Notes, "Add two (#2)") {
+		test.Fatalf("stable release: %+v", stable)
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases", bearer(reader), ""); status != http.StatusOK || strings.Contains(string(page), "Secret draft") {
-		test.Fatalf("reader's releases page: HTTP %d, shows the draft: %v", status, strings.Contains(string(page), "Secret draft"))
+	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases", bearer(reader), "")
+	if status != http.StatusOK || strings.Contains(string(page), "Secret draft") {
+		test.Fatalf("reader's releases: HTTP %d", status)
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v1.0.0", bearer(reader), ""); status != http.StatusOK || !strings.Contains(string(page), "<p>Intro.</p>") || strings.Contains(string(page), "v2.0.0") {
-		test.Fatalf("release page: HTTP %d:\n%s", status, page)
+	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases/tags/v1.0.0", bearer(reader), "")
+	var first releaseResult
+	if err := json.Unmarshal(page, &first); err != nil || status != http.StatusOK || first.Tag != "v1.0.0" || !strings.HasPrefix(first.Notes, "Intro.") {
+		test.Fatalf("release workspace detail: HTTP %d %s", status, page)
+	}
+	status, page = call(test, http.MethodPost, srv.url+"/api/markdown", bearer(reader), `{"body":"Intro.\n\n- Add two (#2) by e2e-agent"}`)
+	var markdown struct {
+		HTML string `json:"html"`
+	}
+	if err := json.Unmarshal(page, &markdown); err != nil || status != http.StatusOK || !strings.Contains(markdown.HTML, "<p>Intro.</p>") || !strings.Contains(markdown.HTML, "<li>Add two (#2) by e2e-agent</li>") {
+		test.Fatalf("rendered release notes: HTTP %d %s", status, page)
 	}
 	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v3.0.0", bearer(reader), ""); status != http.StatusNotFound {
 		test.Fatalf("reader's page for a draft: HTTP %d", status)

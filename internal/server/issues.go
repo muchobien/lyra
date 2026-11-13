@@ -154,7 +154,8 @@ func containsAll(have, want []string) bool {
 }
 
 func (query itemQuery) matches(item store.Item) bool {
-	if query.text != "" && !strings.Contains(strings.ToLower(item.Title), query.text) && strconv.FormatInt(item.Number, 10) != strings.TrimPrefix(query.text, "#") {
+	if query.text != "" && !strings.Contains(strings.ToLower(item.Title), query.text) &&
+		strconv.FormatInt(item.Number, 10) != strings.TrimPrefix(query.text, "#") {
 		return false
 	}
 	return containsAll(item.Labels, query.labels) && containsAll(item.Assignees, query.assignees)

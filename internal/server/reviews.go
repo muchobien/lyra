@@ -33,7 +33,7 @@ var reviewStates = map[string]string{
 type reviewRequest struct {
 	State    string              `json:"state" enum:"approve,request_changes,comment"`
 	Body     string              `json:"body,omitzero"`
-	HeadSHA  string              `json:"head_sha,omitzero" doc:"Reject the review if the pull request changed from this head."`
+	HeadSHA  string              `json:"head_sha,omitzero" doc:"Reject a review of a changed head."`
 	Comments []store.LineComment `json:"comments,omitzero" doc:"Line comments on lines in the diff."`
 }
 

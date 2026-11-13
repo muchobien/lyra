@@ -14,7 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import { api, ConnectionContext, IdentityContext, type Identity, type Repository } from "./api";
-import { ErrorNotice } from "./Controls";
+import { ErrorNotice, ScrollNavigation } from "./Controls";
 import styles from "./App.module.css";
 
 const initialPath = location.pathname;
@@ -206,7 +206,11 @@ export function App() {
           </div>
         </div>
         {owner && repo && (
-          <nav className={styles.navigation} aria-label="Repository navigation">
+          <ScrollNavigation
+            className={styles.navigation}
+            label="Repository navigation"
+            active={section || "code"}
+          >
             <Link
               to="/$owner/$repo"
               params={{ owner, repo }}
@@ -270,7 +274,7 @@ export function App() {
               <Activity size={16} />
               Activity
             </Link>
-          </nav>
+          </ScrollNavigation>
         )}
       </header>
       <div id="repository-picker" popover="auto" className={styles.repositoryPicker}>

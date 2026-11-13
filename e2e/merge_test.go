@@ -182,15 +182,15 @@ func TestMerge(test *testing.T) {
 	if result := merge("4", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "conflicts in shared.txt") {
 		test.Errorf("squash with conflicts: exit %d %s", result.code, result.stderr)
 	}
-	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/pulls/4", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), "Merging conflicts with main in") {
+	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/pulls/4/view", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(compactJSON(test, page), `"conflicts":["shared.txt"]`) {
 		test.Errorf("conflicting pr page: HTTP %d", status)
 	}
 
 	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "ui", "--title", "Merge from the UI")
 	uiHead := remoteSHA("refs/heads/ui")
-	status, page = call(test, http.MethodGet, srv.url+"/acme/demo/pulls/5", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), `value="`+uiHead+`"`) {
+	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/pulls/5/view", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(compactJSON(test, page), `"head_sha":"`+uiHead+`"`) {
 		test.Errorf("mergeable pr page: HTTP %d", status)
 	}
 	if status, location, body := postForm(test, srv.url+"/acme/demo/pulls/5/merge", url.Values{"method": {"squash"}, "head_sha": {uiHead}}, map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusSeeOther || location != "/acme/demo/pulls/5" {

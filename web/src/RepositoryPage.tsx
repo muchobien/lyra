@@ -3,12 +3,10 @@ import type { ChangeEvent, ToggleEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
-  Code,
   Search,
   Terminal,
   Folder,
   File,
-  GitCommitHorizontal,
   Tags,
   Package,
   X,
@@ -26,6 +24,7 @@ import {
   type Tree,
 } from "./api";
 import { CopyButton, ErrorNotice } from "./Controls";
+import { CodeNavigation } from "./CodeScreens";
 import controls from "./Controls.module.css";
 import styles from "./RepositoryPage.module.css";
 
@@ -34,7 +33,6 @@ export function RepositoryPage() {
   const search = useSearch({ from: "/$owner/$repo" });
   const navigate = useNavigate({ from: "/$owner/$repo" });
   const name = `${owner}/${repo}`;
-  const base = `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
   const metadata = useQuery({
     queryKey: ["repository", name],
     queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
@@ -159,25 +157,7 @@ export function RepositoryPage() {
 
   return (
     <>
-      <nav className={styles.sections} aria-label="Code sections">
-        <Link
-          to="/$owner/$repo"
-          params={{ owner, repo }}
-          search={{ ref: search.ref }}
-          aria-current="page"
-        >
-          <Code size={15} />
-          Files
-        </Link>
-        <a href={`${base}/commits/${encodeURIComponent(ref)}`}>
-          <GitCommitHorizontal size={15} />
-          Commits
-        </a>
-        <a href={`${base}/tags`}>
-          <Tags size={15} />
-          Tags
-        </a>
-      </nav>
+      <CodeNavigation owner={owner} repo={repo} reference={ref} active="files" />
       <div className={styles.workspace}>
         <section className={styles.files}>
           <div className={styles.toolbar}>
@@ -268,7 +248,13 @@ export function RepositoryPage() {
                   <div className={styles.commit}>
                     <span>
                       <strong>{tree.data.last.committer.name}</strong>
-                      <a href={`${base}/commit/${tree.data.last.sha}`}>{tree.data.last.subject}</a>
+                      <Link
+                        to="/$owner/$repo/$section/$"
+                        params={{ owner, repo, section: "commit", _splat: tree.data.last.sha }}
+                        search={{}}
+                      >
+                        {tree.data.last.subject}
+                      </Link>
                     </span>
                     {tree.data.last.signature.status === "verified" && (
                       <span className={styles.verified}>
@@ -276,9 +262,14 @@ export function RepositoryPage() {
                         Verified
                       </span>
                     )}
-                    <a href={`${base}/commit/${tree.data.last.sha}`} className={styles.sha}>
+                    <Link
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commit", _splat: tree.data.last.sha }}
+                      search={{}}
+                      className={styles.sha}
+                    >
                       {tree.data.last.sha.slice(0, 7)}
-                    </a>
+                    </Link>
                   </div>
                 )}
                 {tree.data.entries
@@ -374,7 +365,13 @@ export function RepositoryPage() {
           <section className={styles.delivery}>
             <div className={styles.sidebarHeading}>
               <h2>Releases</h2>
-              <a href={`${base}/releases`}>View all</a>
+              <Link
+                to="/$owner/$repo/$section"
+                params={{ owner, repo, section: "releases" }}
+                search={{}}
+              >
+                View all
+              </Link>
             </div>
             {latest.isPending && (
               <output className={styles.secondary}>Loading latest release…</output>
@@ -383,20 +380,24 @@ export function RepositoryPage() {
             {latest.data === null && <p className={styles.secondary}>No stable release yet.</p>}
             {latest.data && (
               <>
-                <a
+                <Link
                   className={styles.releaseVersion}
-                  href={`${base}/releases/tag/${encodeURIComponent(latest.data.tag)}`}
+                  to="/$owner/$repo/$section/$"
+                  params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
+                  search={{}}
                 >
                   <Tags size={17} />
                   <strong>{latest.data.tag}</strong>
                   <span>Latest</span>
-                </a>
-                <a
+                </Link>
+                <Link
                   className={styles.releaseTitle}
-                  href={`${base}/releases/tag/${encodeURIComponent(latest.data.tag)}`}
+                  to="/$owner/$repo/$section/$"
+                  params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
+                  search={{}}
                 >
                   {latest.data.title}
-                </a>
+                </Link>
                 <time
                   className={styles.secondary}
                   dateTime={latest.data.published_at || latest.data.created_at}
@@ -411,20 +412,30 @@ export function RepositoryPage() {
               <div className={styles.containers}>
                 <div className={styles.sidebarHeading}>
                   <h2>Containers</h2>
-                  <a href={`${base}/images`}>View all</a>
+                  <Link
+                    to="/$owner/$repo/$section"
+                    params={{ owner, repo, section: "images" }}
+                    search={{}}
+                  >
+                    View all
+                  </Link>
                 </div>
                 <p className={styles.secondary}>
                   {latestImages.length ? `Linked to ${latest.data?.tag}` : "Latest container"}
                 </p>
                 {containers.map((image) => (
                   <div className={styles.image} key={`${image.name}:${image.tag}`}>
-                    <a href={`${base}/images`}>
+                    <Link
+                      to="/$owner/$repo/$section"
+                      params={{ owner, repo, section: "images" }}
+                      search={{}}
+                    >
                       <Package size={16} />
                       <span>
                         {image.name}
                         <strong>:{image.tag}</strong>
                       </span>
-                    </a>
+                    </Link>
                     <CopyButton
                       value={`docker pull ${image.reference}`}
                       label={`Copy pull command for ${image.name}:${image.tag}`}

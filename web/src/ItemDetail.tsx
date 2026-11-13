@@ -21,7 +21,7 @@ import {
   type ItemWorkspace,
   type Review,
 } from "./api";
-import { ErrorNotice, CopyButton, formValue } from "./Controls";
+import { ErrorNotice, CopyButton, ScrollNavigation, formValue } from "./Controls";
 import {
   ActorName,
   ChecksPanel,
@@ -245,6 +245,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     setAnchor(next);
     lineCommenting.reset();
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
+    document.getElementById("line-comment-body")?.focus();
   }
   function submitLine(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -530,7 +531,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
         </div>
       </div>
       {pull && (
-        <nav className={styles.tabs} aria-label="Pull request sections">
+        <ScrollNavigation className={styles.tabs} label="Pull request sections" active={tab}>
           <Link
             to="/$owner/$repo/$section/$"
             params={{ owner, repo, section: kind, _splat: number }}
@@ -567,7 +568,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             <Files size={15} />
             Files changed
           </Link>
-        </nav>
+        </ScrollNavigation>
       )}
       {pull && item.state === "open" && (
         <section className={styles.panel} aria-label="Merge status">
@@ -721,7 +722,11 @@ export function ItemDetail({ kind, number }: DetailProps) {
                   >
                     Cancel
                   </button>
-                  <button className={styles.primary} type="submit">
+                  <button
+                    className={styles.primary}
+                    type="submit"
+                    disabled={reviewDecision !== "approve" && !reviewBody.value.trim()}
+                  >
                     {reviewing.isPending ? "Submitting…" : "Submit review"}
                   </button>
                 </div>
@@ -819,7 +824,11 @@ export function ItemDetail({ kind, number }: DetailProps) {
                   >
                     Cancel
                   </button>
-                  <button className={styles.primary} type="submit">
+                  <button
+                    className={styles.primary}
+                    type="submit"
+                    disabled={!lineBody.value.trim()}
+                  >
                     {lineCommenting.isPending ? "Posting…" : "Comment on line"}
                   </button>
                 </div>
