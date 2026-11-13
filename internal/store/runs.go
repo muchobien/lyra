@@ -669,7 +669,7 @@ func (s *Store) Checks(repo, sha string) (Checks, error) {
 
 func announceChecks(q *queries.Queries, repo, sha string) error {
 	checks, err := loadChecks(q, repo, sha)
-	if err != nil || checks.State == "pending" {
+	if err != nil || checks.State == "pending" || checks.State == "none" {
 		return err
 	}
 	pulls, err := q.ListPullItems(context.Background(), queries.ListPullItemsParams{Repo: repo, State: "open"})

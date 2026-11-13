@@ -182,8 +182,8 @@ func TestPullChecks(test *testing.T) {
 			}
 		}
 	}
-	if checks != 5 {
-		test.Fatalf("%d pr.checks events, want 5", checks)
+	if checks != 4 {
+		test.Fatalf("%d pr.checks events, want 4", checks)
 	}
 }
 

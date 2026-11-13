@@ -492,6 +492,9 @@ last acted returns at once, and waiting again doesn't return it twice. With --si
 ID it starts after that event instead. It reconnects if the connection drops, and
 exits 3 with {"error":"timeout"} when --timeout passes.
 
+With --for checks, a pull request whose head has no Actions runs at all returns at once
+with state none.
+
 --for chooses the actions, from ` + strings.Join(kinds, ", ") + ` (default: ` + strings.Join(defaults, ", ") + `).`,
 			Args: ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -508,6 +511,31 @@ exits 3 with {"error":"timeout"} when --timeout passes.
 						kind = "synchronized"
 					}
 					query.Add("action", prefix+kind)
+				}
+				if segment == "pulls" && slices.Contains(waitFor, "checks") {
+					output, err := request(http.MethodGet, itemsPath(args[0])+"/"+url.PathEscape(args[1]), nil)
+					if err != nil {
+						return err
+					}
+					var pull struct {
+						Number int64 `json:"number"`
+						Checks struct {
+							State string `json:"state"`
+							SHA   string `json:"sha"`
+						} `json:"checks"`
+					}
+					if err := json.Unmarshal(output, &pull); err != nil {
+						return err
+					}
+					if pull.Checks.State == "none" {
+						encoded, err := json.MarshalIndent(map[string]any{
+							"action": "pr.checks", "repo": args[0], "item": pull.Number, "data": map[string]string{"state": "none", "sha": pull.Checks.SHA},
+						}, "", "  ")
+						if err != nil {
+							return err
+						}
+						return emit(cmd, append(encoded, '\n'))
+					}
 				}
 				return waitAndEmit(cmd, query, waitTimeout)
 			},
