@@ -160,7 +160,7 @@ func TestReleases(test *testing.T) {
 	}
 	for _, ranged := range []struct {
 		header, contentRange string
-		want             []byte
+		want                 []byte
 	}{
 		{"bytes=1000-1999", "bytes 1000-1999/300000", archive[1000:2000]},
 		{"bytes=-10", "bytes 299990-299999/300000", archive[299990:]},
