@@ -354,6 +354,9 @@ func (s *Server) uiEditItem(kind string) http.HandlerFunc {
 			s.renderStoreError(w, r, err, "Not found.")
 			return
 		}
+		if kind == "pr" {
+			s.queueReopened(repo.Name, item.Number, item.State == "open", id.actor)
+		}
 		http.Redirect(w, r, fmt.Sprintf("/%s/%s/%d", repo.Name, itemPaths[kind], item.Number), http.StatusSeeOther)
 	}
 }

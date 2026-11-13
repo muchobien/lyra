@@ -560,14 +560,15 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 }
 
 const createRun = `-- name: CreateRun :one
-INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at)
+INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, pull, head_ref, base_ref)
 VALUES (
 	?1,
 	(SELECT COALESCE(MAX(number), 0) + 1 FROM runs WHERE repo = ?1),
 	?2, ?3, ?4, ?5, ?6, ?7, ?8, 'waiting',
-	?9, ?10, ?11, ?12, ?13
+	?9, ?10, ?11, ?12, ?13,
+	?14, ?15, ?16
 )
-RETURNING id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at
+RETURNING id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at, pull, head_ref, base_ref
 `
 
 type CreateRunParams struct {
@@ -584,6 +585,9 @@ type CreateRunParams struct {
 	Agent     string    `json:"agent"`
 	Session   string    `json:"session"`
 	CreatedAt time.Time `json:"created_at"`
+	Pull      int64     `json:"pull"`
+	HeadRef   string    `json:"head_ref"`
+	BaseRef   string    `json:"base_ref"`
 }
 
 func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
@@ -601,6 +605,9 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		arg.Agent,
 		arg.Session,
 		arg.CreatedAt,
+		arg.Pull,
+		arg.HeadRef,
+		arg.BaseRef,
 	)
 	var i Run
 	err := row.Scan(
@@ -622,6 +629,9 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.StoppedAt,
+		&i.Pull,
+		&i.HeadRef,
+		&i.BaseRef,
 	)
 	return i, err
 }
@@ -1285,7 +1295,7 @@ func (q *Queries) GetRepo(ctx context.Context, name string) (Repo, error) {
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE repo = ? AND number = ?
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at, pull, head_ref, base_ref FROM runs WHERE repo = ? AND number = ?
 `
 
 type GetRunParams struct {
@@ -1315,12 +1325,15 @@ func (q *Queries) GetRun(ctx context.Context, arg GetRunParams) (Run, error) {
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.StoppedAt,
+		&i.Pull,
+		&i.HeadRef,
+		&i.BaseRef,
 	)
 	return i, err
 }
 
 const getRunByID = `-- name: GetRunByID :one
-SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE id = ?
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at, pull, head_ref, base_ref FROM runs WHERE id = ?
 `
 
 func (q *Queries) GetRunByID(ctx context.Context, id int64) (Run, error) {
@@ -1345,6 +1358,9 @@ func (q *Queries) GetRunByID(ctx context.Context, id int64) (Run, error) {
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.StoppedAt,
+		&i.Pull,
+		&i.HeadRef,
+		&i.BaseRef,
 	)
 	return i, err
 }
@@ -2246,7 +2262,7 @@ func (q *Queries) ListReviews(ctx context.Context, itemID int64) ([]Review, erro
 }
 
 const listRules = `-- name: ListRules :many
-SELECT id, repo, pattern, require_signed, merge_methods, created_at, require_approval FROM branch_rules WHERE repo = ? ORDER BY pattern
+SELECT id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks FROM branch_rules WHERE repo = ? ORDER BY pattern
 `
 
 func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, error) {
@@ -2266,6 +2282,7 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 			&i.MergeMethods,
 			&i.CreatedAt,
 			&i.RequireApproval,
+			&i.RequireChecks,
 		); err != nil {
 			return nil, err
 		}
@@ -2395,7 +2412,7 @@ func (q *Queries) ListRunners(ctx context.Context) ([]Runner, error) {
 }
 
 const listRuns = `-- name: ListRuns :many
-SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE repo = ? ORDER BY number DESC LIMIT ?
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at, pull, head_ref, base_ref FROM runs WHERE repo = ? ORDER BY number DESC LIMIT ?
 `
 
 type ListRunsParams struct {
@@ -2431,6 +2448,63 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, erro
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.StoppedAt,
+			&i.Pull,
+			&i.HeadRef,
+			&i.BaseRef,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunsForSHA = `-- name: ListRunsForSHA :many
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at, pull, head_ref, base_ref FROM runs WHERE repo = ? AND sha = ? ORDER BY number
+`
+
+type ListRunsForSHAParams struct {
+	Repo string `json:"repo"`
+	Sha  string `json:"sha"`
+}
+
+func (q *Queries) ListRunsForSHA(ctx context.Context, arg ListRunsForSHAParams) ([]Run, error) {
+	rows, err := q.db.QueryContext(ctx, listRunsForSHA, arg.Repo, arg.Sha)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Run
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Number,
+			&i.Workflow,
+			&i.Name,
+			&i.Title,
+			&i.Event,
+			&i.Ref,
+			&i.Sha,
+			&i.Payload,
+			&i.Status,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.StoppedAt,
+			&i.Pull,
+			&i.HeadRef,
+			&i.BaseRef,
 		); err != nil {
 			return nil, err
 		}
@@ -2708,13 +2782,14 @@ func (q *Queries) SetImageTag(ctx context.Context, arg SetImageTagParams) (Image
 }
 
 const setRule = `-- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, pattern) DO UPDATE SET
 	require_signed = excluded.require_signed,
 	require_approval = excluded.require_approval,
+	require_checks = excluded.require_checks,
 	merge_methods = excluded.merge_methods
-RETURNING id, repo, pattern, require_signed, merge_methods, created_at, require_approval
+RETURNING id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks
 `
 
 type SetRuleParams struct {
@@ -2722,6 +2797,7 @@ type SetRuleParams struct {
 	Pattern         string    `json:"pattern"`
 	RequireSigned   bool      `json:"require_signed"`
 	RequireApproval bool      `json:"require_approval"`
+	RequireChecks   bool      `json:"require_checks"`
 	MergeMethods    string    `json:"merge_methods"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -2732,6 +2808,7 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		arg.Pattern,
 		arg.RequireSigned,
 		arg.RequireApproval,
+		arg.RequireChecks,
 		arg.MergeMethods,
 		arg.CreatedAt,
 	)
@@ -2744,6 +2821,7 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		&i.MergeMethods,
 		&i.CreatedAt,
 		&i.RequireApproval,
+		&i.RequireChecks,
 	)
 	return i, err
 }

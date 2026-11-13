@@ -97,94 +97,180 @@ func matchesPush(event *jobparser.Event, ref string, changed []string) bool {
 	return true
 }
 
+type trigger struct {
+	event   string
+	ref     string
+	sha     string
+	pull    int64
+	headRef string
+	baseRef string
+	payload map[string]any
+	matches func(*jobparser.Event) bool
+}
+
+func repositoryPayload(git repos.Git, dir, repo string) map[string]any {
+	owner, name, _ := strings.Cut(repo, "/")
+	return map[string]any{
+		"full_name": repo, "name": name, "owner": map[string]any{"login": owner, "username": owner}, "default_branch": git.DefaultBranch(dir),
+	}
+}
+
+func changedFiles(git repos.Git, dir, from, to string) []string {
+	files, err := git.DiffFiles(dir, from, to)
+	if err != nil {
+		return nil
+	}
+	changed := []string{}
+	for _, file := range files {
+		changed = append(changed, file.Path)
+	}
+	return changed
+}
+
+func queueTrigger(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, cause trigger) []string {
+	messages := []string{}
+	commit, err := git.Commit(dir, cause.sha)
+	if err != nil {
+		return append(messages, "actions: "+err.Error())
+	}
+	cause.payload["repository"] = repositoryPayload(git, dir, repo)
+	cause.payload["sender"] = map[string]any{"login": actor.User, "username": actor.User}
+	payload, err := json.Marshal(cause.payload)
+	if err != nil {
+		return append(messages, "actions: "+err.Error())
+	}
+	for _, file := range workflowFiles(git, dir, cause.sha) {
+		content, err := git.Blob(dir, cause.sha, file)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		events, err := jobparser.ParseRawOn(&workflow.RawOn)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		if !slices.ContainsFunc(events, cause.matches) {
+			continue
+		}
+		singles, err := jobparser.Parse(content, false)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		jobs := []store.Job{}
+		for _, single := range singles {
+			key, job := single.Job()
+			encoded, err := single.Marshal()
+			if err != nil {
+				return append(messages, file+": "+err.Error())
+			}
+			jobName := job.Name
+			if jobName == "" {
+				jobName = key
+			}
+			jobs = append(jobs, store.Job{
+				Key: key, Name: jobName, Needs: job.Needs(), RunsOn: job.RunsOn(), Conditional: job.If.Value != "", Payload: string(encoded),
+			})
+		}
+		runName := workflow.Name
+		if runName == "" {
+			runName = path.Base(file)
+		}
+		run, _, err := db.CreateRun(actor, store.Run{
+			Repo: repo, Workflow: file, Name: runName, Title: commit.Subject, Event: cause.event, Ref: cause.ref, SHA: cause.sha,
+			Payload: string(payload), Pull: cause.pull, HeadRef: cause.headRef, BaseRef: cause.baseRef,
+		}, jobs)
+		if err != nil {
+			messages = append(messages, file+": "+err.Error())
+			continue
+		}
+		messages = append(messages, fmt.Sprintf("queued run #%d (%s)", run.Number, runName))
+	}
+	return messages
+}
+
 func QueueRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, updates []RefUpdate) []string {
 	messages := []string{}
-	owner, name, _ := strings.Cut(repo, "/")
 	for _, update := range updates {
 		if zeroSHA(update.New) || !(strings.HasPrefix(update.Ref, "refs/heads/") || strings.HasPrefix(update.Ref, "refs/tags/")) {
 			continue
 		}
 		var changed []string
 		if !zeroSHA(update.Old) {
-			files, err := git.DiffFiles(dir, update.Old, update.New)
-			if err == nil {
-				changed = []string{}
-				for _, file := range files {
-					changed = append(changed, file.Path)
-				}
-			}
+			changed = changedFiles(git, dir, update.Old, update.New)
 		}
 		commit, err := git.Commit(dir, update.New)
 		if err != nil {
 			messages = append(messages, "actions: "+err.Error())
 			continue
 		}
-		payload, _ := json.Marshal(map[string]any{
-			"ref": update.Ref, "before": update.Old, "after": update.New,
-			"repository": map[string]any{
-				"full_name": repo, "name": name, "owner": map[string]any{"login": owner, "username": owner},
-				"default_branch": git.DefaultBranch(dir),
+		messages = append(messages, queueTrigger(db, git, dir, repo, actor, trigger{
+			event: "push", ref: update.Ref, sha: update.New,
+			payload: map[string]any{
+				"ref": update.Ref, "before": update.Old, "after": update.New,
+				"head_commit": map[string]any{"id": commit.SHA, "message": strings.TrimSpace(commit.Subject + "\n\n" + commit.Body), "timestamp": commit.Committer.Date},
+				"pusher":      map[string]any{"name": actor.User, "username": actor.User},
 			},
-			"head_commit": map[string]any{"id": commit.SHA, "message": strings.TrimSpace(commit.Subject + "\n\n" + commit.Body), "timestamp": commit.Committer.Date},
-			"pusher":      map[string]any{"name": actor.User, "username": actor.User},
-			"sender":      map[string]any{"login": actor.User, "username": actor.User},
-		})
-		for _, file := range workflowFiles(git, dir, update.New) {
-			content, err := git.Blob(dir, update.New, file)
-			if err != nil {
-				messages = append(messages, file+": "+err.Error())
-				continue
-			}
-			workflow, err := model.ReadWorkflow(bytes.NewReader(content), false)
-			if err != nil {
-				messages = append(messages, file+": "+err.Error())
-				continue
-			}
-			events, err := jobparser.ParseRawOn(&workflow.RawOn)
-			if err != nil {
-				messages = append(messages, file+": "+err.Error())
-				continue
-			}
-			if !slices.ContainsFunc(events, func(event *jobparser.Event) bool {
+			matches: func(event *jobparser.Event) bool {
 				return event.Name == "push" && matchesPush(event, update.Ref, changed)
-			}) {
-				continue
-			}
-			singles, err := jobparser.Parse(content, false)
-			if err != nil {
-				messages = append(messages, file+": "+err.Error())
-				continue
-			}
-			jobs := []store.Job{}
-			for _, single := range singles {
-				key, job := single.Job()
-				encoded, err := single.Marshal()
-				if err != nil {
-					return append(messages, file+": "+err.Error())
-				}
-				jobName := job.Name
-				if jobName == "" {
-					jobName = key
-				}
-				jobs = append(jobs, store.Job{
-					Key: key, Name: jobName, Needs: job.Needs(), RunsOn: job.RunsOn(), Conditional: job.If.Value != "", Payload: string(encoded),
-				})
-			}
-			runName := workflow.Name
-			if runName == "" {
-				runName = path.Base(file)
-			}
-			run, _, err := db.CreateRun(actor, store.Run{
-				Repo: repo, Workflow: file, Name: runName, Title: commit.Subject, Event: "push", Ref: update.Ref, SHA: update.New, Payload: string(payload),
-			}, jobs)
-			if err != nil {
-				messages = append(messages, file+": "+err.Error())
-				continue
-			}
-			messages = append(messages, fmt.Sprintf("queued run #%d (%s)", run.Number, runName))
-		}
+			},
+		})...)
 	}
 	return messages
+}
+
+func matchesPull(event *jobparser.Event, action, base string, changed []string) bool {
+	acts := event.Acts()
+	types, typed := acts["types"]
+	if !typed {
+		types = []string{"opened", "synchronize", "reopened"}
+	}
+	if !slices.Contains(types, action) {
+		return false
+	}
+	trace := &workflowpattern.EmptyTraceWriter{}
+	for name, patterns := range acts {
+		compiled, err := workflowpattern.CompilePatterns(patterns...)
+		if err != nil {
+			return false
+		}
+		switch {
+		case name == "branches" && workflowpattern.Skip(compiled, []string{base}, trace):
+			return false
+		case name == "branches-ignore" && workflowpattern.Filter(compiled, []string{base}, trace):
+			return false
+		case name == "paths" && workflowpattern.Skip(compiled, changed, trace):
+			return false
+		case name == "paths-ignore" && workflowpattern.Filter(compiled, changed, trace):
+			return false
+		}
+	}
+	return true
+}
+
+func QueuePullRuns(db *store.Store, git repos.Git, dir, repo string, actor store.Actor, pull store.Pull, action string) []string {
+	changed := changedFiles(git, dir, pull.BaseSHA, pull.HeadSHA)
+	ref := fmt.Sprintf("refs/pull/%d/head", pull.Number)
+	return queueTrigger(db, git, dir, repo, actor, trigger{
+		event: "pull_request", ref: ref, sha: pull.HeadSHA, pull: pull.Number, headRef: pull.Head, baseRef: pull.Base,
+		payload: map[string]any{
+			"action": action, "number": pull.Number,
+			"pull_request": map[string]any{
+				"number": pull.Number, "title": pull.Title, "body": pull.Body, "state": pull.State,
+				"head": map[string]any{"ref": pull.Head, "sha": pull.HeadSHA, "repo": map[string]any{"full_name": repo}},
+				"base": map[string]any{"ref": pull.Base, "sha": pull.BaseSHA, "repo": map[string]any{"full_name": repo}},
+			},
+		},
+		matches: func(event *jobparser.Event) bool {
+			return event.Name == "pull_request" && matchesPull(event, action, pull.Base, changed)
+		},
+	})
 }
 
 func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
@@ -199,7 +285,10 @@ func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
 	if err := json.Unmarshal([]byte(run.Payload), &event); err != nil {
 		return nil, err
 	}
-	refType, refName := "branch", strings.TrimPrefix(run.Ref, "refs/heads/")
+	refType, refName := "", strings.TrimPrefix(run.Ref, "refs/pull/")
+	if branch, isBranch := strings.CutPrefix(run.Ref, "refs/heads/"); isBranch {
+		refType, refName = "branch", branch
+	}
 	if tag, isTag := strings.CutPrefix(run.Ref, "refs/tags/"); isTag {
 		refType, refName = "tag", tag
 	}
@@ -209,7 +298,7 @@ func (service runnerService) task(runner store.Runner) (*runnerv1.Task, error) {
 		"ref_name": refName, "ref_type": refType, "event_name": run.Event, "event": event, "run_id": fmt.Sprint(run.ID),
 		"run_number": fmt.Sprint(run.Number), "run_attempt": fmt.Sprint(job.Attempt), "job": job.Key,
 		"workflow_ref": run.Repo + "/" + run.Workflow + "@" + run.Ref, "token": token, "retention_days": "90",
-		"base_ref": "", "head_ref": "", "forgejo_default_actions_url": defaultActions, "gitea_default_actions_url": defaultActions,
+		"base_ref": run.BaseRef, "head_ref": run.HeadRef, "forgejo_default_actions_url": defaultActions, "gitea_default_actions_url": defaultActions,
 	})
 	if err != nil {
 		return nil, err
@@ -343,4 +432,15 @@ func readLog(ctx context.Context, server *Server, task store.Task, from int64) (
 		lines = append(lines, store.LogLine{Index: int64(index), At: at, Content: text})
 	}
 	return lines, nil
+}
+
+func (s *Server) queueReopened(repo string, number int64, wasOpen bool, actor store.Actor) []string {
+	if wasOpen {
+		return nil
+	}
+	pull, err := s.store.Pull(repo, number)
+	if err != nil || pull.State != "open" {
+		return nil
+	}
+	return QueuePullRuns(s.store, s.git, s.repoDir(repo), repo, actor, pull, "reopened")
 }

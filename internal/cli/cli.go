@@ -472,8 +472,8 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		defaults := kinds
 		if segment == "pulls" {
 			prefix = "pr."
-			kinds = append([]string{"review", "merged", "push"}, kinds...)
-			defaults = []string{"review", "comment", "merged", "closed"}
+			kinds = append([]string{"review", "checks", "merged", "push"}, kinds...)
+			defaults = []string{"review", "comment", "checks", "merged", "closed"}
 		}
 		var waitFor []string
 		var waitTimeout time.Duration
@@ -682,7 +682,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	rulesPath := func(repo string) string {
 		return repoAPI(repo) + "/rules"
 	}
-	var requireSigned, requireApproval bool
+	var requireSigned, requireApproval, requireChecks bool
 	var allowedMethods []string
 	ruleSet := &cobra.Command{
 		Use:   "set <repo> <pattern>",
@@ -693,17 +693,19 @@ the author can't use them on their own pull request. --request-changes needs a b
 matching branch, and merges of pull requests with such commits (squash merges too).
 --require-approval refuses merges until someone other than the author approves the
 pull request's current head commit, and while a reviewer's latest review requests
-changes. --merge-methods limits how pull requests into a matching branch can be
-merged. Rules apply to admins as well. Setting a pattern again replaces its rule.`,
+changes. --require-checks refuses merges until the Actions jobs for the pull request's
+head commit have all succeeded. --merge-methods limits how pull requests into a
+matching branch can be merged. Rules apply to admins as well. Setting a pattern again replaces its rule.`,
 		Args: exactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{
-				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "merge_methods": allowedMethods,
+				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "require_checks": requireChecks, "merge_methods": allowedMethods,
 			})
 		},
 	}
 	ruleSet.Flags().BoolVar(&requireSigned, "require-signed", false, "require verified signatures on every commit")
 	ruleSet.Flags().BoolVar(&requireApproval, "require-approval", false, "require an approving review by someone other than the author")
+	ruleSet.Flags().BoolVar(&requireChecks, "require-checks", false, "require every Actions job for the pull request's head commit to succeed")
 	ruleSet.Flags().StringSliceVar(&allowedMethods, "merge-methods", nil, "allowed merge methods, ff and/or squash (default: both)")
 	ruleList := &cobra.Command{
 		Use:   "list <repo>",

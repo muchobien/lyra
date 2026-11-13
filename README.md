@@ -136,7 +136,7 @@ lyra key delete <id>
 lyra event list [--repo NAME] [--limit N]
 lyra event wait [--repo NAME] [--action PATTERN]... [--assignee NAME|me] [--since ID] [--timeout 30m]
 lyra issue wait <repo> <number> [--for comment,closed,...] [--since ID] [--timeout 30m]
-lyra pr wait <repo> <number> [--for review,comment,merged,closed,push,...] [--since ID] [--timeout 30m]
+lyra pr wait <repo> <number> [--for review,checks,comment,merged,closed,push,...] [--since ID] [--timeout 30m]
 lyra issue create <repo> --title TEXT [--body TEXT|--body-file F|-] [--label L]... [--assignee NAME|@me]...
 lyra issue list <repo> [--state open|closed|all] [--label L]... [--assignee NAME|@me]... [--limit N]
 lyra issue view <repo> <number>
@@ -151,7 +151,7 @@ lyra pr merge <repo> <number> --squash|--ff [--head SHA] [--delete-branch] [--ti
 lyra signing-key
 lyra pr review <repo> <number> --approve|--request-changes|--comment [--body ...] [--comments-file F|-]
 lyra pr comment <repo> <number> --body ... [--path FILE --line N [--side new|old]]
-lyra rule set <repo> <pattern> [--require-signed] [--require-approval] [--merge-methods ff,squash]
+lyra rule set <repo> <pattern> [--require-signed] [--require-approval] [--require-checks] [--merge-methods ff,squash]
 lyra rule list <repo>
 lyra rule delete <repo> <pattern>
 lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
@@ -310,8 +310,8 @@ Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.del
 that pull request or issue, then print the event, with the review or comment it
 carries.
 
-- **Default actions:** pull requests wait for a review, comment, merge or close; issues
-  wait for anything but their opening. `--for` narrows it.
+- **Default actions:** pull requests wait for a review, comment, finished checks, merge or
+  close; issues wait for anything but their opening. `--for` narrows it.
 - **Who "the caller" is:** the token, or the agent and session when `LYRA_SESSION` is
   set, so another session of the same agent counts as someone else.
 - **Where the wait starts:** without `--since`, after the later of the caller's last
@@ -358,8 +358,20 @@ lyra runner token list | delete <id>
 
 A push queues a run for each workflow in `.forgejo/workflows/` (or `.github/workflows/` when
 the first doesn't exist) whose `on: push` matches the ref, with `branches`, `tags`, `paths` and
-their `-ignore` forms. The pusher sees `lyra: queued run #N (<workflow>)`. Pull request,
-manual and scheduled triggers come later.
+their `-ignore` forms. The pusher sees `lyra: queued run #N (<workflow>)`.
+
+Opening, reopening and pushing to a pull request queue the workflows whose `on:
+pull_request` matches: `types` (default `opened`, `synchronize`, `reopened`), `branches`
+(the base branch) and `paths` (the files the pull request changes), with the workflow file
+from the pull request's head commit. The run's `github.ref` is `refs/pull/<n>/head`, with
+`head_ref`, `base_ref` and `github.event.pull_request`. `lyra pr create` and `reopen` list
+the runs they queued under `actions`. Manual and scheduled triggers come later.
+
+**Checks:** `lyra pr view` includes `checks`: the jobs of the latest run of each workflow and
+event for the pull request's head commit, with a `state` of `none`, `pending`, `success` or
+`failure`. When a run finishes and none is left pending for that commit, Lyra records
+`pr.checks` on the pull request (actor `lyra`), so `lyra pr wait --for checks` returns.
+The branch rule `--require-checks` blocks merging until the state is `success`.
 
 ```sh
 lyra run list <repo> [--limit N]
@@ -420,7 +432,7 @@ lyra run rerun <repo> <number> [--failed]
 | `POST /api/repos/{owner}/{repo}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
 | `GET /api/signing-key` | any |
 | `GET /api/repos/{owner}/{repo}/rules` | read |
-| `POST /api/repos/{owner}/{repo}/rules` (`pattern`, `require_signed`, `require_approval`, `merge_methods`) | admin |
+| `POST /api/repos/{owner}/{repo}/rules` (`pattern`, `require_signed`, `require_approval`, `require_checks`, `merge_methods`) | admin |
 | `POST /api/repos/{owner}/{repo}/pulls/{number}/reviews` (`state`: `approve`, `request_changes` or `comment`; `body`; `comments`) | write |
 
 Comments on pull requests also take `path`, `line` and `side`.

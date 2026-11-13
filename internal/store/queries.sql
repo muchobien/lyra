@@ -154,11 +154,12 @@ UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;
 
 -- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, pattern) DO UPDATE SET
 	require_signed = excluded.require_signed,
 	require_approval = excluded.require_approval,
+	require_checks = excluded.require_checks,
 	merge_methods = excluded.merge_methods
 RETURNING *;
 
@@ -291,12 +292,13 @@ SELECT * FROM owners ORDER BY name;
 DELETE FROM owners WHERE name = ?;
 
 -- name: CreateRun :one
-INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at)
+INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, pull, head_ref, base_ref)
 VALUES (
 	sqlc.arg(repo),
 	(SELECT COALESCE(MAX(number), 0) + 1 FROM runs WHERE repo = sqlc.arg(repo)),
 	sqlc.arg(workflow), sqlc.arg(name), sqlc.arg(title), sqlc.arg(event), sqlc.arg(ref), sqlc.arg(sha), sqlc.arg(payload), 'waiting',
-	sqlc.arg(user), sqlc.arg(via), sqlc.arg(agent), sqlc.arg(session), sqlc.arg(created_at)
+	sqlc.arg(user), sqlc.arg(via), sqlc.arg(agent), sqlc.arg(session), sqlc.arg(created_at),
+	sqlc.arg(pull), sqlc.arg(head_ref), sqlc.arg(base_ref)
 )
 RETURNING *;
 
@@ -357,3 +359,6 @@ SELECT * FROM log_rows WHERE task_id = ? AND idx >= ? ORDER BY idx;
 
 -- name: DeleteLogRows :exec
 DELETE FROM log_rows WHERE task_id = ?;
+
+-- name: ListRunsForSHA :many
+SELECT * FROM runs WHERE repo = ? AND sha = ? ORDER BY number;

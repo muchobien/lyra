@@ -17,6 +17,7 @@ type BranchRule struct {
 	MergeMethods    string    `json:"merge_methods"`
 	CreatedAt       time.Time `json:"created_at"`
 	RequireApproval bool      `json:"require_approval"`
+	RequireChecks   bool      `json:"require_checks"`
 }
 
 type Comment struct {
@@ -220,6 +221,9 @@ type Run struct {
 	CreatedAt time.Time    `json:"created_at"`
 	StartedAt sql.NullTime `json:"started_at"`
 	StoppedAt sql.NullTime `json:"stopped_at"`
+	Pull      int64        `json:"pull"`
+	HeadRef   string       `json:"head_ref"`
+	BaseRef   string       `json:"base_ref"`
 }
 
 type Runner struct {

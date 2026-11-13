@@ -75,6 +75,9 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 				return messages, err
 			}
 			messages = append(messages, fmt.Sprintf("updated pull request #%d", pull.Number))
+			synced := pull
+			synced.HeadSHA, synced.BaseSHA = update.New, baseSHA
+			messages = append(messages, QueuePullRuns(db, git, dir, repo, actor, synced, "synchronize")...)
 		}
 	}
 

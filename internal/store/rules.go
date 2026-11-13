@@ -14,13 +14,14 @@ type Rule struct {
 	Pattern         string    `json:"pattern"`
 	RequireSigned   bool      `json:"require_signed"`
 	RequireApproval bool      `json:"require_approval"`
+	RequireChecks   bool      `json:"require_checks"`
 	MergeMethods    []string  `json:"merge_methods"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
 func ruleFromRow(row queries.BranchRule) Rule {
 	return Rule{
-		ID: row.ID, Repo: row.Repo, Pattern: row.Pattern, RequireSigned: row.RequireSigned, RequireApproval: row.RequireApproval,
+		ID: row.ID, Repo: row.Repo, Pattern: row.Pattern, RequireSigned: row.RequireSigned, RequireApproval: row.RequireApproval, RequireChecks: row.RequireChecks,
 		MergeMethods: strings.Split(row.MergeMethods, ","), CreatedAt: row.CreatedAt,
 	}
 }
@@ -30,7 +31,7 @@ func (s *Store) SetRule(repo string, actor Actor, rule Rule) (Rule, int64, error
 	var eventID int64
 	err := s.inTx(func(q *queries.Queries) error {
 		row, err := q.SetRule(context.Background(), queries.SetRuleParams{
-			Repo: repo, Pattern: rule.Pattern, RequireSigned: rule.RequireSigned, RequireApproval: rule.RequireApproval,
+			Repo: repo, Pattern: rule.Pattern, RequireSigned: rule.RequireSigned, RequireApproval: rule.RequireApproval, RequireChecks: rule.RequireChecks,
 			MergeMethods: strings.Join(rule.MergeMethods, ","), CreatedAt: now(),
 		})
 		if err != nil {
@@ -38,7 +39,7 @@ func (s *Store) SetRule(repo string, actor Actor, rule Rule) (Rule, int64, error
 		}
 		saved = ruleFromRow(row)
 		eventID, err = addEvent(q, "rule.set", repo, 0, actor, map[string]any{
-			"pattern": rule.Pattern, "require_signed": rule.RequireSigned, "require_approval": rule.RequireApproval, "merge_methods": rule.MergeMethods,
+			"pattern": rule.Pattern, "require_signed": rule.RequireSigned, "require_approval": rule.RequireApproval, "require_checks": rule.RequireChecks, "merge_methods": rule.MergeMethods,
 		})
 		return err
 	})

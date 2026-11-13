@@ -23,6 +23,9 @@ type Run struct {
 	Ref       string     `json:"ref"`
 	SHA       string     `json:"sha"`
 	Status    string     `json:"status"`
+	Pull      int64      `json:"pull,omitempty"`
+	HeadRef   string     `json:"head_ref,omitempty"`
+	BaseRef   string     `json:"base_ref,omitempty"`
 	Author    Actor      `json:"author"`
 	CreatedAt time.Time  `json:"created_at"`
 	StartedAt *time.Time `json:"started_at"`
@@ -98,6 +101,7 @@ func runFromRow(row queries.Run) Run {
 		ID: row.ID, Repo: row.Repo, Number: row.Number, Workflow: row.Workflow, Name: row.Name, Title: row.Title, Event: row.Event,
 		Ref: row.Ref, SHA: row.Sha, Status: row.Status, Author: Actor{User: row.User, Via: row.Via, Agent: row.Agent, Session: row.Session},
 		CreatedAt: row.CreatedAt, StartedAt: nullTime(row.StartedAt), StoppedAt: nullTime(row.StoppedAt), Payload: row.Payload,
+		Pull: row.Pull, HeadRef: row.HeadRef, BaseRef: row.BaseRef,
 	}
 }
 
@@ -171,6 +175,7 @@ func (s *Store) CreateRun(actor Actor, run Run, jobs []Job) (Run, int64, error) 
 		row, err := q.CreateRun(ctx, queries.CreateRunParams{
 			Repo: run.Repo, Workflow: run.Workflow, Name: run.Name, Title: run.Title, Event: run.Event, Ref: run.Ref, Sha: run.SHA,
 			Payload: run.Payload, User: actor.User, Via: actor.Via, Agent: actor.Agent, Session: actor.Session, CreatedAt: now(),
+			Pull: run.Pull, HeadRef: run.HeadRef, BaseRef: run.BaseRef,
 		})
 		if err != nil {
 			return err
@@ -387,8 +392,10 @@ func settleRun(q *queries.Queries, run Run, actor Actor) error {
 		if err := q.UpdateRunStatus(ctx, queries.UpdateRunStatusParams{Status: status, StartedAt: started, StoppedAt: sql.NullTime{Time: now(), Valid: true}, ID: run.ID}); err != nil {
 			return err
 		}
-		_, err = addEvent(q, "run.completed", run.Repo, 0, actor, map[string]any{"number": run.Number, "workflow": run.Workflow, "result": status, "sha": run.SHA})
-		return err
+		if _, err := addEvent(q, "run.completed", run.Repo, 0, actor, map[string]any{"number": run.Number, "workflow": run.Workflow, "result": status, "sha": run.SHA}); err != nil {
+			return err
+		}
+		return announceChecks(q, run.Repo, run.SHA)
 	}
 }
 
@@ -592,4 +599,84 @@ func (s *Store) RerunRun(actor Actor, repo string, number int64, failedOnly bool
 		return err
 	})
 	return eventID, err
+}
+
+type Check struct {
+	Run      int64  `json:"run"`
+	Workflow string `json:"workflow"`
+	Event    string `json:"event"`
+	JobID    int64  `json:"job_id"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+}
+
+type Checks struct {
+	State string  `json:"state"`
+	SHA   string  `json:"sha"`
+	Jobs  []Check `json:"jobs"`
+}
+
+func loadChecks(q *queries.Queries, repo, sha string) (Checks, error) {
+	rows, err := q.ListRunsForSHA(context.Background(), queries.ListRunsForSHAParams{Repo: repo, Sha: sha})
+	if err != nil {
+		return Checks{}, err
+	}
+	latest := map[string]Run{}
+	order := []string{}
+	for _, row := range rows {
+		run := runFromRow(row)
+		key := run.Workflow + "\x00" + run.Event
+		if _, seen := latest[key]; !seen {
+			order = append(order, key)
+		}
+		latest[key] = run
+	}
+	checks := Checks{State: "none", SHA: sha, Jobs: []Check{}}
+	pending, failed := false, false
+	for _, key := range order {
+		run := latest[key]
+		jobs, err := loadJobs(q, run.ID)
+		if err != nil {
+			return checks, err
+		}
+		for _, job := range jobs {
+			checks.Jobs = append(checks.Jobs, Check{Run: run.Number, Workflow: run.Workflow, Event: run.Event, JobID: job.ID, Name: job.Name, Status: job.Status})
+			pending = pending || !slices.Contains(terminal, job.Status)
+			failed = failed || job.Status == "failure" || job.Status == "cancelled"
+		}
+	}
+	switch {
+	case len(checks.Jobs) == 0:
+	case pending:
+		checks.State = "pending"
+	case failed:
+		checks.State = "failure"
+	default:
+		checks.State = "success"
+	}
+	return checks, nil
+}
+
+func (s *Store) Checks(repo, sha string) (Checks, error) {
+	return loadChecks(s.queries, repo, sha)
+}
+
+func announceChecks(q *queries.Queries, repo, sha string) error {
+	checks, err := loadChecks(q, repo, sha)
+	if err != nil || checks.State == "pending" {
+		return err
+	}
+	pulls, err := q.ListPullItems(context.Background(), queries.ListPullItemsParams{Repo: repo, State: "open"})
+	if err != nil {
+		return err
+	}
+	for _, pull := range pulls {
+		if pull.Pull.HeadSha != sha {
+			continue
+		}
+		if _, err := addEvent(q, "pr.checks", repo, pull.Item.Number, Actor{User: "lyra", Via: "actions"}, map[string]any{"state": checks.State, "sha": sha}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

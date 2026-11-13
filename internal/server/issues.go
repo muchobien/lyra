@@ -25,7 +25,8 @@ type itemWrite struct {
 
 type pullWrite struct {
 	store.Pull
-	EventID int64 `json:"event_id,omitempty"`
+	EventID int64    `json:"event_id,omitempty"`
+	Actions []string `json:"actions,omitempty"`
 }
 
 type itemView struct {
@@ -214,6 +215,12 @@ func (s *Server) handleEditItem(kind string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, problem)
 			return
 		}
+		wasOpen := true
+		if kind == "pr" {
+			if before, err := s.store.Pull(repo.Name, number); err == nil {
+				wasOpen = before.State == "open"
+			}
+		}
 		id := identityFrom(r)
 		item, eventID, err := s.store.EditItem(kind, repo.Name, number, id.actor, store.ItemEdit{
 			Title: body.Title, Body: body.Body, State: body.State,
@@ -233,7 +240,7 @@ func (s *Server) handleEditItem(kind string) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID})
+		writeJSON(w, http.StatusOK, pullWrite{Pull: pull, EventID: eventID, Actions: s.queueReopened(repo.Name, number, wasOpen, id.actor)})
 	}
 }
 

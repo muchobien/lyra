@@ -13,6 +13,7 @@ type pullView struct {
 	MergeError string          `json:"merge_error,omitempty"`
 	Reviews    []store.Review  `json:"reviews"`
 	Comments   []store.Comment `json:"comments"`
+	Checks     store.Checks    `json:"checks"`
 }
 
 func (s *Server) mergeStatus(repo string, pull store.Pull) (*mergePlan, string) {
@@ -137,7 +138,8 @@ func (s *Server) handleCreatePull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, pullWrite{Pull: pull, EventID: eventID})
+	actions := QueuePullRuns(s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
+	writeJSON(w, http.StatusCreated, pullWrite{Pull: pull, EventID: eventID, Actions: actions})
 }
 
 func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +162,10 @@ func (s *Server) handleGetPull(w http.ResponseWriter, r *http.Request) {
 		s.markOutdated(repo.Name, pull, reviews[index].Comments)
 	}
 	view := pullView{Pull: pull, Reviews: reviews, Comments: comments}
+	if view.Checks, err = s.store.Checks(repo.Name, pull.HeadSHA); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
 	writeJSON(w, http.StatusOK, view)
 }

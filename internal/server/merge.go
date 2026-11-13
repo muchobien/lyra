@@ -70,6 +70,26 @@ func (s *Server) planMerge(repo string, pull store.Pull) (mergePlan, error) {
 			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+": "+problem)
 		}
 	}
+	if policy.requireChecks {
+		checks, err := s.store.Checks(repo, plan.HeadSHA)
+		if err != nil {
+			return plan, err
+		}
+		failing := []string{}
+		for _, check := range checks.Jobs {
+			if check.Status == "failure" || check.Status == "cancelled" {
+				failing = append(failing, check.Name)
+			}
+		}
+		problem := map[string]string{
+			"none":    "no checks ran for " + plan.HeadSHA[:7],
+			"pending": "checks for " + plan.HeadSHA[:7] + " are still running",
+			"failure": "checks failed for " + plan.HeadSHA[:7] + ": " + strings.Join(failing, ", "),
+		}[checks.State]
+		if problem != "" {
+			plan.Blocked = append(plan.Blocked, "branch rule "+strings.Join(policy.rules, ", ")+": "+problem)
+		}
+	}
 	if len(policy.methods) == 0 {
 		plan.Blocked = append(plan.Blocked, "branch rules "+strings.Join(policy.rules, ", ")+" allow no merge method")
 	}

@@ -127,19 +127,7 @@ func TestActions(test *testing.T) {
 		return found
 	}
 
-	var created struct {
-		UUID  string `json:"uuid"`
-		Token string `json:"token"`
-		URL   string `json:"url"`
-	}
-	lyraJSON(test, srv, token, &created, "runner", "create", "--name", "host")
-	runner := newRunner(test, "host")
-	work := filepath.Join(filepath.Dir(runner.config), "work")
-	config := "log:\n  level: debug\nrunner:\n  fetch_interval: 1s\n  capacity: 1\nhost:\n  workdir_parent: " + work + "\nserver:\n  connections:\n    lyra:\n      url: " + created.URL + "\n      uuid: " + created.UUID + "\n      token: " + created.Token + "\n      labels: ['test:host']\n"
-	if err := os.WriteFile(runner.config, []byte(config), 0o644); err != nil {
-		test.Fatal(err)
-	}
-	runner.start(test)
+	runner := hostRunner(test, srv, token)
 
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
 	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
@@ -272,4 +260,22 @@ func TestActions(test *testing.T) {
 	if counts["run.queued"] != 5 || counts["run.completed"] != 4 || counts["run.cancelled"] != 1 || counts["job.completed"] < 9 {
 		test.Fatalf("events: %v", counts)
 	}
+}
+
+func hostRunner(test *testing.T, srv server, token string) runnerProcess {
+	test.Helper()
+	var created struct {
+		UUID  string `json:"uuid"`
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	}
+	lyraJSON(test, srv, token, &created, "runner", "create", "--name", "host")
+	runner := newRunner(test, "host")
+	work := filepath.Join(filepath.Dir(runner.config), "work")
+	config := "log:\n  level: debug\nrunner:\n  fetch_interval: 1s\n  capacity: 1\nhost:\n  workdir_parent: " + work + "\nserver:\n  connections:\n    lyra:\n      url: " + created.URL + "\n      uuid: " + created.UUID + "\n      token: " + created.Token + "\n      labels: ['test:host']\n"
+	if err := os.WriteFile(runner.config, []byte(config), 0o644); err != nil {
+		test.Fatal(err)
+	}
+	runner.start(test)
+	return runner
 }
