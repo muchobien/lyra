@@ -18,6 +18,8 @@ type branchPolicy struct {
 	requireSigned   bool
 	requireApproval bool
 	requireChecks   bool
+	forbidForcePush bool
+	forbidDeletion  bool
 	methods         []string
 }
 
@@ -31,6 +33,8 @@ func policyFor(rules []store.Rule, branch string) branchPolicy {
 		policy.requireSigned = policy.requireSigned || rule.RequireSigned
 		policy.requireApproval = policy.requireApproval || rule.RequireApproval
 		policy.requireChecks = policy.requireChecks || rule.RequireChecks
+		policy.forbidForcePush = policy.forbidForcePush || !rule.AllowForcePush
+		policy.forbidDeletion = policy.forbidDeletion || !rule.AllowDeletion
 		policy.methods = slices.DeleteFunc(policy.methods, func(method string) bool { return !slices.Contains(rule.MergeMethods, method) })
 	}
 	return policy
@@ -64,10 +68,25 @@ func CheckPush(db *store.Store, git repos.Git, dir, repo string, updates []RefUp
 	}
 	for _, update := range updates {
 		branch, isBranch := strings.CutPrefix(update.Ref, "refs/heads/")
-		if !isBranch || zeroSHA(update.New) {
+		if !isBranch {
 			continue
 		}
 		policy := policyFor(rules, branch)
+		if zeroSHA(update.New) {
+			if policy.forbidDeletion {
+				return fmt.Errorf("branch rule %s protects %s from deletion", strings.Join(policy.rules, ", "), branch)
+			}
+			continue
+		}
+		if policy.forbidForcePush && !zeroSHA(update.Old) {
+			forward, err := git.IsAncestor(dir, update.Old, update.New)
+			if err != nil {
+				return err
+			}
+			if !forward {
+				return fmt.Errorf("branch rule %s refuses force pushes to %s; push commits on top of %s", strings.Join(policy.rules, ", "), branch, update.Old[:7])
+			}
+		}
 		if !policy.requireSigned {
 			continue
 		}
@@ -113,6 +132,8 @@ func (s *Server) handleSetRule(w http.ResponseWriter, r *http.Request) {
 		RequireSigned   bool     `json:"require_signed"`
 		RequireApproval bool     `json:"require_approval"`
 		RequireChecks   bool     `json:"require_checks"`
+		AllowForcePush  bool     `json:"allow_force_push"`
+		AllowDeletion   bool     `json:"allow_deletion"`
 		MergeMethods    []string `json:"merge_methods"`
 	}
 	if !decodeBody(w, r, &body) {
@@ -132,7 +153,7 @@ func (s *Server) handleSetRule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rule, eventID, err := s.store.SetRule(repo.Name, identityFrom(r).actor, store.Rule{
-		Pattern: body.Pattern, RequireSigned: body.RequireSigned, RequireApproval: body.RequireApproval, RequireChecks: body.RequireChecks, MergeMethods: body.MergeMethods,
+		Pattern: body.Pattern, RequireSigned: body.RequireSigned, RequireApproval: body.RequireApproval, RequireChecks: body.RequireChecks, AllowForcePush: body.AllowForcePush, AllowDeletion: body.AllowDeletion, MergeMethods: body.MergeMethods,
 	})
 	if err != nil {
 		writeStoreError(w, err, "repository not found")

@@ -2438,7 +2438,7 @@ func (q *Queries) ListReviews(ctx context.Context, itemID int64) ([]Review, erro
 }
 
 const listRules = `-- name: ListRules :many
-SELECT id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks FROM branch_rules WHERE repo = ? ORDER BY pattern
+SELECT id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks, allow_force_push, allow_deletion FROM branch_rules WHERE repo = ? ORDER BY pattern
 `
 
 func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, error) {
@@ -2459,6 +2459,8 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 			&i.CreatedAt,
 			&i.RequireApproval,
 			&i.RequireChecks,
+			&i.AllowForcePush,
+			&i.AllowDeletion,
 		); err != nil {
 			return nil, err
 		}
@@ -3024,14 +3026,16 @@ func (q *Queries) SetImageTag(ctx context.Context, arg SetImageTagParams) (Image
 }
 
 const setRule = `-- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, allow_force_push, allow_deletion, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, pattern) DO UPDATE SET
+	allow_force_push = excluded.allow_force_push,
+	allow_deletion = excluded.allow_deletion,
 	require_signed = excluded.require_signed,
 	require_approval = excluded.require_approval,
 	require_checks = excluded.require_checks,
 	merge_methods = excluded.merge_methods
-RETURNING id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks
+RETURNING id, repo, pattern, require_signed, merge_methods, created_at, require_approval, require_checks, allow_force_push, allow_deletion
 `
 
 type SetRuleParams struct {
@@ -3040,6 +3044,8 @@ type SetRuleParams struct {
 	RequireSigned   bool      `json:"require_signed"`
 	RequireApproval bool      `json:"require_approval"`
 	RequireChecks   bool      `json:"require_checks"`
+	AllowForcePush  bool      `json:"allow_force_push"`
+	AllowDeletion   bool      `json:"allow_deletion"`
 	MergeMethods    string    `json:"merge_methods"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -3051,6 +3057,8 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		arg.RequireSigned,
 		arg.RequireApproval,
 		arg.RequireChecks,
+		arg.AllowForcePush,
+		arg.AllowDeletion,
 		arg.MergeMethods,
 		arg.CreatedAt,
 	)
@@ -3064,6 +3072,8 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 		&i.CreatedAt,
 		&i.RequireApproval,
 		&i.RequireChecks,
+		&i.AllowForcePush,
+		&i.AllowDeletion,
 	)
 	return i, err
 }

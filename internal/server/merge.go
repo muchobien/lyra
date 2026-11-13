@@ -137,6 +137,15 @@ func (s *Server) mergePull(r *http.Request, repo string, number int64, request m
 	if len(plan.Blocked) > 0 {
 		return pull, 0, conflictError(strings.Join(plan.Blocked, "; "))
 	}
+	if request.DeleteBranch {
+		rules, err := s.store.Rules(repo)
+		if err != nil {
+			return pull, 0, err
+		}
+		if policy := policyFor(rules, pull.Head); policy.forbidDeletion {
+			return pull, 0, conflictError("branch rule " + strings.Join(policy.rules, ", ") + " protects " + pull.Head + " from deletion; merge without deleting it")
+		}
+	}
 	if !slices.Contains(plan.Methods, request.Method) {
 		return pull, 0, conflictError("branch rules for " + pull.Base + " allow only " + strings.Join(plan.Methods, ", "))
 	}

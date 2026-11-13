@@ -152,4 +152,48 @@ func TestRules(test *testing.T) {
 	if actions := runLyra(test, srv, token, "event", "list", "--repo", "acme/demo", "--jq", `[.[] | select(.action | startswith("rule.")) | .action] | join(",")`).stdout; actions != "rule.delete,rule.set,rule.set\n" {
 		test.Errorf("rule events %q", actions)
 	}
+
+	mustGit(test, src, "switch", "-q", "-c", "guarded", "main")
+	if output, err := push("guarded"); err != nil {
+		test.Fatalf("push guarded: %v: %s", err, output)
+	}
+	if result := runLyra(test, srv, token, "rule", "set", "acme/demo", "guarded"); result.code != 0 || !strings.Contains(result.stdout, `"allow_force_push": false`) {
+		test.Fatalf("rule set guarded: %+v", result)
+	}
+	commitFile(test, src, "guarded.txt", "one\n", "Fast-forward")
+	if output, err := push("guarded"); err != nil {
+		test.Errorf("fast-forward push to a protected branch: %v: %s", err, output)
+	}
+	mustGit(test, src, "reset", "-q", "--hard", "HEAD~1")
+	commitFile(test, src, "guarded.txt", "rewritten\n", "Rewrite")
+	if output, err := push("+guarded"); err == nil || !strings.Contains(output, "refuses force pushes to guarded") {
+		test.Errorf("force push to a protected branch: %v: %s", err, output)
+	}
+	if output, err := push("--delete", "guarded"); err == nil || !strings.Contains(output, "protects guarded from deletion") {
+		test.Errorf("deleting a protected branch: %v: %s", err, output)
+	}
+	if result := runLyra(test, srv, token, "rule", "set", "acme/demo", "guarded", "--allow-force-push", "--allow-deletion"); result.code != 0 {
+		test.Fatalf("rule set with allows: %+v", result)
+	}
+	if output, err := push("+guarded"); err != nil {
+		test.Errorf("force push once allowed: %v: %s", err, output)
+	}
+	if output, err := push("--delete", "guarded"); err != nil {
+		test.Errorf("delete once allowed: %v: %s", err, output)
+	}
+
+	mustGit(test, src, "switch", "-q", "-c", "target", "main")
+	push("target")
+	mustGit(test, src, "switch", "-q", "-c", "keep", "target")
+	commitFile(test, src, "keep.txt", "keep\n", "Keep me")
+	push("keep")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "keep", "--base", "target", "--title", "Keep")
+	runLyra(test, srv, token, "rule", "set", "acme/demo", "keep")
+	number := strings.TrimSpace(runLyra(test, srv, token, "pr", "list", "acme/demo", "--jq", `.[] | select(.head == "keep") | .number`).stdout)
+	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", number, "--squash", "--delete-branch"); result.code != 1 || !strings.Contains(result.stderr, "protects keep from deletion") {
+		test.Errorf("merge deleting a protected head: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", number, "--squash"); result.code != 0 {
+		test.Errorf("merge keeping the protected head: %+v", result)
+	}
 }

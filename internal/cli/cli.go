@@ -683,7 +683,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	rulesPath := func(repo string) string {
 		return repoAPI(repo) + "/rules"
 	}
-	var requireSigned, requireApproval, requireChecks bool
+	var requireSigned, requireApproval, requireChecks, allowForcePush, allowDeletion bool
 	var allowedMethods []string
 	ruleSet := &cobra.Command{
 		Use:   "set <repo> <pattern>",
@@ -695,18 +695,22 @@ matching branch, and merges of pull requests with such commits (squash merges to
 --require-approval refuses merges until someone other than the author approves the
 pull request's current head commit, and while a reviewer's latest review requests
 changes. --require-checks refuses merges until the Actions jobs for the pull request's
-head commit have all succeeded. --merge-methods limits how pull requests into a
-matching branch can be merged. Rules apply to admins as well. Setting a pattern again replaces its rule.`,
+head commit have all succeeded. A matching branch can't be deleted or force-pushed unless
+every matching rule allows it with --allow-deletion or --allow-force-push.
+--merge-methods limits how pull requests into a matching branch can be merged. Rules apply
+to admins as well. Setting a pattern again replaces its rule.`,
 		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{
-				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "require_checks": requireChecks, "merge_methods": allowedMethods,
+				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "require_checks": requireChecks, "allow_force_push": allowForcePush, "allow_deletion": allowDeletion, "merge_methods": allowedMethods,
 			})
 		},
 	}
 	ruleSet.Flags().BoolVar(&requireSigned, "require-signed", false, "require verified signatures on every commit")
 	ruleSet.Flags().BoolVar(&requireApproval, "require-approval", false, "require an approving review by someone other than the author")
 	ruleSet.Flags().BoolVar(&requireChecks, "require-checks", false, "require every Actions job for the pull request's head commit to succeed")
+	ruleSet.Flags().BoolVar(&allowForcePush, "allow-force-push", false, "allow pushes that rewrite a matching branch's history")
+	ruleSet.Flags().BoolVar(&allowDeletion, "allow-deletion", false, "allow deleting a matching branch")
 	ruleSet.Flags().StringSliceVar(&allowedMethods, "merge-methods", nil, "allowed merge methods, ff and/or squash (default: both)")
 	ruleList := &cobra.Command{
 		Use:   "list <repo>",

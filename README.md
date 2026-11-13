@@ -152,7 +152,7 @@ lyra pr merge <repo> <number> --squash|--ff [--head SHA] [--delete-branch] [--ti
 lyra signing-key
 lyra pr review <repo> <number> --approve|--request-changes|--comment [--body ...] [--comments-file F|-]
 lyra pr comment <repo> <number> --body ... [--path FILE --line N [--side new|old]]
-lyra rule set <repo> <pattern> [--require-signed] [--require-approval] [--require-checks] [--merge-methods ff,squash]
+lyra rule set <repo> <pattern> [--require-signed] [--require-approval] [--require-checks] [--allow-force-push] [--allow-deletion] [--merge-methods ff,squash]
 lyra rule list <repo>
 lyra rule delete <repo> <pattern>
 lyra pr comment|edit|close|reopen <repo> <number> ...   (same flags as for issues)
@@ -307,7 +307,9 @@ tailnet identity too.
 - **Events:** each review is recorded as `pr.review`, and each line comment as
   `pr.comment` with its position.
 
-Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.delete`.
+A branch matching a rule is protected: pushes that rewrite its history and its deletion are
+refused (also through `pr merge --delete-branch`), unless every matching rule allows them
+with `--allow-force-push` or `--allow-deletion`. Managing rules needs `admin`. Each change is recorded as `rule.set` or `rule.delete`.
 
 `lyra pr wait` and `lyra issue wait` block until someone other than the caller acts on
 that pull request or issue, then print the event, with the review or comment it
@@ -491,7 +493,7 @@ lyra admin status                       # read-only mode and the last backup
 | `POST /api/repos/{owner}/{repo}/pulls/{number}/merge` (`method`, `head_sha`, `title`, `message`, `delete_branch`) | write |
 | `GET /api/signing-key` | any |
 | `GET /api/repos/{owner}/{repo}/rules` | read |
-| `POST /api/repos/{owner}/{repo}/rules` (`pattern`, `require_signed`, `require_approval`, `require_checks`, `merge_methods`) | admin |
+| `POST /api/repos/{owner}/{repo}/rules` (`pattern`, `require_signed`, `require_approval`, `require_checks`, `allow_force_push`, `allow_deletion`, `merge_methods`) | admin |
 | `POST /api/repos/{owner}/{repo}/pulls/{number}/reviews` (`state`: `approve`, `request_changes` or `comment`; `body`; `comments`) | write |
 
 Comments on pull requests also take `path`, `line` and `side`.

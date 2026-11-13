@@ -18,6 +18,8 @@ type BranchRule struct {
 	CreatedAt       time.Time `json:"created_at"`
 	RequireApproval bool      `json:"require_approval"`
 	RequireChecks   bool      `json:"require_checks"`
+	AllowForcePush  bool      `json:"allow_force_push"`
+	AllowDeletion   bool      `json:"allow_deletion"`
 }
 
 type Comment struct {

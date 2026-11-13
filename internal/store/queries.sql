@@ -154,9 +154,11 @@ UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;
 
 -- name: SetRule :one
-INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, merge_methods, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO branch_rules (repo, pattern, require_signed, require_approval, require_checks, allow_force_push, allow_deletion, merge_methods, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (repo, pattern) DO UPDATE SET
+	allow_force_push = excluded.allow_force_push,
+	allow_deletion = excluded.allow_deletion,
 	require_signed = excluded.require_signed,
 	require_approval = excluded.require_approval,
 	require_checks = excluded.require_checks,
