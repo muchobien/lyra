@@ -68,14 +68,14 @@ func (s *Server) handleListEvents(r *http.Request, input *listEventsInput) (*bod
 	return reply(events)
 }
 
-func parseEventFilter(r *http.Request) (eventFilter, error) {
-	query := r.URL.Query()
+func parseEventFilter(r *http.Request, input *eventStreamInput) (eventFilter, error) {
 	filter := eventFilter{
 		id:          identityFrom(r),
-		repo:        query.Get("repo"),
-		actions:     query["action"],
-		assignee:    query.Get("assignee"),
-		excludeSelf: query.Get("exclude_self") == "true",
+		repo:        input.Repo,
+		item:        input.Item,
+		actions:     input.Action,
+		assignee:    input.Assignee,
+		excludeSelf: input.ExcludeSelf,
 	}
 	if filter.repo != "" && !filter.id.can(scopeRead, filter.repo) {
 		return filter, forbidden("token lacks read access to " + filter.repo)
@@ -85,12 +85,8 @@ func parseEventFilter(r *http.Request) (eventFilter, error) {
 			return filter, badRequest("invalid action pattern " + pattern)
 		}
 	}
-	if value := query.Get("item"); value != "" {
-		item, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || item <= 0 || filter.repo == "" {
-			return filter, badRequest("item must be an issue or pull request number, with repo")
-		}
-		filter.item = item
+	if filter.item < 0 || (filter.item > 0 && filter.repo == "") {
+		return filter, badRequest("item must be an issue or pull request number, with repo")
 	}
 	if filter.assignee == "me" || filter.assignee == "@me" {
 		filter.assignee = filter.id.name()
@@ -153,10 +149,10 @@ func (s *Server) ownCursor(ctx context.Context, filter eventFilter, latest int64
 	return cursor, nil
 }
 
-func (s *Server) streamStart(r *http.Request, filter eventFilter) (int64, error) {
-	start := r.Header.Get("Last-Event-ID")
+func (s *Server) streamStart(r *http.Request, filter eventFilter, input *eventStreamInput) (int64, error) {
+	start := input.LastEventID
 	if start == "" {
-		start = r.URL.Query().Get("since")
+		start = input.Since
 	}
 	latest, err := s.store.LatestEventID(r.Context())
 	if err != nil {
@@ -248,12 +244,12 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, filter eve
 	}
 }
 
-func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) error {
-	filter, err := parseEventFilter(r)
+func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request, input *eventStreamInput) error {
+	filter, err := parseEventFilter(r, input)
 	if err != nil {
 		return err
 	}
-	cursor, err := s.streamStart(r, filter)
+	cursor, err := s.streamStart(r, filter, input)
 	if err != nil {
 		return err
 	}

@@ -140,16 +140,12 @@ func (s *Server) visibleRelease(r *http.Request, repo string, release store.Rele
 	return release, err
 }
 
-func (s *Server) lookupRelease(r *http.Request, scope string) (store.Repo, store.Release, error) {
-	repo, err := s.lookupRepo(r, scope)
+func (s *Server) lookupRelease(r *http.Request, scope string, path ReleasePath) (store.Repo, store.Release, error) {
+	repo, err := s.lookupRepo(r, scope, path.fullName())
 	if err != nil {
 		return repo, store.Release{}, err
 	}
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		return repo, store.Release{}, notFound("release not found")
-	}
-	release, err := s.store.Release(r.Context(), repo.Name, id)
+	release, err := s.store.Release(r.Context(), repo.Name, path.ID)
 	release, err = s.visibleRelease(r, repo.Name, release, err)
 	return repo, release, missing(err, "release not found")
 }
@@ -201,8 +197,8 @@ func (s *Server) untag(ctx context.Context, dir, tag, sha string) {
 	}
 }
 
-func (s *Server) handleListReleases(r *http.Request, _ *RepoPath) (*body[[]store.Release], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListReleases(r *http.Request, input *RepoPath) (*body[[]store.Release], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +216,8 @@ func (s *Server) handleListReleases(r *http.Request, _ *RepoPath) (*body[[]store
 	return reply(visible)
 }
 
-func (s *Server) handleLatestRelease(r *http.Request, _ *RepoPath) (*body[store.Release], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleLatestRelease(r *http.Request, input *RepoPath) (*body[store.Release], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +229,7 @@ func (s *Server) handleLatestRelease(r *http.Request, _ *RepoPath) (*body[store.
 }
 
 func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
 	if err != nil {
 		return err
 	}
@@ -245,8 +241,8 @@ func (s *Server) handleReleaseByTag(w http.ResponseWriter, r *http.Request) erro
 	return writeJSON(w, http.StatusOK, s.releaseLinks(r, release))
 }
 
-func (s *Server) handleGetRelease(r *http.Request, _ *ReleasePath) (*body[store.Release], error) {
-	_, release, err := s.lookupRelease(r, scopeRead)
+func (s *Server) handleGetRelease(r *http.Request, input *ReleasePath) (*body[store.Release], error) {
+	_, release, err := s.lookupRelease(r, scopeRead, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +301,7 @@ func (s *Server) newRelease(ctx context.Context, repo string, body createRelease
 
 func (s *Server) handleCreateRelease(r *http.Request, input *createReleaseInput) (*body[releaseWrite], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +358,7 @@ func applyReleaseEdit(release *store.Release, body editReleaseRequest) error {
 
 func (s *Server) handleEditRelease(r *http.Request, input *editReleaseInput) (*body[releaseWrite], error) {
 	ctx := r.Context()
-	repo, release, err := s.lookupRelease(r, scopeWrite)
+	repo, release, err := s.lookupRelease(r, scopeWrite, input.ReleasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +412,7 @@ func (s *Server) deleteTag(ctx context.Context, repo, tag string) (bool, error) 
 
 func (s *Server) handleDeleteRelease(r *http.Request, input *deleteReleaseInput) (*body[releaseDeleted], error) {
 	ctx := r.Context()
-	repo, release, err := s.lookupRelease(r, scopeWrite)
+	repo, release, err := s.lookupRelease(r, scopeWrite, input.ReleasePath)
 	if err != nil {
 		return nil, err
 	}

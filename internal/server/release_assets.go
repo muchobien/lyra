@@ -120,13 +120,13 @@ func (s *Server) storeObject(ctx context.Context, repo string, asset *store.Asse
 	return nil
 }
 
-func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, input *uploadAssetInput) error {
 	ctx := r.Context()
-	repo, release, err := s.lookupRelease(r, scopeWrite)
+	repo, release, err := s.lookupRelease(r, scopeWrite, input.ReleasePath)
 	if err != nil {
 		return err
 	}
-	name := r.URL.Query().Get("name")
+	name := input.Name
 	if !validAssetName(name) {
 		return badRequest(assetNameProblem)
 	}
@@ -138,8 +138,7 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request) error
 	if err := s.storeObject(ctx, repo.Name, &asset, r.Body); err != nil {
 		return err
 	}
-	clobber := r.URL.Query().Get("clobber") == "true"
-	created, replaced, eventID, err := s.store.AddAsset(ctx, identityFrom(r).actor, release, asset, clobber)
+	created, replaced, eventID, err := s.store.AddAsset(ctx, identityFrom(r).actor, release, asset, input.Clobber)
 	if errors.Is(err, store.ErrExists) {
 		s.deleteObject(ctx, repo.Name, asset)
 		return conflict("asset " + name + " already exists; pass clobber=true to replace it")
@@ -168,7 +167,7 @@ type assetInput struct {
 
 func (s *Server) handleDeleteAsset(r *http.Request, input *assetInput) (*body[deletedWithEvent], error) {
 	ctx := r.Context()
-	repo, release, err := s.lookupRelease(r, scopeWrite)
+	repo, release, err := s.lookupRelease(r, scopeWrite, input.ReleasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -202,16 +201,16 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, release stor
 	return nil
 }
 
-func (s *Server) handleDownloadAsset(w http.ResponseWriter, r *http.Request) error {
-	_, release, err := s.lookupRelease(r, scopeRead)
+func (s *Server) handleDownloadAsset(w http.ResponseWriter, r *http.Request, input *assetInput) error {
+	_, release, err := s.lookupRelease(r, scopeRead, input.ReleasePath)
 	if err != nil {
 		return err
 	}
-	return s.serveAsset(w, r, release, pathParam(r, "name"))
+	return s.serveAsset(w, r, release, input.Name)
 }
 
 func (s *Server) handleStableDownload(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
 	if err != nil {
 		return err
 	}
@@ -229,7 +228,7 @@ func (s *Server) handleStableDownload(w http.ResponseWriter, r *http.Request) er
 }
 
 func (s *Server) handleLatestDownload(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
 	if err != nil {
 		return err
 	}

@@ -109,7 +109,7 @@ type releaseNotesInput struct {
 
 func (s *Server) handleReleaseNotes(r *http.Request, input *releaseNotesInput) (*body[releaseNotes], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}

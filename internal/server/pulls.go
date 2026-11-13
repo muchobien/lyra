@@ -62,12 +62,12 @@ func (s *Server) mergeStatus(ctx context.Context, repo string, pull store.Pull) 
 	return &plan, ""
 }
 
-func (s *Server) lookupPull(r *http.Request, number int64) (store.Repo, store.Pull, error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) lookupPull(r *http.Request, path ItemPath) (store.Repo, store.Pull, error) {
+	repo, err := s.lookupRepo(r, scopeRead, path.fullName())
 	if err != nil {
 		return repo, store.Pull{}, err
 	}
-	pull, err := s.store.Pull(r.Context(), repo.Name, number)
+	pull, err := s.store.Pull(r.Context(), repo.Name, path.Number)
 	return repo, pull, missing(err, "pull request not found")
 }
 
@@ -82,7 +82,7 @@ func (s *Server) pullRange(ctx context.Context, repo string, pull store.Pull) (s
 }
 
 func (s *Server) handleListPulls(r *http.Request, input *listItemsInput) (*body[[]store.Pull], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (s *Server) resolvePullBranches(ctx context.Context, dir, head, base string
 
 func (s *Server) handleCreatePull(r *http.Request, input *createPullInput) (*body[pullWrite], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (s *Server) handleCreatePull(r *http.Request, input *createPullInput) (*bod
 
 func (s *Server) handleGetPull(r *http.Request, input *ItemPath) (*body[pullView], error) {
 	ctx := r.Context()
-	repo, pull, err := s.lookupPull(r, input.Number)
+	repo, pull, err := s.lookupPull(r, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (s *Server) handleEditPull(r *http.Request, input *editItemInput) (*body[pu
 
 func (s *Server) handlePullCommits(r *http.Request, input *ItemPath) (*body[[]repos.Commit], error) {
 	ctx := r.Context()
-	repo, pull, err := s.lookupPull(r, input.Number)
+	repo, pull, err := s.lookupPull(r, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (s *Server) handlePullCommits(r *http.Request, input *ItemPath) (*body[[]re
 
 func (s *Server) handlePullDiff(r *http.Request, input *ItemPath) (*diffOutput, error) {
 	ctx := r.Context()
-	repo, pull, err := s.lookupPull(r, input.Number)
+	repo, pull, err := s.lookupPull(r, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *Server) handlePullDiff(r *http.Request, input *ItemPath) (*diffOutput, 
 
 func (s *Server) handlePullFiles(r *http.Request, input *ItemPath) (*body[[]repos.FileChange], error) {
 	ctx := r.Context()
-	repo, pull, err := s.lookupPull(r, input.Number)
+	repo, pull, err := s.lookupPull(r, *input)
 	if err != nil {
 		return nil, err
 	}

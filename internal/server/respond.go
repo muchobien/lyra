@@ -179,11 +179,15 @@ func register[I, O any](api huma.API, operation huma.Operation, handle func(*htt
 	})
 }
 
-func stream[I any](handle handler) func(*http.Request, *I) (*huma.StreamResponse, error) {
-	return func(*http.Request, *I) (*huma.StreamResponse, error) {
+func stream[I any](
+	handle func(http.ResponseWriter, *http.Request, *I) error,
+) func(*http.Request, *I) (*huma.StreamResponse, error) {
+	return func(_ *http.Request, input *I) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{Body: func(ctx huma.Context) {
 			r, w := humachi.Unwrap(ctx)
-			api(handle)(w, r)
+			api(func(w http.ResponseWriter, r *http.Request) error {
+				return handle(w, r, input)
+			})(w, r)
 		}}, nil
 	}
 }
@@ -198,6 +202,10 @@ func queryLimit(limit, fallback, most int) int {
 type RepoPath struct {
 	Owner string `path:"owner"`
 	Repo  string `path:"repo"`
+}
+
+func (path RepoPath) fullName() string {
+	return path.Owner + "/" + path.Repo
 }
 
 type idPath struct {

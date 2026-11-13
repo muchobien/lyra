@@ -201,8 +201,8 @@ func (s *Server) images(r *http.Request, repo string) ([]store.Image, error) {
 	return images, err
 }
 
-func (s *Server) handleListImages(r *http.Request, _ *RepoPath) (*body[[]store.Image], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListImages(r *http.Request, input *RepoPath) (*body[[]store.Image], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
