@@ -1,0 +1,53 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - funlen
+    - lll
+  settings:
+    errcheck:
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+        - (*database/sql.Tx).Rollback
+        - (*os.File).Close
+        - (io.Closer).Close
+        - (*github.com/muchobien/lyra/internal/store.Store).Close
+        - (*github.com/muchobien/lyra/internal/server.Server).Close
+        - (*github.com/muchobien/lyra/internal/server.storageFile).Close
+        - (github.com/distribution/distribution/v3/registry/storage/driver.FileWriter).Cancel
+        - (*github.com/alecthomas/chroma/v2/formatters/html.Formatter).WriteCSS
+        - os.Remove
+        - os.RemoveAll
+        - crypto/rand.Read
+        - fmt.Fprintf
+        - fmt.Fprintln
+    funlen:
+      lines: 80
+      statements: -1
+    lll:
+      line-length: 120
+      tab-width: 4
+  exclusions:
+    generated: strict
+    rules:
+      - path: internal/server/admin\.go
+        linters:
+          - staticcheck
+        text: SA2001
+      - path: _test\.go
+        linters:
+          - errcheck
+          - funlen
+          - lll
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/muchobien/lyra
+  exclusions:
+    generated: strict

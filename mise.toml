@@ -1,3 +1,24 @@
 [tools]
 go = "1.27.4"
+golangci-lint = "2.15.0"
 sqlc = "1.31.1"
+
+[tasks.fmt]
+description = "Format Go code with gofmt and goimports"
+run = "golangci-lint fmt"
+
+[tasks.lint]
+description = "Check formatting, then run go vet and golangci-lint"
+run = ["golangci-lint fmt --diff", "go vet ./...", "golangci-lint run"]
+
+[tasks.build]
+description = "Compile every package"
+run = "go build ./..."
+
+[tasks.test]
+description = "Run the test suite, including the end-to-end tests"
+run = "go test ./..."
+
+[tasks."sqlc:check"]
+description = "Fail if the generated queries are out of date"
+run = "sqlc diff"
