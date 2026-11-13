@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -156,6 +157,32 @@ func TestReleases(test *testing.T) {
 	}
 	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/releases/download/v1.0.0/app.tar.gz", map[string]string{"Authorization": "Bearer " + reader, "If-None-Match": `"` + hex.EncodeToString(sum[:]) + `"`}, ""); status != http.StatusNotModified {
 		test.Fatalf("If-None-Match: HTTP %d", status)
+	}
+	for _, ranged := range []struct {
+		header, contentRange string
+		want             []byte
+	}{
+		{"bytes=1000-1999", "bytes 1000-1999/300000", archive[1000:2000]},
+		{"bytes=-10", "bytes 299990-299999/300000", archive[299990:]},
+		{"bytes=299000-", "bytes 299000-299999/300000", archive[299000:]},
+	} {
+		request, _ := http.NewRequest(http.MethodGet, srv.url+"/acme/demo/releases/download/v1.0.0/app.tar.gz", nil)
+		request.Header.Set("Authorization", "Bearer "+reader)
+		request.Header.Set("Range", ranged.header)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			test.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != http.StatusPartialContent || response.Header.Get("Content-Range") != ranged.contentRange || !bytes.Equal(body, ranged.want) {
+			test.Fatalf("Range %s: HTTP %d, %s, %d bytes", ranged.header, response.StatusCode, response.Header.Get("Content-Range"), len(body))
+		}
+	}
+	headRequest, _ := http.NewRequest(http.MethodHead, srv.url+"/acme/demo/releases/download/v1.0.0/app.tar.gz", nil)
+	headRequest.Header.Set("Authorization", "Bearer "+reader)
+	if response, err := http.DefaultClient.Do(headRequest); err != nil || response.StatusCode != http.StatusOK || response.ContentLength != 300000 || response.Header.Get("Accept-Ranges") != "bytes" {
+		test.Fatalf("HEAD: %v %+v", err, response)
 	}
 	if status, _ := call(test, http.MethodPost, srv.url+"/api/repos/acme/demo/releases/"+fmt.Sprint(published.ID)+"/assets?name=x", bearer(reader), "x"); status != http.StatusForbidden {
 		test.Fatalf("reader uploads: HTTP %d", status)

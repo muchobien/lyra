@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -484,29 +485,64 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, release stor
 		return
 	}
 	asset := release.Assets[index]
-	etag := `"` + asset.SHA256 + `"`
-	w.Header().Set("ETag", etag)
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
+	w.Header().Set("ETag", `"`+asset.SHA256+`"`)
 	w.Header().Set("Content-Type", asset.ContentType)
-	w.Header().Set("Content-Length", strconv.FormatInt(asset.Size, 10))
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": asset.Name}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if r.Method == http.MethodHead {
-		return
+	file := &storageFile{ctx: r.Context(), storage: s.storage, path: releasesPath(release.Repo) + "/" + asset.Object, size: asset.Size}
+	defer file.Close()
+	http.ServeContent(w, r, asset.Name, asset.CreatedAt, file)
+}
+
+type storageFile struct {
+	ctx     context.Context
+	storage driver.StorageDriver
+	path    string
+	size    int64
+	offset  int64
+	reader  io.ReadCloser
+}
+
+func (file *storageFile) Read(buffer []byte) (int, error) {
+	if file.offset >= file.size {
+		return 0, io.EOF
 	}
-	reader, err := s.storage.Reader(r.Context(), releasesPath(release.Repo)+"/"+asset.Object, 0)
-	if err != nil {
-		w.Header().Del("Content-Length")
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if file.reader == nil {
+		reader, err := file.storage.Reader(file.ctx, file.path, file.offset)
+		if err != nil {
+			return 0, err
+		}
+		file.reader = reader
 	}
-	defer reader.Close()
-	if _, err := io.Copy(w, reader); err != nil {
-		slog.Error("download release asset", "repo", release.Repo, "asset", asset.Name, "error", err)
+	read, err := file.reader.Read(buffer)
+	file.offset += int64(read)
+	return read, err
+}
+
+func (file *storageFile) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekCurrent:
+		offset += file.offset
+	case io.SeekEnd:
+		offset += file.size
 	}
+	if offset < 0 {
+		return 0, errors.New("negative offset")
+	}
+	if offset != file.offset {
+		file.Close()
+	}
+	file.offset = offset
+	return offset, nil
+}
+
+func (file *storageFile) Close() error {
+	if file.reader == nil {
+		return nil
+	}
+	err := file.reader.Close()
+	file.reader = nil
+	return err
 }
 
 func (s *Server) handleDownloadAsset(w http.ResponseWriter, r *http.Request) {

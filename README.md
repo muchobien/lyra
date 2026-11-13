@@ -190,7 +190,8 @@ A release belongs to a tag:
   recently published release whose commit is an ancestor. Prereleases count as the
   previous release only for another prerelease. `lyra release notes` previews them.
 - **Stable URLs:** `/{owner}/{repo}/releases/download/{tag}/{name}` and
-  `/{owner}/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`.
+  `/{owner}/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`. They
+  support range requests (`Range`, `If-Range`), so interrupted downloads can resume.
 - **Events:** `release.created` (drafts), `release.published`, `release.updated`,
   `release.deleted`, and `release.asset` for each upload or deletion.
 
