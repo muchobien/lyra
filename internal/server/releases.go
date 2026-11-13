@@ -50,12 +50,6 @@ type releaseDeleted struct {
 	TagDeleted bool   `json:"tag_deleted"`
 }
 
-type releasesView struct {
-	Releases []store.Release
-	Latest   string
-	Single   bool
-}
-
 func releasesPath(repo string) string {
 	return "/lyra/releases/" + repo
 }
@@ -420,42 +414,4 @@ func (s *Server) handleDeleteRelease(w http.ResponseWriter, r *http.Request) err
 		}
 	}
 	return writeJSON(w, http.StatusOK, releaseDeleted{Deleted: release.Tag, EventID: eventID, TagDeleted: tagDeleted})
-}
-
-func (s *Server) shownReleases(r *http.Request, repo, tag string) ([]store.Release, error) {
-	if tag == "" {
-		return s.store.Releases(r.Context(), repo)
-	}
-	release, err := s.releaseByTag(r, repo, tag)
-	return []store.Release{release}, missing(err, "No release for tag "+tag+".")
-}
-
-func (s *Server) uiReleases(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-	repo, err := s.uiLookup(r)
-	if err != nil {
-		return err
-	}
-	tag := pathParam(r, "*")
-	releases, err := s.shownReleases(r, repo.Name, tag)
-	if err != nil {
-		return err
-	}
-	drafts := identityFrom(r).can(scopeWrite, repo.Name)
-	view := releasesView{Releases: []store.Release{}, Single: tag != ""}
-	if latest, err := s.store.LatestRelease(ctx, repo.Name); err == nil {
-		view.Latest = latest.Tag
-	}
-	for _, release := range releases {
-		if drafts || !release.Draft {
-			view.Releases = append(view.Releases, s.releaseLinks(r, release))
-		}
-	}
-	title := "Releases · " + repo.Name
-	if tag != "" {
-		title = releases[0].Title + " · " + repo.Name
-	}
-	ref := s.git.DefaultBranch(ctx, s.repoDir(repo.Name))
-	s.render(w, r, http.StatusOK, "releases", s.repoPage(r, &repo, title, ref, view))
-	return nil
 }

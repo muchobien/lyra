@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import styles from "./Controls.module.css";
 
+export function formValue(form: FormData, name: string) {
+  const value = form.get(name);
+  return typeof value === "string" ? value : "";
+}
+
 type CopyButtonProps = { value: string; label: string; compact?: boolean };
 
 export function CopyButton({ value, label, compact = false }: CopyButtonProps) {
@@ -34,12 +39,12 @@ export function CopyButton({ value, label, compact = false }: CopyButtonProps) {
   );
 }
 
-type NoticeProps = { error: Error; retry: () => void };
+type NoticeProps = { error: Error; retry: () => void; title?: string };
 
-export function ErrorNotice({ error, retry }: NoticeProps) {
+export function ErrorNotice({ error, retry, title = "Couldn’t load this view" }: NoticeProps) {
   return (
     <section className={styles.notice} role="alert">
-      <h2>Couldn’t load this view</h2>
+      <h2>{title}</h2>
       <p>{error.message}</p>
       <button className={styles.button} type="button" onClick={retry}>
         Retry

@@ -77,10 +77,11 @@ type editItemRequest struct {
 }
 
 type commentRequest struct {
-	Body string `json:"body"`
-	Path string `json:"path"`
-	Line int64  `json:"line"`
-	Side string `json:"side"`
+	Body    string `json:"body"`
+	Path    string `json:"path"`
+	Line    int64  `json:"line"`
+	Side    string `json:"side"`
+	HeadSHA string `json:"head_sha,omitempty"`
 }
 
 type createLabelRequest struct {
@@ -94,6 +95,7 @@ type itemQuery struct {
 	limit     int
 	labels    []string
 	assignees []string
+	text      string
 }
 
 func checkText(title *string, body *string) error {
@@ -124,6 +126,7 @@ func parseItemQuery(r *http.Request, states []string) (itemQuery, error) {
 		limit:     queryLimit(r, 100, math.MaxInt),
 		labels:    query["label"],
 		assignees: identityFrom(r).resolve(query["assignee"]),
+		text:      strings.ToLower(strings.TrimSpace(query.Get("q"))),
 	}
 	if parsed.state == "" {
 		parsed.state = stateOpen
@@ -141,6 +144,9 @@ func containsAll(have, want []string) bool {
 }
 
 func (query itemQuery) matches(item store.Item) bool {
+	if query.text != "" && !strings.Contains(strings.ToLower(item.Title), query.text) && strconv.FormatInt(item.Number, 10) != strings.TrimPrefix(query.text, "#") {
+		return false
+	}
 	return containsAll(item.Labels, query.labels) && containsAll(item.Assignees, query.assignees)
 }
 
@@ -286,7 +292,7 @@ func (s *Server) handleCommentItem(kind string) handler {
 		if err := checkText(nil, &body.Body); err != nil {
 			return err
 		}
-		anchor := store.LineRef{Path: body.Path, Line: body.Line, Side: body.Side}
+		anchor := store.LineRef{Path: body.Path, Line: body.Line, Side: body.Side, CommitSHA: body.HeadSHA}
 		line, err := s.commentLine(ctx, repo.Name, kind, number, anchor)
 		if err != nil {
 			return missing(err, nouns[kind]+" not found")

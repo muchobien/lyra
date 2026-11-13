@@ -397,9 +397,12 @@ export function RepositoryPage() {
                 >
                   {latest.data.title}
                 </a>
-                <time className={styles.secondary} dateTime={latest.data.published_at}>
+                <time
+                  className={styles.secondary}
+                  dateTime={latest.data.published_at || latest.data.created_at}
+                >
                   {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-                    new Date(latest.data.published_at),
+                    new Date(latest.data.published_at || latest.data.created_at),
                   )}
                 </time>
               </>

@@ -22,7 +22,8 @@ export default defineConfig(({ command }) => {
         "/api": backend,
         "/v2": backend,
         "^/[^/]+/[^/]+[.]git/": backend,
-        "^/[^/]+/[^/]+/(pulls|issues|runs|commits|commit|tags|releases|images|tree|blob|info|git-upload-pack|git-receive-pack)(/|$)":
+        "^/[^/]+/[^/]+/(tree|blob)(/|$)": backend,
+        "^/[^/]+/[^/]+/(releases/(download/|latest/download/)|info/|git-upload-pack$|git-receive-pack$)":
           backend,
       },
     },
@@ -30,7 +31,11 @@ export default defineConfig(({ command }) => {
     lint: {
       plugins: ["typescript", "react", "jsx-a11y"],
       jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-      rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+      rules: {
+        "vite-plus/prefer-vite-plus-imports": "error",
+        "no-nested-ternary": "error",
+        curly: ["error", "all"],
+      },
       options: { typeAware: true, typeCheck: true },
     },
   };

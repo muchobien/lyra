@@ -3,6 +3,7 @@ package webui
 import (
 	"bytes"
 	"embed"
+	"html"
 	"io/fs"
 	"net/http"
 	"time"
@@ -24,14 +25,26 @@ func Assets() http.Handler {
 	})
 }
 
-func Serve(w http.ResponseWriter, r *http.Request) {
+func Serve(w http.ResponseWriter, r *http.Request, status int, message string) {
 	index, err := bundle.ReadFile("dist/index.html")
 	if err != nil {
 		http.Error(w, "UI bundle unavailable", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if message != "" {
+		attributes := `id="root" data-error-title="` + html.EscapeString(http.StatusText(status)) + `" data-error-message="` + html.EscapeString(message) + `"`
+		index = bytes.Replace(index, []byte(`id="root"`), []byte(attributes), 1)
+	}
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if status != http.StatusOK {
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(status)
+		if r.Method != http.MethodHead {
+			w.Write(index)
+		}
+		return
+	}
 	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(index))
 }

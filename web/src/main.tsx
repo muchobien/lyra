@@ -5,6 +5,7 @@ import { createRootRoute, createRoute, createRouter, RouterProvider } from "@tan
 import { App } from "./App";
 import { RepositoryList } from "./RepositoryList";
 import { RepositoryPage } from "./RepositoryPage";
+import { RepositoryScreen } from "./RepositoryScreen";
 import "./tokens.css";
 
 const rootRoute = createRootRoute({ component: App });
@@ -37,8 +38,64 @@ const repositoryRoute = createRoute({
     return value;
   },
 });
+type ScreenSearch = {
+  state?: string;
+  q?: string;
+  label?: string;
+  assignee?: string;
+  tab?: string;
+  file?: string;
+  layout?: string;
+  job?: string;
+  workflow?: string;
+  ref?: string;
+  section?: string;
+  limit?: string;
+  action?: string;
+};
+function validateScreenSearch(search: Record<string, unknown>) {
+  const parsed: ScreenSearch = {};
+  for (const key of [
+    "state",
+    "q",
+    "label",
+    "assignee",
+    "tab",
+    "file",
+    "layout",
+    "job",
+    "workflow",
+    "ref",
+    "section",
+    "limit",
+    "action",
+  ] as const) {
+    if (typeof search[key] === "string") {
+      parsed[key] = search[key];
+    }
+  }
+  return parsed;
+}
+const sectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$owner/$repo/$section",
+  component: RepositoryScreen,
+  validateSearch: validateScreenSearch,
+});
+const detailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$owner/$repo/$section/$",
+  component: RepositoryScreen,
+  validateSearch: validateScreenSearch,
+});
 const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, ownerRoute, repositoryRoute]),
+  routeTree: rootRoute.addChildren([
+    indexRoute,
+    ownerRoute,
+    repositoryRoute,
+    sectionRoute,
+    detailRoute,
+  ]),
   scrollRestoration: true,
   defaultPreload: "intent",
 });

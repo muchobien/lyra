@@ -93,7 +93,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	runs, err := s.store.Runs(r.Context(), repo.Name, int64(queryLimit(r, 30, 100)))
+	runs, err := s.store.Runs(r.Context(), repo.Name, int64(queryLimit(r, 30, 1000)))
 	if err != nil {
 		return err
 	}

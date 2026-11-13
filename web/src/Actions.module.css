@@ -1,0 +1,259 @@
+.listWorkspace {
+  display: grid;
+  grid-template-columns: 215px minmax(0, 1fr);
+  gap: 1.7rem;
+  align-items: start;
+}
+.workflows {
+  display: grid;
+  gap: 0.3rem;
+  & > a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.7rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-radius: 0.5rem;
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &[aria-current="page"] {
+      color: var(--text);
+      background: var(--accent-surface);
+      font-weight: 550;
+    }
+  }
+  & p {
+    padding: 0.5rem 0.8rem;
+  }
+}
+.runTimes {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: right;
+}
+.metadata {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  font-size: 0.75rem;
+  & > summary {
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+  }
+  & > div {
+    display: flex;
+    gap: 1.2rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0 1rem 1rem;
+    & span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      overflow-wrap: anywhere;
+    }
+  }
+}
+.runWorkspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1.3rem;
+}
+.jobs {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  & a {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.8rem 1rem;
+    border-radius: 0.5rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &[aria-current="page"] {
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--surface);
+    }
+  }
+}
+.logSection {
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  overflow: clip;
+  min-width: 0;
+}
+.logToolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
+  & > strong {
+    font-size: 0.85rem;
+  }
+  & > span {
+    font-size: 0.7rem;
+  }
+  & button,
+  & a {
+    min-height: 2rem;
+    font-size: 0.7rem;
+    padding: 0.3rem 0.6rem;
+  }
+}
+.logFilters {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--soft-border);
+  & input {
+    min-width: 5rem;
+    min-height: 2rem;
+    font-size: 0.75rem;
+  }
+}
+.mobileJobs {
+  display: none;
+}
+.logPanel {
+  max-height: 65dvh;
+  min-height: 15rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  background: light-dark(#fbfafc, #111117);
+}
+.logText {
+  font:
+    12px/1.9 ui-monospace,
+    SFMono-Regular,
+    monospace;
+  white-space: pre;
+  padding: 1rem 1.2rem;
+  margin: 0;
+  tab-size: 4;
+  color: var(--text);
+}
+.activeStep {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 1rem;
+  background: var(--raised);
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+.step {
+  border-bottom: 1px solid var(--soft-border);
+  & > summary {
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    & > span:last-child {
+      margin-left: auto;
+    }
+  }
+}
+.completedSteps {
+  & > summary {
+    padding: 0.85rem 1rem;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.8rem;
+    background: var(--raised);
+  }
+}
+.rerunTrigger {
+  anchor-name: --rerun-trigger;
+}
+.rerunMenu {
+  position-anchor: --rerun-trigger;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-inline, flip-block;
+  inset: auto;
+  margin: 0.4rem 0 0;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  min-width: 13rem;
+  & button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 0.65rem;
+    border-radius: 0.4rem;
+    font-size: 0.8rem;
+    &:hover {
+      background: var(--hover);
+    }
+  }
+}
+@media (width <= 800px) {
+  .listWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workflows {
+    display: flex;
+    overflow-x: auto;
+    & > a {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+  .runWorkspace {
+    grid-template-columns: 175px minmax(0, 1fr);
+  }
+}
+@media (width <= 600px) {
+  .runWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .jobs {
+    display: none;
+  }
+  .mobileJobs {
+    display: block;
+    min-width: 6rem;
+    max-width: 55%;
+  }
+  .logToolbar {
+    gap: 0.5rem;
+  }
+  .logToolbar > span:not(:empty) {
+    width: 100%;
+  }
+  .metadata > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .logText {
+    font-size: 11px;
+    padding: 0.8rem;
+  }
+  .runTimes {
+    text-align: left;
+  }
+}

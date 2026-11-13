@@ -33,6 +33,7 @@ var reviewStates = map[string]string{
 type reviewRequest struct {
 	State    string              `json:"state"`
 	Body     string              `json:"body"`
+	HeadSHA  string              `json:"head_sha,omitempty"`
 	Comments []store.LineComment `json:"comments"`
 }
 
@@ -131,6 +132,9 @@ func (s *Server) commentLine(
 	pull, err := s.store.Pull(ctx, repo, number)
 	if err != nil {
 		return ref, err
+	}
+	if ref.CommitSHA != "" && ref.CommitSHA != pull.HeadSHA {
+		return ref, conflict("the pull request changed; refresh the diff before commenting on this line")
 	}
 	err = s.checkLines(ctx, repo, pull, []*store.LineRef{&ref})
 	return ref, err
@@ -244,6 +248,9 @@ func (s *Server) reviewPull(
 	pull, err := s.store.Pull(ctx, repo, number)
 	if err != nil {
 		return store.Review{}, 0, err
+	}
+	if request.HeadSHA != "" && request.HeadSHA != pull.HeadSHA {
+		return store.Review{}, 0, conflict("the pull request changed; refresh the diff before submitting this review")
 	}
 	if request.State != reviewComment && isAuthor(pull, id.actor) {
 		return store.Review{}, 0, store.InvalidError("the author of a pull request can't approve it or request changes")

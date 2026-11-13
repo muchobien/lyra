@@ -1,31 +1,23 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
 
-	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
 )
 
 const (
-	tabCommits = "commits"
-	tabFiles   = "files"
-
 	lineAdd    = "add"
 	lineDelete = "delete"
 )
 
 var itemPaths = map[string]string{kindIssue: "issues", kindPull: "pulls"}
-
-var itemTitles = map[string]string{kindIssue: "Issues · ", kindPull: "Pull requests · "}
 
 var lineKinds = map[gitdiff.LineOp]string{
 	gitdiff.OpContext: "context",
@@ -33,59 +25,20 @@ var lineKinds = map[gitdiff.LineOp]string{
 	gitdiff.OpDelete:  lineDelete,
 }
 
-type itemRow struct {
-	Item store.Item
-	Pull *store.Pull
-}
-
-type itemsView struct {
-	Kind     string
-	Path     string
-	Noun     string
-	Rows     []itemRow
-	State    string
-	CanWrite bool
-}
-
-type timelineEntry struct {
-	At      time.Time
-	Comment *store.Comment
-	Review  *store.Review
-}
-
 type diffLine struct {
-	Kind     string
-	Old      int64
-	New      int64
-	Text     string
-	Comments []store.Comment
+	Kind     string          `json:"kind"`
+	Old      int64           `json:"old"`
+	New      int64           `json:"new"`
+	Text     string          `json:"text"`
+	HTML     string          `json:"html"`
+	Comments []store.Comment `json:"comments"`
 }
 
 type diffFile struct {
-	Path    string
-	OldPath string
-	Binary  bool
-	Lines   []diffLine
-}
-
-type itemPage struct {
-	Kind       string
-	Path       string
-	Noun       string
-	Item       store.Item
-	Pull       *store.Pull
-	Timeline   []timelineEntry
-	CanWrite   bool
-	IsAuthor   bool
-	Labels     string
-	Assignees  string
-	Tab        string
-	Commits    []repos.Commit
-	Files      []repos.FileChange
-	DiffFiles  []diffFile
-	Merge      *mergePlan
-	MergeError string
-	Checks     *store.Checks
+	Path    string     `json:"path"`
+	OldPath string     `json:"old_path"`
+	Binary  bool       `json:"binary"`
+	Lines   []diffLine `json:"lines"`
 }
 
 func splitList(text string) []string {
@@ -127,53 +80,6 @@ func (s *Server) uiItem(r *http.Request, kind string, write bool) (store.Repo, s
 	}
 	item, err := s.store.Item(r.Context(), kind, repo.Name, number)
 	return repo, item, missing(err, absent)
-}
-
-func (s *Server) itemRows(ctx context.Context, kind, repo, state string) ([]itemRow, error) {
-	rows := []itemRow{}
-	if kind == kindIssue {
-		items, err := s.store.Items(ctx, kind, repo, state)
-		for _, item := range items {
-			rows = append(rows, itemRow{Item: item})
-		}
-		return rows, err
-	}
-	pulls, err := s.store.Pulls(ctx, repo, stateAll)
-	for _, pull := range pulls {
-		if (pull.State == stateOpen) == (state == stateOpen) {
-			rows = append(rows, itemRow{Item: pull.Item, Pull: &pull})
-		}
-	}
-	return rows, err
-}
-
-func (s *Server) uiItems(kind string) handler {
-	return func(w http.ResponseWriter, r *http.Request) error {
-		ctx := r.Context()
-		repo, err := s.uiLookup(r)
-		if err != nil {
-			return err
-		}
-		state := r.URL.Query().Get("state")
-		if state != stateClosed {
-			state = stateOpen
-		}
-		rows, err := s.itemRows(ctx, kind, repo.Name, state)
-		if err != nil {
-			return err
-		}
-		view := itemsView{
-			Kind:     kind,
-			Path:     itemPaths[kind],
-			Noun:     nouns[kind],
-			Rows:     rows,
-			State:    state,
-			CanWrite: identityFrom(r).can(scopeWrite, repo.Name),
-		}
-		ref := s.git.DefaultBranch(ctx, s.repoDir(repo.Name))
-		s.render(w, r, http.StatusOK, "items", s.repoPage(r, &repo, itemTitles[kind]+repo.Name, ref, view))
-		return nil
-	}
 }
 
 func (s *Server) uiCreateIssue(w http.ResponseWriter, r *http.Request) error {
@@ -252,115 +158,6 @@ func diffView(files []*gitdiff.File, comments []store.Comment) []diffFile {
 		view = append(view, shown)
 	}
 	return view
-}
-
-func (s *Server) pullTab(
-	ctx context.Context,
-	repo string,
-	pull store.Pull,
-	comments []store.Comment,
-	view *itemPage,
-) error {
-	base, head := s.pullRange(ctx, repo, pull)
-	var err error
-	switch view.Tab {
-	case tabCommits:
-		view.Commits, err = s.commits(ctx, repo, head, pullCommitLimit, base)
-	case tabFiles:
-		if view.Files, err = s.git.DiffFiles(ctx, s.repoDir(repo), base, head); err != nil {
-			return err
-		}
-		var files []*gitdiff.File
-		if files, err = s.pullDiff(ctx, repo, pull); err == nil {
-			view.DiffFiles = diffView(files, comments)
-		}
-	}
-	return err
-}
-
-func (s *Server) pullDetails(
-	r *http.Request,
-	repo string,
-	item store.Item,
-	comments []store.Comment,
-	view *itemPage,
-) ([]store.Review, error) {
-	ctx := r.Context()
-	pull, err := s.store.Pull(ctx, repo, item.Number)
-	if err != nil {
-		return nil, err
-	}
-	reviews, err := s.store.Reviews(ctx, item)
-	if err != nil {
-		return nil, err
-	}
-	view.Pull = &pull
-	view.IsAuthor = isAuthor(pull, identityFrom(r).actor)
-	view.Merge, view.MergeError = s.mergeStatus(ctx, repo, pull)
-	checks, err := s.store.Checks(ctx, repo, pull.HeadSHA)
-	if err != nil {
-		return nil, err
-	}
-	view.Checks = &checks
-	s.markOutdated(ctx, repo, pull, comments)
-	for index := range reviews {
-		s.markOutdated(ctx, repo, pull, reviews[index].Comments)
-	}
-	return reviews, s.pullTab(ctx, repo, pull, comments, view)
-}
-
-func timeline(comments []store.Comment, reviews []store.Review) []timelineEntry {
-	entries := []timelineEntry{}
-	for index := range comments {
-		if comments[index].ReviewID == 0 {
-			entries = append(entries, timelineEntry{At: comments[index].CreatedAt, Comment: &comments[index]})
-		}
-	}
-	for index := range reviews {
-		entries = append(entries, timelineEntry{At: reviews[index].CreatedAt, Review: &reviews[index]})
-	}
-	slices.SortStableFunc(entries, func(first, second timelineEntry) int {
-		return first.At.Compare(second.At)
-	})
-	return entries
-}
-
-func (s *Server) uiItemPage(kind string) handler {
-	return func(w http.ResponseWriter, r *http.Request) error {
-		ctx := r.Context()
-		repo, item, err := s.uiItem(r, kind, false)
-		if err != nil {
-			return err
-		}
-		view := itemPage{
-			Kind:      kind,
-			Path:      itemPaths[kind],
-			Noun:      nouns[kind],
-			Item:      item,
-			CanWrite:  identityFrom(r).can(scopeWrite, repo.Name),
-			Labels:    strings.Join(item.Labels, ", "),
-			Assignees: strings.Join(item.Assignees, ", "),
-			Tab:       r.URL.Query().Get("tab"),
-		}
-		if view.Tab != tabCommits && view.Tab != tabFiles {
-			view.Tab = ""
-		}
-		comments, err := s.store.Comments(ctx, item)
-		if err != nil {
-			return err
-		}
-		reviews := []store.Review{}
-		if kind == kindPull {
-			if reviews, err = s.pullDetails(r, repo.Name, item, comments, &view); err != nil {
-				return err
-			}
-		}
-		view.Timeline = timeline(comments, reviews)
-		title := fmt.Sprintf("%s · #%d · %s", item.Title, item.Number, repo.Name)
-		ref := s.git.DefaultBranch(ctx, s.repoDir(repo.Name))
-		s.render(w, r, http.StatusOK, "item", s.repoPage(r, &repo, title, ref, view))
-		return nil
-	}
 }
 
 func (s *Server) uiCommentItem(kind string) handler {

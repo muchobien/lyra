@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useParams } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Code,
   GitPullRequest,
@@ -10,12 +10,21 @@ import {
   Moon,
   Sun,
   Check,
+  Activity,
+  Settings,
 } from "lucide-react";
-import { api, type Identity, type Repository } from "./api";
+import { api, ConnectionContext, IdentityContext, type Identity, type Repository } from "./api";
+import { ErrorNotice } from "./Controls";
 import styles from "./App.module.css";
 
+const initialPath = location.pathname;
+const serverError = document.getElementById("root")?.dataset.errorMessage;
+const serverErrorTitle = document.getElementById("root")?.dataset.errorTitle;
+
 export function App() {
-  const { owner, repo } = useParams({ strict: false });
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { owner, repo, section } = useParams({ strict: false });
+  const queryClient = useQueryClient();
   const identity = useQuery({
     queryKey: ["identity"],
     queryFn: ({ signal }) => api<Identity>("/api/me", signal),
@@ -25,6 +34,82 @@ export function App() {
     queryFn: ({ signal }) => api<Repository[]>("/api/repos", signal),
   });
   const [theme, setTheme] = useState(localStorage.getItem("lyra-theme") || "system");
+  const [connection, setConnection] = useState({ repository: "", status: "connecting" });
+
+  useEffect(() => {
+    if (!owner || !repo) {
+      return;
+    }
+    const stream = new EventSource(
+      `/api/events/stream?repo=${encodeURIComponent(`${owner}/${repo}`)}`,
+    );
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    function refresh() {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        void queryClient.invalidateQueries({
+          predicate: (query) =>
+            query.queryKey[0] !== "markdown" && query.queryKey[0] !== "identity",
+        });
+      }, 200);
+    }
+    stream.onopen = () => {
+      setConnection({ repository: `${owner}/${repo}`, status: "live" });
+      refresh();
+    };
+    stream.onerror = () =>
+      setConnection({ repository: `${owner}/${repo}`, status: "reconnecting" });
+    for (const action of [
+      "push",
+      "issue.opened",
+      "issue.edited",
+      "issue.closed",
+      "issue.reopened",
+      "issue.comment",
+      "issue.labeled",
+      "issue.unlabeled",
+      "issue.assigned",
+      "issue.unassigned",
+      "pr.opened",
+      "pr.edited",
+      "pr.closed",
+      "pr.reopened",
+      "pr.comment",
+      "pr.labeled",
+      "pr.unlabeled",
+      "pr.assigned",
+      "pr.unassigned",
+      "pr.review",
+      "pr.synchronized",
+      "pr.merged",
+      "pr.checks",
+      "run.queued",
+      "run.completed",
+      "run.cancelled",
+      "job.completed",
+      "release.created",
+      "release.updated",
+      "release.published",
+      "release.deleted",
+      "release.asset",
+      "image.pushed",
+      "image.deleted",
+      "rule.set",
+      "rule.delete",
+      "label.create",
+      "label.delete",
+      "secret.set",
+      "secret.delete",
+      "variable.set",
+      "variable.delete",
+    ]) {
+      stream.addEventListener(action, refresh);
+    }
+    return () => {
+      clearTimeout(pending);
+      stream.close();
+    };
+  }, [owner, repo, queryClient]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -40,6 +125,23 @@ export function App() {
 
   function closePicker() {
     document.getElementById("repository-picker")?.hidePopover();
+  }
+  function retryIdentity() {
+    void identity.refetch();
+  }
+  function retryPage() {
+    location.reload();
+  }
+  let content = <Outlet />;
+  if (identity.error) {
+    content = <ErrorNotice error={identity.error} retry={retryIdentity} />;
+  } else if (identity.isPending) {
+    content = <output>Loading workspace…</output>;
+  }
+  if (serverError && pathname === initialPath) {
+    content = (
+      <ErrorNotice error={new Error(serverError)} retry={retryPage} title={serverErrorTitle} />
+    );
   }
 
   return (
@@ -79,6 +181,17 @@ export function App() {
             </div>
           )}
           <div className={styles.appearance}>
+            {owner && repo && (
+              <Link
+                to="/$owner/$repo/$section"
+                params={{ owner, repo, section: "settings" }}
+                search={{}}
+                className={styles.theme}
+                aria-label="Repository settings"
+              >
+                <Settings size={18} />
+              </Link>
+            )}
             <button
               className={styles.theme}
               type="button"
@@ -98,24 +211,65 @@ export function App() {
               to="/$owner/$repo"
               params={{ owner, repo }}
               search={{}}
-              className={styles.selected}
-              aria-current="page"
+              className={
+                !section ||
+                section === "commits" ||
+                section === "commit" ||
+                section === "tags" ||
+                section === "releases" ||
+                section === "images"
+                  ? styles.selected
+                  : undefined
+              }
+              aria-current={
+                !section || ["commits", "commit", "tags", "releases", "images"].includes(section)
+                  ? "page"
+                  : undefined
+              }
             >
               <Code size={16} />
               Code
             </Link>
-            <a href={`/${owner}/${repo}/pulls`}>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "pulls" }}
+              search={{}}
+              className={section === "pulls" ? styles.selected : undefined}
+              aria-current={section === "pulls" ? "page" : undefined}
+            >
               <GitPullRequest size={16} />
               Pull requests
-            </a>
-            <a href={`/${owner}/${repo}/issues`}>
+            </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "issues" }}
+              search={{}}
+              className={section === "issues" ? styles.selected : undefined}
+              aria-current={section === "issues" ? "page" : undefined}
+            >
               <CircleDot size={16} />
               Issues
-            </a>
-            <a href={`/${owner}/${repo}/runs`}>
+            </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "runs" }}
+              search={{}}
+              className={section === "runs" ? styles.selected : undefined}
+              aria-current={section === "runs" ? "page" : undefined}
+            >
               <CirclePlay size={16} />
               Actions
-            </a>
+            </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "activity" }}
+              search={{}}
+              className={section === "activity" ? styles.selected : undefined}
+              aria-current={section === "activity" ? "page" : undefined}
+            >
+              <Activity size={16} />
+              Activity
+            </Link>
           </nav>
         )}
       </header>
@@ -141,8 +295,15 @@ export function App() {
         </Link>
       </div>
       <main id="main" className={styles.main}>
-        <Outlet />
+        <IdentityContext value={identity.data || null}>
+          <ConnectionContext
+            value={connection.repository === `${owner}/${repo}` ? connection.status : "connecting"}
+          >
+            {content}
+          </ConnectionContext>
+        </IdentityContext>
       </main>
+      <link rel="stylesheet" href="/api/code.css" />
     </>
   );
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -32,8 +33,40 @@ type blobResponse struct {
 
 func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 	if r.PathValue("repo") != "" {
-		if _, err := s.lookupRepo(r, scopeRead); err != nil {
+		repo, err := s.lookupRepo(r, scopeRead)
+		if err != nil {
 			return err
+		}
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 4)
+		if len(parts) > 2 {
+			switch parts[2] {
+			case "pulls", "issues":
+				if r.PathValue("number") != "" {
+					kind := kindIssue
+					if parts[2] == "pulls" {
+						kind = kindPull
+					}
+					if _, _, err := s.uiItem(r, kind, false); err != nil {
+						return err
+					}
+				}
+			case "runs":
+				if r.PathValue("number") != "" {
+					if _, err := s.lookupRun(r, scopeRead); err != nil {
+						return err
+					}
+				}
+			case "commit":
+				if _, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), r.PathValue("sha")); err != nil {
+					return notFound("commit not found")
+				}
+			case "releases":
+				if tag := pathParam(r, "*"); tag != "" {
+					if _, err := s.releaseByTag(r, repo.Name, tag); err != nil {
+						return missing(err, "release not found")
+					}
+				}
+			}
 		}
 	} else if owner := r.PathValue("owner"); owner != "" {
 		groups, err := s.ownerGroups(r.Context(), identityFrom(r), owner)
@@ -44,7 +77,46 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 			return notFound("owner " + owner + " not found")
 		}
 	}
-	webui.Serve(w, r)
+	webui.Serve(w, r, http.StatusOK, "")
+	return nil
+}
+
+func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead)
+	if err != nil {
+		return err
+	}
+	ref := r.PathValue("ref")
+	path := strings.Trim(r.PathValue("*"), "/")
+	sha, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), ref)
+	if err != nil {
+		return notFound("unknown ref " + ref)
+	}
+	query := url.Values{"ref": {ref}}
+	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 4)
+	if len(parts) > 2 && parts[2] == "blob" {
+		content, err := s.git.Blob(r.Context(), s.repoDir(repo.Name), sha, path)
+		if errors.Is(err, repos.ErrNotFound) {
+			return notFound("file not found")
+		}
+		if err != nil {
+			return err
+		}
+		if r.URL.Query().Has("raw") {
+			writeRaw(w, content)
+			return nil
+		}
+		query.Set("file", path)
+	} else {
+		if _, err := s.git.Tree(r.Context(), s.repoDir(repo.Name), sha, path); err != nil {
+			if errors.Is(err, repos.ErrNotFound) {
+				return notFound("directory not found")
+			}
+			return err
+		}
+		query.Set("path", path)
+	}
+	http.Redirect(w, r, "/"+escapePath(repo.Name)+"?"+query.Encode(), http.StatusTemporaryRedirect)
 	return nil
 }
 
