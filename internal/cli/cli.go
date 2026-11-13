@@ -756,7 +756,7 @@ func releaseCommands(call func(*cobra.Command, string, string, any) error, emit 
 	}
 
 	var target, title string
-	var draft, prerelease bool
+	var draft, prerelease, generateNotes bool
 	var assets []string
 	create := &cobra.Command{
 		Use:   "create <repo> <tag>",
@@ -780,6 +780,7 @@ the release stays a draft; finish it with lyra release upload and lyra release p
 			}
 			output, err := request(http.MethodPost, releasesPath(args[0]), map[string]any{
 				"tag": args[1], "target": target, "title": title, "notes": notes, "draft": draft || len(assets) > 0, "prerelease": prerelease,
+				"generate_notes": generateNotes,
 			})
 			if err != nil {
 				return err
@@ -807,9 +808,30 @@ the release stays a draft; finish it with lyra release upload and lyra release p
 	create.Flags().StringVar(&title, "title", "", "release title (default: the tag)")
 	addTextFlags(create, "notes", "release notes in Markdown")
 	create.Flags().BoolVar(&draft, "draft", false, "keep the release as a draft")
+	create.Flags().BoolVar(&generateNotes, "generate-notes", false, "append a list of the pull requests merged since the previous release")
 	create.Flags().BoolVar(&prerelease, "prerelease", false, "mark as a prerelease, so it's never the latest release")
 	create.Flags().StringArrayVar(&assets, "asset", nil, "file to upload as an asset (repeatable)")
 
+	var notesTarget string
+	var notesPrerelease bool
+	notes := &cobra.Command{
+		Use:   "notes <repo> <tag>",
+		Short: "Preview the notes --generate-notes would write",
+		Long: `Preview the notes --generate-notes would write: the pull requests whose merge commit
+is reachable from the tag (or --target, if the tag doesn't exist yet) but not from the
+previous release. The previous release is the most recently published one whose commit
+is an ancestor; prereleases count only with --prerelease.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query := url.Values{"tag": {args[1]}, "target": {notesTarget}}
+			if notesPrerelease {
+				query.Set("prerelease", "true")
+			}
+			return call(cmd, http.MethodGet, releasesPath(args[0])+"/notes?"+query.Encode(), nil)
+		},
+	}
+	notes.Flags().StringVar(&notesTarget, "target", "", "branch or commit, if the tag doesn't exist (default: the default branch)")
+	notes.Flags().BoolVar(&notesPrerelease, "prerelease", false, "for a prerelease, so earlier prereleases count as the previous release")
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List releases, drafts first (drafts need write access)",
@@ -986,7 +1008,7 @@ the release stays a draft; finish it with lyra release upload and lyra release p
 			return call(cmd, http.MethodDelete, path+"/assets/"+url.PathEscape(args[2]), nil)
 		},
 	}
-	release.AddCommand(create, list, view, edit, publish, remove, upload, download, deleteAsset)
+	release.AddCommand(create, notes, list, view, edit, publish, remove, upload, download, deleteAsset)
 	return release
 }
 

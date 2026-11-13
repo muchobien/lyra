@@ -1,0 +1,16 @@
+{{define "content"}}
+{{$repo := esc .Repo.Name}}
+{{if .Data.Single}}<p><a href="/{{$repo}}/releases">All releases</a></p>{{end}}
+{{range .Data.Releases}}
+<div class="comment release">
+<div class="meta"><a href="/{{$repo}}/releases/tag/{{pathesc .Tag}}"><strong>{{.Title}}</strong></a>
+{{if .Draft}}<span class="badge unsigned">Draft</span>{{else if .Prerelease}}<span class="badge unverified">Prerelease</span>{{else if eq .Tag $.Data.Latest}}<span class="badge verified">Latest</span>{{end}}
+<br><span class="muted"><span class="mono">{{.Tag}}</span>{{if .Commit}} at <a class="mono" href="/{{$repo}}/commit/{{.Commit}}">{{short .Commit}}</a>{{else}} from <span class="mono">{{.Target}}</span>{{end}} · {{with .Author.Agent}}{{.}} · {{end}}{{.Author.User}} · {{with .PublishedAt}}{{.Format "2006-01-02 15:04"}}{{else}}created {{.CreatedAt.Format "2006-01-02 15:04"}}{{end}}</span></div>
+<div class="body">{{if .Notes}}{{markdown .Notes}}{{else if $.Data.Single}}<p class="muted">No release notes.</p>{{end}}</div>
+{{if .Assets}}<table class="assets">
+{{range .Assets}}<tr><td><a href="{{.DownloadURL}}">{{.Name}}</a></td><td class="right muted">{{size .Size}}</td><td class="right mono muted hide-sm" title="sha256 {{.SHA256}}">{{short .SHA256}}</td></tr>
+{{end}}</table>{{end}}
+</div>
+{{else}}<p class="muted">No releases. Create one with <code>lyra release create {{.Repo.Name}} &lt;tag&gt;</code>.</p>
+{{end}}
+{{end}}

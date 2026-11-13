@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
@@ -202,12 +203,13 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Tag        string `json:"tag"`
-		Target     string `json:"target"`
-		Title      string `json:"title"`
-		Notes      string `json:"notes"`
-		Draft      bool   `json:"draft"`
-		Prerelease bool   `json:"prerelease"`
+		Tag           string `json:"tag"`
+		Target        string `json:"target"`
+		Title         string `json:"title"`
+		Notes         string `json:"notes"`
+		Draft         bool   `json:"draft"`
+		Prerelease    bool   `json:"prerelease"`
+		GenerateNotes bool   `json:"generate_notes"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -233,6 +235,26 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	if release.Target == "" {
 		release.Target = s.git.DefaultBranch(dir)
+	}
+	if body.GenerateNotes {
+		commit, err := s.git.ResolveCommit(dir, "refs/tags/"+release.Tag)
+		if err != nil {
+			commit, err = s.git.ResolveCommit(dir, release.Target)
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "target "+release.Target+" not found")
+			return
+		}
+		generated, err := s.generateNotes(repo.Name, release.Tag, commit, release.Prerelease)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "release notes: "+err.Error())
+			return
+		}
+		release.Notes = strings.TrimSpace(release.Notes + "\n\n" + generated.Notes)
+		if problem := checkText(nil, &release.Notes); problem != "" {
+			writeError(w, http.StatusBadRequest, problem)
+			return
+		}
 	}
 	createdTag, err := s.tagRelease(dir, &release, body.Target != "", !body.Draft)
 	if err != nil {
@@ -510,4 +532,142 @@ func (s *Server) handleLatestDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.serveAsset(w, r, release, pathParam(r, "name"))
+}
+
+type notePull struct {
+	Number int64  `json:"number"`
+	Title  string `json:"title"`
+	Author string `json:"author"`
+}
+
+type releaseNotes struct {
+	Notes       string     `json:"notes"`
+	PreviousTag string     `json:"previous_tag"`
+	Pulls       []notePull `json:"pulls"`
+}
+
+func (s *Server) generateNotes(repo, tag, commit string, prerelease bool) (releaseNotes, error) {
+	dir := s.repoDir(repo)
+	releases, err := s.store.Releases(repo)
+	if err != nil {
+		return releaseNotes{}, err
+	}
+	notes := releaseNotes{Pulls: []notePull{}}
+	exclude := []string{}
+	for _, release := range releases {
+		if release.Draft || release.Tag == tag || release.Commit == "" || (release.Prerelease && !prerelease) {
+			continue
+		}
+		if ancestor, err := s.git.IsAncestor(dir, release.Commit, commit); err == nil && ancestor {
+			notes.PreviousTag = release.Tag
+			exclude = append(exclude, release.Commit)
+			break
+		}
+	}
+	commits, err := s.git.RevList(dir, commit, exclude...)
+	if err != nil {
+		return notes, err
+	}
+	reachable := map[string]bool{}
+	for _, sha := range commits {
+		reachable[sha] = true
+	}
+	pulls, err := s.store.Pulls(repo, "merged")
+	if err != nil {
+		return notes, err
+	}
+	slices.Reverse(pulls)
+	for _, pull := range pulls {
+		if !reachable[pull.MergeSHA] {
+			continue
+		}
+		author := pull.Author.Agent
+		if author == "" {
+			author = pull.Author.User
+		}
+		notes.Pulls = append(notes.Pulls, notePull{Number: pull.Number, Title: pull.Title, Author: author})
+	}
+	since := ""
+	if notes.PreviousTag != "" {
+		since = " since " + notes.PreviousTag
+	}
+	if len(notes.Pulls) == 0 {
+		notes.Notes = "No pull requests merged" + since + "."
+		return notes, nil
+	}
+	var text strings.Builder
+	text.WriteString("## Pull requests merged" + since + "\n\n")
+	for _, pull := range notes.Pulls {
+		text.WriteString(fmt.Sprintf("- %s (#%d) by %s\n", pull.Title, pull.Number, pull.Author))
+	}
+	notes.Notes = strings.TrimSuffix(text.String(), "\n")
+	return notes, nil
+}
+
+func (s *Server) handleReleaseNotes(w http.ResponseWriter, r *http.Request) {
+	repo, ok := s.lookupRepo(w, r, "read")
+	if !ok {
+		return
+	}
+	query := r.URL.Query()
+	dir := s.repoDir(repo.Name)
+	tag := query.Get("tag")
+	commit, err := s.git.ResolveCommit(dir, "refs/tags/"+tag)
+	if tag == "" || err != nil {
+		target := query.Get("target")
+		if target == "" {
+			target = s.git.DefaultBranch(dir)
+		}
+		if commit, err = s.git.ResolveCommit(dir, target); err != nil {
+			writeError(w, http.StatusBadRequest, "target "+target+" not found")
+			return
+		}
+	}
+	notes, err := s.generateNotes(repo.Name, tag, commit, query.Get("prerelease") == "true")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, notes)
+}
+
+func (s *Server) uiReleases(w http.ResponseWriter, r *http.Request) {
+	repo, ok := s.uiLookup(w, r)
+	if !ok {
+		return
+	}
+	tag := pathParam(r, "*")
+	var releases []store.Release
+	var err error
+	if tag == "" {
+		releases, err = s.store.Releases(repo.Name)
+	} else {
+		var release store.Release
+		release, err = s.store.ReleaseByTag(repo.Name, tag)
+		release, err = s.visibleRelease(r, repo.Name, release, err)
+		releases = []store.Release{release}
+	}
+	if err != nil {
+		s.renderStoreError(w, r, err, "No release for tag "+tag+".")
+		return
+	}
+	drafts := identityFrom(r).can("write", repo.Name)
+	view := struct {
+		Releases []store.Release
+		Latest   string
+		Single   bool
+	}{Releases: []store.Release{}, Single: tag != ""}
+	if latest, err := s.store.LatestRelease(repo.Name); err == nil {
+		view.Latest = latest.Tag
+	}
+	for _, release := range releases {
+		if drafts || !release.Draft {
+			view.Releases = append(view.Releases, withDownloadURLs(r, release))
+		}
+	}
+	title := "Releases · " + repo.Name
+	if tag != "" {
+		title = releases[0].Title + " · " + repo.Name
+	}
+	s.render(w, r, http.StatusOK, "releases", page{Title: title, Repo: &repo, Ref: s.git.DefaultBranch(s.repoDir(repo.Name)), CloneURL: cloneURL(r, repo.Name), Data: view})
 }

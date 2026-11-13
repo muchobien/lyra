@@ -139,7 +139,8 @@ lyra label delete <repo> <name>
 
 ```
 lyra release create <repo> <tag> [--target REF] [--title T] [--notes ...|--notes-file F|-]
-                    [--draft] [--prerelease] [--asset FILE]...
+                    [--generate-notes] [--draft] [--prerelease] [--asset FILE]...
+lyra release notes <repo> <tag> [--target REF] [--prerelease]
 lyra release list <repo>
 lyra release view <repo> <tag|latest>
 lyra release edit <repo> <tag> [--title T] [--notes ...] [--prerelease=true|false] [--target REF]
@@ -160,6 +161,10 @@ A release belongs to a tag:
   it, so `release.published` fires once with every asset present. Uploading a name that
   exists needs `--clobber`. `download` checks each file's sha256 before keeping it.
 - **Latest** is the most recently published release that isn't a prerelease.
+- **Generated notes:** `--generate-notes` appends the pull requests whose merge commit is
+  reachable from the release's commit but not from the previous release: the most
+  recently published release whose commit is an ancestor. Prereleases count as the
+  previous release only for another prerelease. `lyra release notes` previews them.
 - **Stable URLs:** `/{repo}/releases/download/{tag}/{name}` and
   `/{repo}/releases/latest/download/{name}` serve assets with their sha256 as the `ETag`.
 - **Events:** `release.created` (drafts), `release.published`, `release.updated`,
@@ -312,8 +317,9 @@ the server restarts.
 Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{name}/rules?pattern=` | admin |
 | `GET /api/repos/{name}/releases`, `GET /api/repos/{name}/releases/latest` | read |
+| `GET /api/repos/{name}/releases/notes?tag=&target=&prerelease=` (generated notes preview) | read |
 | `GET /api/repos/{name}/releases/tags/{tag}`, `GET /api/repos/{name}/releases/{id}` | read |
-| `POST /api/repos/{name}/releases` (`tag`, `target`, `title`, `notes`, `draft`, `prerelease`) | write |
+| `POST /api/repos/{name}/releases` (`tag`, `target`, `title`, `notes`, `generate_notes`, `draft`, `prerelease`) | write |
 | `PATCH /api/repos/{name}/releases/{id}` (`title`, `notes`, `prerelease`, `target`; `draft: false` publishes) | write |
 | `DELETE /api/repos/{name}/releases/{id}?cleanup_tag=` | write |
 | `POST /api/repos/{name}/releases/{id}/assets?name=&clobber=` (the file is the body) | write |
@@ -343,6 +349,9 @@ The stream's filters:
 `/` lists repositories; `/{name}` browses files at the default branch,
 `/{name}/tree/{ref}/{path}`, `/{name}/blob/{ref}/{path}` (`?raw` for the raw file),
 `/{name}/commits/{ref}`, `/{name}/commit/{sha}` and `/{name}/tags`.
+
+`/{name}/releases` lists releases, drafts first and only with write access, with their
+notes and assets; `/{name}/releases/tag/{tag}` shows one.
 
 `/{name}/issues` lists open issues (`?state=closed` for closed ones) and has a form to
 open one. `/{name}/issues/{number}` shows the issue and its comments, rendered as

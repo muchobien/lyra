@@ -483,3 +483,15 @@ func (g Git) ValidRef(ref string) bool {
 	_, _, err := g.run("", "check-ref-format", ref)
 	return err == nil
 }
+
+func (g Git) RevList(dir, rev string, exclude ...string) ([]string, error) {
+	args := []string{"rev-list", rev}
+	for _, excluded := range exclude {
+		args = append(args, "^"+excluded)
+	}
+	stdout, stderr, err := g.run(dir, append(args, "--")...)
+	if err != nil {
+		return nil, fmt.Errorf("rev-list: %v: %s", err, stderr)
+	}
+	return strings.Fields(string(stdout)), nil
+}

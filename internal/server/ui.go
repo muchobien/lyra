@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -63,6 +64,18 @@ var templateFuncs = template.FuncMap{
 		}
 		return dir + "/" + name
 	},
+	"size": func(bytes int64) string {
+		value, unit := float64(bytes), 0
+		units := []string{"B", "KB", "MB", "GB", "TB"}
+		for value >= 1000 && unit < len(units)-1 {
+			value /= 1000
+			unit++
+		}
+		if unit == 0 {
+			return fmt.Sprintf("%d B", bytes)
+		}
+		return fmt.Sprintf("%.1f %s", value, units[unit])
+	},
 	"day": func(date string) string {
 		if len(date) >= 16 {
 			return strings.Replace(date[:16], "T", " ", 1)
@@ -116,7 +129,7 @@ func init() {
 		return template.HTML(rendered.String())
 	}
 
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "error"} {
+	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }
