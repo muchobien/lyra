@@ -723,7 +723,7 @@ merged. Rules apply to admins as well. Setting a pattern again replaces its rule
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call), runCommands(call, emit))
 	return root
 }
 
@@ -1425,4 +1425,190 @@ func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.
 	}
 	owner.AddCommand(create, list, view, remove)
 	return owner
+}
+
+type runInfo struct {
+	Number int64  `json:"number"`
+	Status string `json:"status"`
+	Jobs   []struct {
+		ID     int64  `json:"id"`
+		Key    string `json:"key"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	} `json:"jobs"`
+}
+
+var runFinished = []string{"success", "failure", "cancelled", "skipped"}
+
+func runCommands(call func(*cobra.Command, string, string, any) error, emit func(*cobra.Command, []byte) error) *cobra.Command {
+	run := &cobra.Command{Use: "run", Short: "Follow and control Actions runs"}
+	runPath := func(repo, number string) string {
+		return repoAPI(repo) + "/runs/" + url.PathEscape(number)
+	}
+	fetch := func(repo, number string) (runInfo, []byte, error) {
+		var info runInfo
+		output, err := request(http.MethodGet, runPath(repo, number), nil)
+		if err != nil {
+			return info, nil, err
+		}
+		return info, output, json.Unmarshal(output, &info)
+	}
+	var limit int
+	list := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List runs, newest first, with their jobs",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, repoAPI(args[0])+"/runs?limit="+fmt.Sprint(limit), nil)
+		},
+	}
+	list.Flags().IntVar(&limit, "limit", 30, "how many runs, up to 100")
+	view := &cobra.Command{
+		Use:   "view <repo> <number>",
+		Short: "Show a run with its jobs and steps",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, runPath(args[0], args[1]), nil)
+		},
+	}
+	var jobFilter string
+	var follow bool
+	logs := &cobra.Command{
+		Use:   "logs <repo> <number>",
+		Short: "Print a run's job logs as plain text",
+		Long: `Print a run's job logs as plain text. With several jobs, each starts with a "== <key>"
+line. --job picks one job by key or id. --follow keeps printing until the jobs finish.`,
+		Args: exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			info, _, err := fetch(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			jobs := info.Jobs
+			if jobFilter != "" {
+				jobs = jobs[:0]
+				for _, job := range info.Jobs {
+					if job.Key == jobFilter || fmt.Sprint(job.ID) == jobFilter {
+						jobs = append(jobs, job)
+					}
+				}
+				if len(jobs) == 0 {
+					return fmt.Errorf("run #%d has no job %s", info.Number, jobFilter)
+				}
+			}
+			out := cmd.OutOrStdout()
+			for _, job := range jobs {
+				if len(info.Jobs) > 1 && jobFilter == "" {
+					fmt.Fprintf(out, "== %s\n", job.Key)
+				}
+				offset := "0"
+				for {
+					req, err := newRequest(cmd.Context(), http.MethodGet, runPath(args[0], args[1])+"/jobs/"+fmt.Sprint(job.ID)+"/logs?offset="+offset, nil)
+					if err != nil {
+						return err
+					}
+					response, err := http.DefaultClient.Do(req)
+					if err != nil {
+						return err
+					}
+					if response.StatusCode >= 400 {
+						defer response.Body.Close()
+						return responseError(response)
+					}
+					_, err = io.Copy(out, response.Body)
+					response.Body.Close()
+					if err != nil {
+						return err
+					}
+					offset = response.Header.Get("Lyra-Log-Next")
+					if !follow || response.Header.Get("Lyra-Log-Done") == "true" {
+						break
+					}
+					time.Sleep(time.Second)
+				}
+			}
+			return nil
+		},
+	}
+	logs.Flags().StringVar(&jobFilter, "job", "", "only this job, by key or id")
+	logs.Flags().BoolVar(&follow, "follow", false, "keep printing until the jobs finish")
+	var timeout time.Duration
+	wait := &cobra.Command{
+		Use:   "wait <repo> <number>",
+		Short: "Wait for a run to finish; exit 0 if it succeeded, 1 if not, 3 on timeout",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cursor := "0"
+			latest, err := request(http.MethodGet, "/api/events?limit=1&repo="+url.QueryEscape(args[0]), nil)
+			if err != nil {
+				return err
+			}
+			var events []struct {
+				ID int64 `json:"id"`
+			}
+			if err := json.Unmarshal(latest, &events); err != nil {
+				return err
+			}
+			if len(events) > 0 {
+				cursor = fmt.Sprint(events[0].ID)
+			}
+			deadline := time.Now().Add(timeout)
+			for {
+				info, output, err := fetch(args[0], args[1])
+				if err != nil {
+					return err
+				}
+				if slices.Contains(runFinished, info.Status) {
+					if err := emit(cmd, output); err != nil {
+						return err
+					}
+					if info.Status != "success" {
+						return fmt.Errorf("run #%d finished: %s", info.Number, info.Status)
+					}
+					return nil
+				}
+				remaining := time.Until(deadline)
+				if timeout > 0 && remaining <= 0 {
+					return ErrTimeout
+				}
+				query := url.Values{"repo": {args[0]}, "action": {"run.completed"}, "since": {cursor}}
+				event, err := waitForEvent("/api/events/stream?"+query.Encode(), max(remaining, 0))
+				if err != nil {
+					return err
+				}
+				var completed struct {
+					ID int64 `json:"id"`
+				}
+				if err := json.Unmarshal(event, &completed); err != nil {
+					return err
+				}
+				cursor = fmt.Sprint(completed.ID)
+			}
+		},
+	}
+	wait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: no limit)")
+	cancel := &cobra.Command{
+		Use:   "cancel <repo> <number>",
+		Short: "Cancel a run; running jobs are stopped by their runners",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, runPath(args[0], args[1])+"/cancel", nil)
+		},
+	}
+	var failedOnly bool
+	rerun := &cobra.Command{
+		Use:   "rerun <repo> <number>",
+		Short: "Run a finished run's jobs again",
+		Args:  exactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := runPath(args[0], args[1]) + "/rerun"
+			if failedOnly {
+				path += "?failed=true"
+			}
+			return call(cmd, http.MethodPost, path, nil)
+		},
+	}
+	rerun.Flags().BoolVar(&failedOnly, "failed", false, "only jobs that didn't succeed, and the jobs that need them")
+	run.AddCommand(list, view, logs, wait, cancel, rerun)
+	return run
 }

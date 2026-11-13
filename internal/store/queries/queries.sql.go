@@ -254,6 +254,53 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 	return i, err
 }
 
+const createJob = `-- name: CreateJob :one
+INSERT INTO jobs (run_id, job_key, name, needs, runs_on, conditional, payload, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, run_id, job_key, name, needs, runs_on, conditional, payload, status, attempt, outputs, started_at, stopped_at
+`
+
+type CreateJobParams struct {
+	RunID       int64  `json:"run_id"`
+	JobKey      string `json:"job_key"`
+	Name        string `json:"name"`
+	Needs       string `json:"needs"`
+	RunsOn      string `json:"runs_on"`
+	Conditional bool   `json:"conditional"`
+	Payload     string `json:"payload"`
+	Status      string `json:"status"`
+}
+
+func (q *Queries) CreateJob(ctx context.Context, arg CreateJobParams) (Job, error) {
+	row := q.db.QueryRowContext(ctx, createJob,
+		arg.RunID,
+		arg.JobKey,
+		arg.Name,
+		arg.Needs,
+		arg.RunsOn,
+		arg.Conditional,
+		arg.Payload,
+		arg.Status,
+	)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.JobKey,
+		&i.Name,
+		&i.Needs,
+		&i.RunsOn,
+		&i.Conditional,
+		&i.Payload,
+		&i.Status,
+		&i.Attempt,
+		&i.Outputs,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
 const createKey = `-- name: CreateKey :one
 INSERT INTO keys (user, title, agent, public_key, fingerprint, signing, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -512,6 +559,73 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 	return i, err
 }
 
+const createRun = `-- name: CreateRun :one
+INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at)
+VALUES (
+	?1,
+	(SELECT COALESCE(MAX(number), 0) + 1 FROM runs WHERE repo = ?1),
+	?2, ?3, ?4, ?5, ?6, ?7, ?8, 'waiting',
+	?9, ?10, ?11, ?12, ?13
+)
+RETURNING id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at
+`
+
+type CreateRunParams struct {
+	Repo      string    `json:"repo"`
+	Workflow  string    `json:"workflow"`
+	Name      string    `json:"name"`
+	Title     string    `json:"title"`
+	Event     string    `json:"event"`
+	Ref       string    `json:"ref"`
+	Sha       string    `json:"sha"`
+	Payload   string    `json:"payload"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
+	row := q.db.QueryRowContext(ctx, createRun,
+		arg.Repo,
+		arg.Workflow,
+		arg.Name,
+		arg.Title,
+		arg.Event,
+		arg.Ref,
+		arg.Sha,
+		arg.Payload,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Workflow,
+		&i.Name,
+		&i.Title,
+		&i.Event,
+		&i.Ref,
+		&i.Sha,
+		&i.Payload,
+		&i.Status,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
 const createRunner = `-- name: CreateRunner :one
 INSERT INTO runners (uuid, token_hash, name, version, ephemeral, registration_token_id, user, created_at, last_seen_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -587,6 +701,45 @@ func (q *Queries) CreateRunnerToken(ctx context.Context, arg CreateRunnerTokenPa
 		&i.Prefix,
 		&i.User,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createTask = `-- name: CreateTask :one
+INSERT INTO tasks (job_id, runner_id, attempt, token_hash, status, started_at)
+VALUES (?, ?, ?, ?, 'running', ?)
+RETURNING id, job_id, runner_id, attempt, token_hash, status, steps, log_length, log_object, started_at, stopped_at
+`
+
+type CreateTaskParams struct {
+	JobID     int64         `json:"job_id"`
+	RunnerID  sql.NullInt64 `json:"runner_id"`
+	Attempt   int64         `json:"attempt"`
+	TokenHash string        `json:"token_hash"`
+	StartedAt time.Time     `json:"started_at"`
+}
+
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, createTask,
+		arg.JobID,
+		arg.RunnerID,
+		arg.Attempt,
+		arg.TokenHash,
+		arg.StartedAt,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.JobID,
+		&i.RunnerID,
+		&i.Attempt,
+		&i.TokenHash,
+		&i.Status,
+		&i.Steps,
+		&i.LogLength,
+		&i.LogObject,
+		&i.StartedAt,
+		&i.StoppedAt,
 	)
 	return i, err
 }
@@ -780,6 +933,15 @@ func (q *Queries) DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64
 	return result.RowsAffected()
 }
 
+const deleteLogRows = `-- name: DeleteLogRows :exec
+DELETE FROM log_rows WHERE task_id = ?
+`
+
+func (q *Queries) DeleteLogRows(ctx context.Context, taskID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteLogRows, taskID)
+	return err
+}
+
 const deleteOwner = `-- name: DeleteOwner :execrows
 DELETE FROM owners WHERE name = ?
 `
@@ -930,6 +1092,31 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const getJob = `-- name: GetJob :one
+SELECT id, run_id, job_key, name, needs, runs_on, conditional, payload, status, attempt, outputs, started_at, stopped_at FROM jobs WHERE id = ?
+`
+
+func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
+	row := q.db.QueryRowContext(ctx, getJob, id)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.JobKey,
+		&i.Name,
+		&i.Needs,
+		&i.RunsOn,
+		&i.Conditional,
+		&i.Payload,
+		&i.Status,
+		&i.Attempt,
+		&i.Outputs,
+		&i.StartedAt,
+		&i.StoppedAt,
 	)
 	return i, err
 }
@@ -1097,6 +1284,71 @@ func (q *Queries) GetRepo(ctx context.Context, name string) (Repo, error) {
 	return i, err
 }
 
+const getRun = `-- name: GetRun :one
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE repo = ? AND number = ?
+`
+
+type GetRunParams struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+func (q *Queries) GetRun(ctx context.Context, arg GetRunParams) (Run, error) {
+	row := q.db.QueryRowContext(ctx, getRun, arg.Repo, arg.Number)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Workflow,
+		&i.Name,
+		&i.Title,
+		&i.Event,
+		&i.Ref,
+		&i.Sha,
+		&i.Payload,
+		&i.Status,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
+const getRunByID = `-- name: GetRunByID :one
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE id = ?
+`
+
+func (q *Queries) GetRunByID(ctx context.Context, id int64) (Run, error) {
+	row := q.db.QueryRowContext(ctx, getRunByID, id)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Number,
+		&i.Workflow,
+		&i.Name,
+		&i.Title,
+		&i.Event,
+		&i.Ref,
+		&i.Sha,
+		&i.Payload,
+		&i.Status,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
 const getRunnerByUUID = `-- name: GetRunnerByUUID :one
 SELECT id, uuid, token_hash, name, labels, version, ephemeral, registration_token_id, user, created_at, last_seen_at FROM runners WHERE uuid = ?
 `
@@ -1136,6 +1388,73 @@ func (q *Queries) GetRunnerTokenByHash(ctx context.Context, hash string) (Runner
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getRunningTaskByToken = `-- name: GetRunningTaskByToken :one
+SELECT id, job_id, runner_id, attempt, token_hash, status, steps, log_length, log_object, started_at, stopped_at FROM tasks WHERE token_hash = ? AND status = 'running'
+`
+
+func (q *Queries) GetRunningTaskByToken(ctx context.Context, tokenHash string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getRunningTaskByToken, tokenHash)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.JobID,
+		&i.RunnerID,
+		&i.Attempt,
+		&i.TokenHash,
+		&i.Status,
+		&i.Steps,
+		&i.LogLength,
+		&i.LogObject,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
+const getTask = `-- name: GetTask :one
+SELECT id, job_id, runner_id, attempt, token_hash, status, steps, log_length, log_object, started_at, stopped_at FROM tasks WHERE id = ?
+`
+
+func (q *Queries) GetTask(ctx context.Context, id int64) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTask, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.JobID,
+		&i.RunnerID,
+		&i.Attempt,
+		&i.TokenHash,
+		&i.Status,
+		&i.Steps,
+		&i.LogLength,
+		&i.LogObject,
+		&i.StartedAt,
+		&i.StoppedAt,
+	)
+	return i, err
+}
+
+const insertLogRow = `-- name: InsertLogRow :exec
+INSERT INTO log_rows (task_id, idx, at, content) VALUES (?, ?, ?, ?)
+`
+
+type InsertLogRowParams struct {
+	TaskID  int64     `json:"task_id"`
+	Idx     int64     `json:"idx"`
+	At      time.Time `json:"at"`
+	Content string    `json:"content"`
+}
+
+func (q *Queries) InsertLogRow(ctx context.Context, arg InsertLogRowParams) error {
+	_, err := q.db.ExecContext(ctx, insertLogRow,
+		arg.TaskID,
+		arg.Idx,
+		arg.At,
+		arg.Content,
+	)
+	return err
 }
 
 const latestEventID = `-- name: LatestEventID :one
@@ -1530,6 +1849,45 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Item, e
 	return items, nil
 }
 
+const listJobTasks = `-- name: ListJobTasks :many
+SELECT id, job_id, runner_id, attempt, token_hash, status, steps, log_length, log_object, started_at, stopped_at FROM tasks WHERE job_id = ? ORDER BY attempt
+`
+
+func (q *Queries) ListJobTasks(ctx context.Context, jobID int64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listJobTasks, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.JobID,
+			&i.RunnerID,
+			&i.Attempt,
+			&i.TokenHash,
+			&i.Status,
+			&i.Steps,
+			&i.LogLength,
+			&i.LogObject,
+			&i.StartedAt,
+			&i.StoppedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listKeys = `-- name: ListKeys :many
 SELECT id, user, title, agent, public_key, fingerprint, signing, created_at FROM keys ORDER BY id
 `
@@ -1585,6 +1943,43 @@ func (q *Queries) ListLabels(ctx context.Context, repo string) ([]Label, error) 
 			&i.Name,
 			&i.Color,
 			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLogRows = `-- name: ListLogRows :many
+SELECT task_id, idx, at, content FROM log_rows WHERE task_id = ? AND idx >= ? ORDER BY idx
+`
+
+type ListLogRowsParams struct {
+	TaskID int64 `json:"task_id"`
+	Idx    int64 `json:"idx"`
+}
+
+func (q *Queries) ListLogRows(ctx context.Context, arg ListLogRowsParams) ([]LogRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLogRows, arg.TaskID, arg.Idx)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LogRow
+	for rows.Next() {
+		var i LogRow
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.Idx,
+			&i.At,
+			&i.Content,
 		); err != nil {
 			return nil, err
 		}
@@ -1885,6 +2280,47 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 	return items, nil
 }
 
+const listRunJobs = `-- name: ListRunJobs :many
+SELECT id, run_id, job_key, name, needs, runs_on, conditional, payload, status, attempt, outputs, started_at, stopped_at FROM jobs WHERE run_id = ? ORDER BY id
+`
+
+func (q *Queries) ListRunJobs(ctx context.Context, runID int64) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listRunJobs, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.JobKey,
+			&i.Name,
+			&i.Needs,
+			&i.RunsOn,
+			&i.Conditional,
+			&i.Payload,
+			&i.Status,
+			&i.Attempt,
+			&i.Outputs,
+			&i.StartedAt,
+			&i.StoppedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunnerTokens = `-- name: ListRunnerTokens :many
 SELECT id, name, hash, prefix, user, created_at FROM runner_tokens ORDER BY id
 `
@@ -1944,6 +2380,57 @@ func (q *Queries) ListRunners(ctx context.Context) ([]Runner, error) {
 			&i.User,
 			&i.CreatedAt,
 			&i.LastSeenAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuns = `-- name: ListRuns :many
+SELECT id, repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at, started_at, stopped_at FROM runs WHERE repo = ? ORDER BY number DESC LIMIT ?
+`
+
+type ListRunsParams struct {
+	Repo  string `json:"repo"`
+	Limit int64  `json:"limit"`
+}
+
+func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, error) {
+	rows, err := q.db.QueryContext(ctx, listRuns, arg.Repo, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Run
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Number,
+			&i.Workflow,
+			&i.Name,
+			&i.Title,
+			&i.Event,
+			&i.Ref,
+			&i.Sha,
+			&i.Payload,
+			&i.Status,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.StoppedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -2058,6 +2545,47 @@ func (q *Queries) ListWaitCursors(ctx context.Context, arg ListWaitCursorsParams
 			&i.Agent,
 			&i.Session,
 			&i.EventID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWaitingJobs = `-- name: ListWaitingJobs :many
+SELECT id, run_id, job_key, name, needs, runs_on, conditional, payload, status, attempt, outputs, started_at, stopped_at FROM jobs WHERE status = 'waiting' ORDER BY id
+`
+
+func (q *Queries) ListWaitingJobs(ctx context.Context) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listWaitingJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.JobKey,
+			&i.Name,
+			&i.Needs,
+			&i.RunsOn,
+			&i.Conditional,
+			&i.Payload,
+			&i.Status,
+			&i.Attempt,
+			&i.Outputs,
+			&i.StartedAt,
+			&i.StoppedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -2220,6 +2748,21 @@ func (q *Queries) SetRule(ctx context.Context, arg SetRuleParams) (BranchRule, e
 	return i, err
 }
 
+const setTaskLog = `-- name: SetTaskLog :exec
+UPDATE tasks SET log_length = ?, log_object = ? WHERE id = ?
+`
+
+type SetTaskLogParams struct {
+	LogLength int64  `json:"log_length"`
+	LogObject string `json:"log_object"`
+	ID        int64  `json:"id"`
+}
+
+func (q *Queries) SetTaskLog(ctx context.Context, arg SetTaskLogParams) error {
+	_, err := q.db.ExecContext(ctx, setTaskLog, arg.LogLength, arg.LogObject, arg.ID)
+	return err
+}
+
 const setWaitCursor = `-- name: SetWaitCursor :exec
 INSERT INTO wait_cursors (repo, item, user, via, agent, session, event_id)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -2337,6 +2880,31 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 	return i, err
 }
 
+const updateJob = `-- name: UpdateJob :exec
+UPDATE jobs SET status = ?, attempt = ?, outputs = ?, started_at = ?, stopped_at = ? WHERE id = ?
+`
+
+type UpdateJobParams struct {
+	Status    string       `json:"status"`
+	Attempt   int64        `json:"attempt"`
+	Outputs   string       `json:"outputs"`
+	StartedAt sql.NullTime `json:"started_at"`
+	StoppedAt sql.NullTime `json:"stopped_at"`
+	ID        int64        `json:"id"`
+}
+
+func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) error {
+	_, err := q.db.ExecContext(ctx, updateJob,
+		arg.Status,
+		arg.Attempt,
+		arg.Outputs,
+		arg.StartedAt,
+		arg.StoppedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updatePullHead = `-- name: UpdatePullHead :exec
 UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?
 `
@@ -2399,6 +2967,48 @@ func (q *Queries) UpdateRelease(ctx context.Context, arg UpdateReleaseParams) (R
 		&i.PublishedAt,
 	)
 	return i, err
+}
+
+const updateRunStatus = `-- name: UpdateRunStatus :exec
+UPDATE runs SET status = ?, started_at = ?, stopped_at = ? WHERE id = ?
+`
+
+type UpdateRunStatusParams struct {
+	Status    string       `json:"status"`
+	StartedAt sql.NullTime `json:"started_at"`
+	StoppedAt sql.NullTime `json:"stopped_at"`
+	ID        int64        `json:"id"`
+}
+
+func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateRunStatus,
+		arg.Status,
+		arg.StartedAt,
+		arg.StoppedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const updateTask = `-- name: UpdateTask :exec
+UPDATE tasks SET status = ?, steps = ?, stopped_at = ? WHERE id = ?
+`
+
+type UpdateTaskParams struct {
+	Status    string       `json:"status"`
+	Steps     string       `json:"steps"`
+	StoppedAt sql.NullTime `json:"stopped_at"`
+	ID        int64        `json:"id"`
+}
+
+func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
+	_, err := q.db.ExecContext(ctx, updateTask,
+		arg.Status,
+		arg.Steps,
+		arg.StoppedAt,
+		arg.ID,
+	)
+	return err
 }
 
 const useToken = `-- name: UseToken :one

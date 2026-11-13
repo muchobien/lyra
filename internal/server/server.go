@@ -37,16 +37,17 @@ import (
 )
 
 type Config struct {
-	DataDir        string
-	TrustedProxies []netip.Prefix
-	AllowedLogins  []string
-	SigningKeyFile string
-	Storage        string
-	S3Endpoint     string
-	S3Bucket       string
-	S3Region       string
-	RegistryHost   string
-	ActionsURL     string
+	DataDir           string
+	TrustedProxies    []netip.Prefix
+	AllowedLogins     []string
+	SigningKeyFile    string
+	Storage           string
+	S3Endpoint        string
+	S3Bucket          string
+	S3Region          string
+	RegistryHost      string
+	ActionsURL        string
+	DefaultActionsURL string
 }
 
 type Server struct {
@@ -232,6 +233,13 @@ func (s *Server) Handler() http.Handler {
 					pulls.Post("/{number}/reviews", s.handleReviewPull)
 				})
 				repo.Get("/images", s.handleListImages)
+				repo.Route("/runs", func(runs chi.Router) {
+					runs.Get("/", s.handleListRuns)
+					runs.Get("/{number}", s.handleGetRun)
+					runs.Get("/{number}/jobs/{job}/logs", s.handleRunLogs)
+					runs.Post("/{number}/cancel", s.handleCancelRun)
+					runs.Post("/{number}/rerun", s.handleRerunRun)
+				})
 				repo.Route("/releases", func(releases chi.Router) {
 					releases.Get("/", s.handleListReleases)
 					releases.Post("/", s.handleCreateRelease)
@@ -371,6 +379,11 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				}
 				if err == nil && (token.ExpiresAt == nil || token.ExpiresAt.After(time.Now())) {
 					id = &identity{actor: store.Actor{User: token.User, Via: "token:" + token.Name}, scope: token.Scope, repos: token.Repos, tokenID: token.ID}
+				}
+				if errors.Is(err, store.ErrNotFound) {
+					if _, run, err := s.store.RunningTask(store.HashToken(secret)); err == nil {
+						id = &identity{actor: store.Actor{User: run.Author.User, Via: fmt.Sprintf("job:%s#%d", run.Repo, run.Number)}, scope: "write", repos: []string{run.Repo}}
+					}
 				}
 			}
 		}

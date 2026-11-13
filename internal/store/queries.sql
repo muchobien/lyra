@@ -289,3 +289,71 @@ SELECT * FROM owners ORDER BY name;
 
 -- name: DeleteOwner :execrows
 DELETE FROM owners WHERE name = ?;
+
+-- name: CreateRun :one
+INSERT INTO runs (repo, number, workflow, name, title, event, ref, sha, payload, status, user, via, agent, session, created_at)
+VALUES (
+	sqlc.arg(repo),
+	(SELECT COALESCE(MAX(number), 0) + 1 FROM runs WHERE repo = sqlc.arg(repo)),
+	sqlc.arg(workflow), sqlc.arg(name), sqlc.arg(title), sqlc.arg(event), sqlc.arg(ref), sqlc.arg(sha), sqlc.arg(payload), 'waiting',
+	sqlc.arg(user), sqlc.arg(via), sqlc.arg(agent), sqlc.arg(session), sqlc.arg(created_at)
+)
+RETURNING *;
+
+-- name: GetRun :one
+SELECT * FROM runs WHERE repo = ? AND number = ?;
+
+-- name: GetRunByID :one
+SELECT * FROM runs WHERE id = ?;
+
+-- name: ListRuns :many
+SELECT * FROM runs WHERE repo = ? ORDER BY number DESC LIMIT ?;
+
+-- name: UpdateRunStatus :exec
+UPDATE runs SET status = ?, started_at = ?, stopped_at = ? WHERE id = ?;
+
+-- name: CreateJob :one
+INSERT INTO jobs (run_id, job_key, name, needs, runs_on, conditional, payload, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListRunJobs :many
+SELECT * FROM jobs WHERE run_id = ? ORDER BY id;
+
+-- name: GetJob :one
+SELECT * FROM jobs WHERE id = ?;
+
+-- name: ListWaitingJobs :many
+SELECT * FROM jobs WHERE status = 'waiting' ORDER BY id;
+
+-- name: UpdateJob :exec
+UPDATE jobs SET status = ?, attempt = ?, outputs = ?, started_at = ?, stopped_at = ? WHERE id = ?;
+
+-- name: CreateTask :one
+INSERT INTO tasks (job_id, runner_id, attempt, token_hash, status, started_at)
+VALUES (?, ?, ?, ?, 'running', ?)
+RETURNING *;
+
+-- name: GetTask :one
+SELECT * FROM tasks WHERE id = ?;
+
+-- name: GetRunningTaskByToken :one
+SELECT * FROM tasks WHERE token_hash = ? AND status = 'running';
+
+-- name: ListJobTasks :many
+SELECT * FROM tasks WHERE job_id = ? ORDER BY attempt;
+
+-- name: UpdateTask :exec
+UPDATE tasks SET status = ?, steps = ?, stopped_at = ? WHERE id = ?;
+
+-- name: SetTaskLog :exec
+UPDATE tasks SET log_length = ?, log_object = ? WHERE id = ?;
+
+-- name: InsertLogRow :exec
+INSERT INTO log_rows (task_id, idx, at, content) VALUES (?, ?, ?, ?);
+
+-- name: ListLogRows :many
+SELECT * FROM log_rows WHERE task_id = ? AND idx >= ? ORDER BY idx;
+
+-- name: DeleteLogRows :exec
+DELETE FROM log_rows WHERE task_id = ?;

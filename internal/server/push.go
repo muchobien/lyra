@@ -133,5 +133,5 @@ func ProcessPush(db *store.Store, git repos.Git, dir, repo string, actor store.A
 			}
 		}
 	}
-	return messages, nil
+	return append(messages, QueueRuns(db, git, dir, repo, actor, updates)...), nil
 }

@@ -112,7 +112,11 @@ func (service runnerService) FetchTask(ctx context.Context, request *connect.Req
 	if err := service.server.store.TouchRunner(runner.ID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&runnerv1.FetchTaskResponse{TasksVersion: request.Msg.TasksVersion}), nil
+	task, err := service.task(runner)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.FetchTaskResponse{Task: task, TasksVersion: request.Msg.TasksVersion}), nil
 }
 
 func (service runnerService) FetchSingleTask(ctx context.Context, request *connect.Request[runnerv1.FetchSingleTaskRequest]) (*connect.Response[runnerv1.FetchSingleTaskResponse], error) {
@@ -123,7 +127,11 @@ func (service runnerService) FetchSingleTask(ctx context.Context, request *conne
 	if err := service.server.store.TouchRunner(runner.ID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&runnerv1.FetchSingleTaskResponse{TasksVersion: request.Msg.TasksVersion}), nil
+	task, err := service.task(runner)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.FetchSingleTaskResponse{Task: task, TasksVersion: request.Msg.TasksVersion}), nil
 }
 
 type runnerView struct {

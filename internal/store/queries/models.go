@@ -89,6 +89,22 @@ type ItemLabel struct {
 	LabelID int64 `json:"label_id"`
 }
 
+type Job struct {
+	ID          int64        `json:"id"`
+	RunID       int64        `json:"run_id"`
+	JobKey      string       `json:"job_key"`
+	Name        string       `json:"name"`
+	Needs       string       `json:"needs"`
+	RunsOn      string       `json:"runs_on"`
+	Conditional bool         `json:"conditional"`
+	Payload     string       `json:"payload"`
+	Status      string       `json:"status"`
+	Attempt     int64        `json:"attempt"`
+	Outputs     string       `json:"outputs"`
+	StartedAt   sql.NullTime `json:"started_at"`
+	StoppedAt   sql.NullTime `json:"stopped_at"`
+}
+
 type Key struct {
 	ID          int64     `json:"id"`
 	User        string    `json:"user"`
@@ -106,6 +122,13 @@ type Label struct {
 	Name        string `json:"name"`
 	Color       string `json:"color"`
 	Description string `json:"description"`
+}
+
+type LogRow struct {
+	TaskID  int64     `json:"task_id"`
+	Idx     int64     `json:"idx"`
+	At      time.Time `json:"at"`
+	Content string    `json:"content"`
 }
 
 type Owner struct {
@@ -178,6 +201,27 @@ type Review struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Run struct {
+	ID        int64        `json:"id"`
+	Repo      string       `json:"repo"`
+	Number    int64        `json:"number"`
+	Workflow  string       `json:"workflow"`
+	Name      string       `json:"name"`
+	Title     string       `json:"title"`
+	Event     string       `json:"event"`
+	Ref       string       `json:"ref"`
+	Sha       string       `json:"sha"`
+	Payload   string       `json:"payload"`
+	Status    string       `json:"status"`
+	User      string       `json:"user"`
+	Via       string       `json:"via"`
+	Agent     string       `json:"agent"`
+	Session   string       `json:"session"`
+	CreatedAt time.Time    `json:"created_at"`
+	StartedAt sql.NullTime `json:"started_at"`
+	StoppedAt sql.NullTime `json:"stopped_at"`
+}
+
 type Runner struct {
 	ID                  int64         `json:"id"`
 	Uuid                string        `json:"uuid"`
@@ -199,6 +243,20 @@ type RunnerToken struct {
 	Prefix    string    `json:"prefix"`
 	User      string    `json:"user"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Task struct {
+	ID        int64         `json:"id"`
+	JobID     int64         `json:"job_id"`
+	RunnerID  sql.NullInt64 `json:"runner_id"`
+	Attempt   int64         `json:"attempt"`
+	TokenHash string        `json:"token_hash"`
+	Status    string        `json:"status"`
+	Steps     string        `json:"steps"`
+	LogLength int64         `json:"log_length"`
+	LogObject string        `json:"log_object"`
+	StartedAt time.Time     `json:"started_at"`
+	StoppedAt sql.NullTime  `json:"stopped_at"`
 }
 
 type Token struct {

@@ -353,7 +353,38 @@ lyra runner token list | delete <id>
   can register any number of runners until they're deleted. Deleting one keeps the runners
   it registered.
 - **Labels and version** come from the runner's `Declare` call when it starts.
-- Runs and jobs come in a later step; for now runners poll and get no tasks.
+
+## Actions runs
+
+A push queues a run for each workflow in `.forgejo/workflows/` (or `.github/workflows/` when
+the first doesn't exist) whose `on: push` matches the ref, with `branches`, `tags`, `paths` and
+their `-ignore` forms. The pusher sees `lyra: queued run #N (<workflow>)`. Pull request,
+manual and scheduled triggers come later.
+
+```sh
+lyra run list <repo> [--limit N]
+lyra run view <repo> <number>          # jobs, steps, results
+lyra run logs <repo> <number> [--job KEY|ID] [--follow]
+lyra run wait <repo> <number> [--timeout 30m]   # exit 0 success, 1 otherwise, 3 timeout
+lyra run cancel <repo> <number>
+lyra run rerun <repo> <number> [--failed]
+```
+
+- **Jobs** are split and matrices expanded with the runner's own parser. A runner gets the
+  oldest waiting job whose `runs-on` labels it all has.
+- **Needs:** a job waits for the jobs it needs and gets their outputs and results. If one of
+  them didn't succeed, the job is skipped without reaching a runner, unless it has an `if:`.
+- **Job token:** `github.token` (also `secrets.GITHUB_TOKEN`) works while the job runs, with
+  `write` access to its own repository only: for Git over HTTPS, the API and the `lyra` CLI.
+  Writes are recorded as `job:<repo>#<run>`.
+- **`--default-actions-url`** (`LYRA_DEFAULT_ACTIONS_URL`, default
+  `https://data.forgejo.org`) resolves short `uses:` names.
+- **Logs** are kept in the database while a job runs, then stored as one object per job
+  attempt.
+- **Cancel** stops waiting jobs at once; runners stop running ones on their next report.
+  `rerun --failed` reruns jobs that didn't succeed and the jobs that need them.
+- **Events:** `run.queued`, `job.completed`, `run.completed` (with the result) and
+  `run.cancelled`.
 
 ## API
 
@@ -395,6 +426,8 @@ lyra runner token list | delete <id>
 Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{owner}/{repo}/rules?pattern=` | admin |
 | `GET /api/repos/{owner}/{repo}/images` | read |
+| `GET /api/repos/{owner}/{repo}/runs?limit=`, `GET …/runs/{number}`, `GET …/runs/{number}/jobs/{id}/logs?offset=` | read |
+| `POST /api/repos/{owner}/{repo}/runs/{number}/cancel`, `POST …/runs/{number}/rerun?failed=` | write |
 | `GET /api/runners`, `POST /api/runners` (`name`), `DELETE /api/runners/{id}` | admin, unrestricted |
 | `GET /api/runners/tokens`, `POST /api/runners/tokens` (`name`), `DELETE /api/runners/tokens/{id}` | admin, unrestricted |
 | `GET /api/repos/{owner}/{repo}/releases`, `GET /api/repos/{owner}/{repo}/releases/latest` | read |
