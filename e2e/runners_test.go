@@ -44,6 +44,7 @@ func runnerBinary(test *testing.T) string {
 type runnerProcess struct {
 	config string
 	logs   *lockedBuffer
+	kill   func()
 }
 
 func newRunner(test *testing.T, name string) runnerProcess {
@@ -83,7 +84,7 @@ func (runner runnerProcess) register(test *testing.T, srv server, token, name st
 	}
 }
 
-func (runner runnerProcess) start(test *testing.T) {
+func (runner runnerProcess) start(test *testing.T) func() {
 	test.Helper()
 	command := exec.Command(runnerBinary(test), "--config", runner.config, "daemon")
 	command.Dir = filepath.Dir(runner.config)
@@ -99,6 +100,9 @@ func (runner runnerProcess) start(test *testing.T) {
 			test.Logf("runner %s log:\n%s", runner.config, runner.logs.String())
 		}
 	})
+	return func() {
+		command.Process.Kill()
+	}
 }
 
 func eventually(test *testing.T, what string, check func() bool) {

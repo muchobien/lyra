@@ -276,6 +276,57 @@ func hostRunner(test *testing.T, srv server, token string) runnerProcess {
 	if err := os.WriteFile(runner.config, []byte(config), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	runner.start(test)
+	runner.kill = runner.start(test)
 	return runner
+}
+
+func TestJobMaintenance(test *testing.T) {
+	srv := startServerAt(test, "127.0.0.1:"+freePort(test), filepath.Join(test.TempDir(), "data"), "127.0.0.1", "--job-stale-after", "3s", "--actions-retention", "10s")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	src := newSource(test)
+	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	commitFile(test, src, ".forgejo/workflows/quick.yml", "on: workflow_dispatch\njobs:\n  quick:\n    runs-on: test\n    steps:\n      - run: echo \"retention=${{ github.retention_days }}\"\n", "Quick")
+	commitFile(test, src, ".forgejo/workflows/steady.yml", "on: workflow_dispatch\njobs:\n  steady:\n    runs-on: test\n    steps:\n      - run: sleep 7 && echo done\n", "Steady")
+	commitFile(test, src, ".forgejo/workflows/slow.yml", "on: workflow_dispatch\njobs:\n  slow:\n    runs-on: test\n    steps:\n      - run: echo started && sleep 60\n", "Slow")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main")
+	runner := hostRunner(test, srv, token)
+
+	runLyra(test, srv, token, "workflow", "run", "acme/demo", "quick.yml")
+	if result := runLyra(test, srv, token, "run", "wait", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+		test.Fatalf("quick run: %+v", result)
+	}
+	if logs := runLyra(test, srv, token, "run", "logs", "acme/demo", "1").stdout; !strings.Contains(logs, "retention=0") {
+		test.Fatalf("quick run log:\n%s", logs)
+	}
+	logs := filepath.Join(srv.data, "blobs", "lyra", "actions", "acme", "demo")
+	if entries, _ := os.ReadDir(logs); len(entries) != 1 {
+		test.Fatalf("archived logs: %v", entries)
+	}
+
+	runLyra(test, srv, token, "workflow", "run", "acme/demo", "steady.yml")
+	if result := runLyra(test, srv, token, "run", "wait", "acme/demo", "2", "--timeout", "60s"); result.code != 0 {
+		test.Fatalf("a job longer than --job-stale-after with a live runner: %+v", result)
+	}
+	runLyra(test, srv, token, "workflow", "run", "acme/demo", "slow.yml")
+	eventually(test, "the slow job to start", func() bool {
+		return strings.Contains(runLyra(test, srv, token, "run", "logs", "acme/demo", "3").stdout, "started")
+	})
+	runner.kill()
+	result := runLyra(test, srv, token, "run", "wait", "acme/demo", "3", "--timeout", "30s")
+	if result.code != 1 || !strings.Contains(result.stderr, "failure") {
+		test.Fatalf("run whose runner died: %+v", result)
+	}
+	if logs := runLyra(test, srv, token, "run", "logs", "acme/demo", "3").stdout; !strings.Contains(logs, "lyra: the runner stopped reporting for 3s; the job failed") {
+		test.Fatalf("log of a job whose runner died:\n%s", logs)
+	}
+
+	eventually(test, "runs past retention to be deleted", func() bool {
+		return strings.TrimSpace(runLyra(test, srv, token, "run", "list", "acme/demo").stdout) == "[]"
+	})
+	if entries, _ := os.ReadDir(logs); len(entries) != 0 {
+		test.Fatalf("archived logs after retention: %v", entries)
+	}
 }

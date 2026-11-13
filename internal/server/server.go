@@ -51,6 +51,8 @@ type Config struct {
 	ActionsURL        string
 	DefaultActionsURL string
 	SecretsKeyFile    string
+	JobStaleAfter     time.Duration
+	ActionsRetention  time.Duration
 }
 
 type Server struct {
@@ -190,6 +192,7 @@ func New(config Config) (*Server, error) {
 	var scheduler context.Context
 	scheduler, server.stop = context.WithCancel(context.Background())
 	go server.schedule(scheduler)
+	go server.maintain(scheduler)
 	return server, nil
 }
 

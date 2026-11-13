@@ -425,12 +425,15 @@ func (s *Store) UpdateTask(taskID int64, steps []TaskStep, outputs map[string]st
 		if err != nil {
 			return err
 		}
+		if steps == nil {
+			encoded = []byte(taskRow.Steps)
+		}
 		stopped := sql.NullTime{}
 		taskStatus := taskRow.Status
 		if result != "" && taskStatus == "running" {
 			taskStatus, stopped = result, sql.NullTime{Time: now(), Valid: true}
 		}
-		if err := q.UpdateTask(ctx, queries.UpdateTaskParams{Status: taskStatus, Steps: string(encoded), StoppedAt: stopped, ID: taskID}); err != nil {
+		if err := q.UpdateTask(ctx, queries.UpdateTaskParams{Status: taskStatus, Steps: string(encoded), StoppedAt: stopped, UpdatedAt: sql.NullTime{Time: now(), Valid: true}, ID: taskID}); err != nil {
 			return err
 		}
 		if job.Attempt != taskRow.Attempt {
@@ -472,6 +475,9 @@ func (s *Store) AppendLog(taskID, index int64, lines []LogLine) (int64, error) {
 		task, err := q.GetTask(ctx, taskID)
 		if err != nil {
 			return notFound(err)
+		}
+		if err := q.TouchTask(ctx, queries.TouchTaskParams{UpdatedAt: sql.NullTime{Time: now(), Valid: true}, ID: taskID}); err != nil {
+			return err
 		}
 		ack = task.LogLength
 		if index > ack || task.LogObject != "" {
@@ -684,5 +690,38 @@ func announceChecks(q *queries.Queries, repo, sha string) error {
 func (s *Store) AnnounceChecks(repo, sha string) error {
 	return s.inTx(func(q *queries.Queries) error {
 		return announceChecks(q, repo, sha)
+	})
+}
+
+type ExpiredRun struct {
+	ID      int64
+	Repo    string
+	Objects []string
+}
+
+func (s *Store) StaleTasks(before time.Time) ([]int64, error) {
+	return s.queries.ListStaleTasks(context.Background(), sql.NullTime{Time: before, Valid: true})
+}
+
+func (s *Store) ExpiredRuns(before time.Time) ([]ExpiredRun, error) {
+	ctx := context.Background()
+	rows, err := s.queries.ListExpiredRuns(ctx, sql.NullTime{Time: before, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	runs := []ExpiredRun{}
+	for _, row := range rows {
+		objects, err := s.queries.ListRunLogObjects(ctx, row.ID)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, ExpiredRun{ID: row.ID, Repo: row.Repo, Objects: objects})
+	}
+	return runs, nil
+}
+
+func (s *Store) DeleteRun(id int64) error {
+	return s.inTx(func(q *queries.Queries) error {
+		return q.DeleteRun(context.Background(), id)
 	})
 }

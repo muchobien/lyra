@@ -426,6 +426,12 @@ lyra variable list | delete <repo> [<NAME>]
   `https://data.forgejo.org`) resolves short `uses:` names.
 - **Logs** are kept in the database while a job runs, then stored as one object per job
   attempt.
+- **Dead runners:** a running job whose runner hasn't reported for `--job-stale-after`
+  (`LYRA_JOB_STALE_AFTER`, default 10m; runners report every second) fails with a
+  `lyra: the runner stopped reporting` log line.
+- **Retention:** finished runs and their logs are deleted after `--actions-retention`
+  (`LYRA_ACTIONS_RETENTION`, default 2160h, 90 days; 0 keeps them). Jobs see it as
+  `github.retention_days`.
 - **Cancel** stops waiting jobs at once; runners stop running ones on their next report.
   `rerun --failed` reruns jobs that didn't succeed and the jobs that need them.
 - **Events:** `run.queued`, `job.completed`, `run.completed` (with the result) and

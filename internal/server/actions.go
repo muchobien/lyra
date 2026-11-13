@@ -326,7 +326,7 @@ func (service runnerService) buildTask(assignment store.Assignment, token string
 		"actor": run.Author.User, "repository": run.Repo, "repository_owner": owner, "sha": run.SHA, "ref": run.Ref,
 		"ref_name": refName, "ref_type": refType, "event_name": run.Event, "event": event, "run_id": fmt.Sprint(run.ID),
 		"run_number": fmt.Sprint(run.Number), "run_attempt": fmt.Sprint(job.Attempt), "job": job.Key,
-		"workflow_ref": run.Repo + "/" + run.Workflow + "@" + run.Ref, "token": token, "retention_days": "90",
+		"workflow_ref": run.Repo + "/" + run.Workflow + "@" + run.Ref, "token": token, "retention_days": fmt.Sprint(int(service.server.config.ActionsRetention.Hours() / 24)),
 		"base_ref": run.BaseRef, "head_ref": run.HeadRef, "forgejo_default_actions_url": defaultActions, "gitea_default_actions_url": defaultActions,
 	})
 	if err != nil {

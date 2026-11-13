@@ -271,6 +271,7 @@ type Task struct {
 	LogObject string        `json:"log_object"`
 	StartedAt time.Time     `json:"started_at"`
 	StoppedAt sql.NullTime  `json:"stopped_at"`
+	UpdatedAt sql.NullTime  `json:"updated_at"`
 }
 
 type Token struct {

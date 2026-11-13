@@ -27,6 +27,7 @@ func main() {
 
 	var listen, dataDir, signingKey string
 	var storage, s3Endpoint, s3Bucket, s3Region, registryHost, actionsURL, defaultActionsURL, secretsKey string
+	var jobStaleAfter, actionsRetention time.Duration
 	var proxies, logins []string
 	serveCommand := &cobra.Command{
 		Use:   "serve",
@@ -34,7 +35,7 @@ func main() {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return serve(listen, proxies, logins, server.Config{
-				DataDir: dataDir, SigningKeyFile: signingKey, Storage: storage, S3Endpoint: s3Endpoint, S3Bucket: s3Bucket, S3Region: s3Region, RegistryHost: registryHost, ActionsURL: actionsURL, DefaultActionsURL: defaultActionsURL, SecretsKeyFile: secretsKey,
+				DataDir: dataDir, SigningKeyFile: signingKey, Storage: storage, S3Endpoint: s3Endpoint, S3Bucket: s3Bucket, S3Region: s3Region, RegistryHost: registryHost, ActionsURL: actionsURL, DefaultActionsURL: defaultActionsURL, SecretsKeyFile: secretsKey, JobStaleAfter: jobStaleAfter, ActionsRetention: actionsRetention,
 			})
 		},
 	}
@@ -51,6 +52,8 @@ func main() {
 	serveCommand.Flags().StringVar(&actionsURL, "actions-url", os.Getenv("LYRA_ACTIONS_URL"), "URL runners and jobs reach Lyra at, such as http://lyra.lyra.svc.cluster.local:8080 (LYRA_ACTIONS_URL; default: the request's URL)")
 	serveCommand.Flags().StringVar(&defaultActionsURL, "default-actions-url", envOr("LYRA_DEFAULT_ACTIONS_URL", "https://data.forgejo.org"), "where short action names like actions/checkout@v4 are fetched from (LYRA_DEFAULT_ACTIONS_URL)")
 	serveCommand.Flags().StringVar(&secretsKey, "secrets-key-file", os.Getenv("LYRA_SECRETS_KEY_FILE"), "file with 64 hex characters that encrypt Actions secrets (LYRA_SECRETS_KEY_FILE; default: generated in the data directory)")
+	serveCommand.Flags().DurationVar(&jobStaleAfter, "job-stale-after", envDuration("LYRA_JOB_STALE_AFTER", 10*time.Minute), "fail a running job when its runner hasn't reported for this long (LYRA_JOB_STALE_AFTER)")
+	serveCommand.Flags().DurationVar(&actionsRetention, "actions-retention", envDuration("LYRA_ACTIONS_RETENTION", 90*24*time.Hour), "delete finished runs and their logs after this long; 0 keeps them (LYRA_ACTIONS_RETENTION)")
 
 	hookCommand := &cobra.Command{Use: "hook", Short: "Git hooks run by the server", Hidden: true}
 	for _, name := range []string{"pre-receive", "post-receive"} {
@@ -116,6 +119,13 @@ Then lyra admin storage-check tells whether storage has every file the database 
 
 func envOr(name, fallback string) string {
 	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	if value, err := time.ParseDuration(os.Getenv(name)); err == nil {
 		return value
 	}
 	return fallback

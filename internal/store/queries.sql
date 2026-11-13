@@ -334,8 +334,8 @@ SELECT * FROM jobs WHERE status = 'waiting' ORDER BY id;
 UPDATE jobs SET status = ?, attempt = ?, outputs = ?, started_at = ?, stopped_at = ? WHERE id = ?;
 
 -- name: CreateTask :one
-INSERT INTO tasks (job_id, runner_id, attempt, token_hash, status, started_at)
-VALUES (?, ?, ?, ?, 'running', ?)
+INSERT INTO tasks (job_id, runner_id, attempt, token_hash, status, started_at, updated_at)
+VALUES (?, ?, ?, ?, 'running', sqlc.arg(started_at), sqlc.arg(started_at))
 RETURNING *;
 
 -- name: GetTask :one
@@ -348,7 +348,7 @@ SELECT * FROM tasks WHERE token_hash = ? AND status = 'running';
 SELECT * FROM tasks WHERE job_id = ? ORDER BY attempt;
 
 -- name: UpdateTask :exec
-UPDATE tasks SET status = ?, steps = ?, stopped_at = ? WHERE id = ?;
+UPDATE tasks SET status = ?, steps = ?, stopped_at = ?, updated_at = ? WHERE id = ?;
 
 -- name: SetTaskLog :exec
 UPDATE tasks SET log_length = ?, log_object = ? WHERE id = ?;
@@ -401,3 +401,18 @@ SELECT * FROM images ORDER BY name, tag;
 
 -- name: LatestEventByAction :one
 SELECT * FROM events WHERE action = ? ORDER BY id DESC LIMIT 1;
+
+-- name: TouchTask :exec
+UPDATE tasks SET updated_at = ? WHERE id = ?;
+
+-- name: ListStaleTasks :many
+SELECT id FROM tasks WHERE status = 'running' AND updated_at < ? ORDER BY id;
+
+-- name: ListExpiredRuns :many
+SELECT id, repo FROM runs WHERE stopped_at IS NOT NULL AND stopped_at < ? ORDER BY id;
+
+-- name: ListRunLogObjects :many
+SELECT tasks.log_object FROM tasks JOIN jobs ON jobs.id = tasks.job_id WHERE jobs.run_id = ? AND tasks.log_object != '';
+
+-- name: DeleteRun :exec
+DELETE FROM runs WHERE id = ?;
