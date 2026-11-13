@@ -80,6 +80,19 @@ table.diff-table tr.line-comments td, table.diff-table tr#line-form-row td { pad
 .comment .body { padding: 0 16px; overflow-x: auto; }
 .release table.assets { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 input.pull { width: 100%; font: 12px ui-monospace, Menlo, monospace; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.badge.run-success { color: var(--ok); }
+.badge.run-failure { color: var(--bad); }
+.badge.run-running, .badge.run-waiting, .badge.run-blocked, .badge.run-pending { color: var(--warn); }
+.badge.run-cancelled, .badge.run-skipped, .badge.run-none { color: var(--off); }
+.run { display: grid; grid-template-columns: 220px 1fr; gap: 16px; }
+@media (max-width: 640px) { .run { grid-template-columns: 1fr; } }
+nav.jobs { display: flex; flex-direction: column; gap: 4px; }
+nav.jobs a { padding: 4px 8px; border-radius: 6px; color: var(--fg); }
+nav.jobs a.current { background: var(--panel); font-weight: 600; }
+pre.log { max-height: 70vh; overflow: auto; margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; }
+details.step { margin: 4px 0; }
+details.step > summary { cursor: pointer; padding: 4px 0; }
+ol.steps { padding-left: 20px; }
 .sidebar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 12px 0; }
 @media (max-width: 640px) { .sidebar { grid-template-columns: 1fr; } }
 {{codeCSS}}
@@ -90,10 +103,11 @@ input.pull { width: 100%; font: 12px ui-monospace, Menlo, monospace; padding: 2p
 <main>
 {{with .Repo}}
 <h1>{{.Name}}{{with .Description}} <span class="muted">· {{.}}</span>{{end}}</h1>
-<nav class="tabs"><a href="/{{pathesc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{pathesc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{pathesc .Name}}/tags">Tags</a><a href="/{{pathesc .Name}}/releases">Releases</a><a href="/{{pathesc .Name}}/images">Images</a><a href="/{{pathesc .Name}}/issues">Issues</a><a href="/{{pathesc .Name}}/pulls">Pull requests</a></nav>
+<nav class="tabs"><a href="/{{pathesc .Name}}/tree/{{esc $.Ref}}/">Files</a><a href="/{{pathesc .Name}}/commits/{{esc $.Ref}}">Commits</a><a href="/{{pathesc .Name}}/tags">Tags</a><a href="/{{pathesc .Name}}/releases">Releases</a><a href="/{{pathesc .Name}}/images">Images</a><a href="/{{pathesc .Name}}/runs">Actions</a><a href="/{{pathesc .Name}}/issues">Issues</a><a href="/{{pathesc .Name}}/pulls">Pull requests</a></nav>
 {{end}}
 {{template "content" .}}
 </main>
 </body>
 </html>
+{{define "status"}}<span class="badge run-{{.}}">{{.}}</span>{{end}}
 {{define "sig"}}<span class="badge {{.Status}}" title="{{with .Fingerprint}}{{.}}{{end}}{{with .KeyAgent}} · agent {{.}}{{end}}">{{if eq .Status "verified"}}Verified{{else if eq .Status "unverified"}}Unverified{{else}}Unsigned{{end}}</span>{{end}}

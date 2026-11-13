@@ -63,6 +63,7 @@ type itemPage struct {
 	DiffFiles  []diffFile
 	Merge      *mergePlan
 	MergeError string
+	Checks     *store.Checks
 }
 
 func splitList(text string) []string {
@@ -222,6 +223,12 @@ func (s *Server) uiItemPage(kind string) http.HandlerFunc {
 			view.Pull = &pull
 			view.IsAuthor = isAuthor(pull, identityFrom(r).actor)
 			view.Merge, view.MergeError = s.mergeStatus(repo.Name, pull)
+			checks, err := s.store.Checks(repo.Name, pull.HeadSHA)
+			if err != nil {
+				s.renderError(w, r, http.StatusInternalServerError, err.Error())
+				return
+			}
+			view.Checks = &checks
 			s.markOutdated(repo.Name, pull, comments)
 			for index := range reviews {
 				s.markOutdated(repo.Name, pull, reviews[index].Comments)

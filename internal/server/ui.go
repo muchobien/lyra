@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
@@ -77,6 +78,25 @@ var templateFuncs = template.FuncMap{
 		}
 		return hex
 	},
+	"refName": func(ref string) string {
+		for _, prefix := range []string{"refs/heads/", "refs/tags/", "refs/pull/"} {
+			if name, found := strings.CutPrefix(ref, prefix); found {
+				return name
+			}
+		}
+		return ref
+	},
+	"duration": func(start, stop *time.Time) string {
+		end := time.Now()
+		if stop != nil {
+			end = *stop
+		}
+		elapsed := end.Sub(*start).Round(time.Second)
+		if elapsed < time.Minute {
+			return elapsed.String()
+		}
+		return fmt.Sprintf("%dm %ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+	},
 	"size": func(bytes int64) string {
 		value, unit := float64(bytes), 0
 		units := []string{"B", "KB", "MB", "GB", "TB"}
@@ -142,7 +162,7 @@ func init() {
 		return template.HTML(rendered.String())
 	}
 
-	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "images", "error"} {
+	for _, name := range []string{"repos", "tree", "blob", "commits", "commit", "tags", "items", "item", "releases", "images", "runs", "run", "error"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+name+".html"))
 	}
 }
@@ -341,10 +361,22 @@ func (s *Server) uiCommits(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
+	states := map[string]string{}
+	for _, commit := range commits {
+		checks, err := s.store.Checks(repo.Name, commit.SHA)
+		if err != nil {
+			s.renderError(w, r, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if checks.State != "none" {
+			states[commit.SHA] = checks.State
+		}
+	}
 	view := struct {
 		Commits []repos.Commit
 		Older   string
-	}{Commits: commits}
+		Checks  map[string]string
+	}{Commits: commits, Checks: states}
 	if len(commits) == commitsPerPage && len(commits[len(commits)-1].Parents) > 0 {
 		view.Older = commits[len(commits)-1].Parents[0]
 	}
@@ -374,10 +406,16 @@ func (s *Server) uiCommit(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
+	checks, err := s.store.Checks(repo.Name, commit.SHA)
+	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
 	view := struct {
 		Commit repos.Commit
 		Patch  template.HTML
-	}{Commit: commit, Patch: highlight(patchFormatter, lexers.Get("diff"), patch)}
+		Checks store.Checks
+	}{Commit: commit, Patch: highlight(patchFormatter, lexers.Get("diff"), patch), Checks: checks}
 	s.render(w, r, http.StatusOK, "commit", page{Title: commit.Subject + " · " + repo.Name, Repo: &repo, Ref: commit.SHA, CloneURL: cloneURL(r, repo.Name), Data: view})
 }
 

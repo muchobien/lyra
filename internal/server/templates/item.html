@@ -74,6 +74,7 @@ document.querySelectorAll("td.num[data-line]").forEach(function (cell) {
 <div><button type="submit">Submit review</button></div>
 </form>
 </details>
+{{with .Data.Checks}}{{if .Jobs}}<div class="comment"><div class="meta"><strong>Checks</strong> {{template "status" .State}} <span class="muted mono">{{short .SHA}}</span></div><div class="body"><table class="assets">{{range .Jobs}}<tr><td><a href="/{{pathesc $.Repo.Name}}/runs/{{.Run}}?job={{.JobID}}">{{.Name}}</a> <span class="muted">· {{base .Workflow}} · {{.Event}}</span></td><td class="right">{{template "status" .Status}}</td></tr>{{end}}</table></div></div>{{end}}{{end}}
 <div class="comment"><div class="meta"><strong>Merge</strong></div><div class="body">
 {{with .Data.MergeError}}<p>{{.}}</p>{{else}}{{with .Data.Merge}}{{if .Blocked}}
 <p>This pull request can't be merged:</p>

@@ -477,6 +477,13 @@ files at the default branch,
 `/{owner}/{repo}/tree/{ref}/{path}`, `/{owner}/{repo}/blob/{ref}/{path}` (`?raw` for the raw file),
 `/{owner}/{repo}/commits/{ref}`, `/{owner}/{repo}/commit/{sha}` and `/{owner}/{repo}/tags`.
 
+`/{owner}/{repo}/runs` lists Actions runs, and `/{owner}/{repo}/runs/{number}` shows a run's jobs.
+The selected job (`?job=<id>`) shows its steps with their logs. While it runs, a small
+script appends new log lines every second and reloads the page when the job finishes.
+With write access there are buttons to cancel and rerun. Pull requests show a Checks box
+for their head commit, and commit pages and the commits list show the checks of each
+commit.
+
 `/{owner}/{repo}/releases` lists releases, drafts first and only with write access, with their
 notes, assets and images; `/{owner}/{repo}/releases/tag/{tag}` shows one. `/{owner}/{repo}/images` lists the
 repository's image tags with a `docker pull` command.
