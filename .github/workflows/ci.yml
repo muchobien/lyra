@@ -18,12 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: sqlc-dev/setup-sqlc@v5
-        with:
-          sqlc-version: 1.31.1
+      - uses: jdx/mise-action@v5.2.8
       - name: jactionlint
         run: go run github.com/jdx/jactionlint/v2/cmd/jactionlint@v2.5.0
       - name: Actions lockfile
@@ -33,14 +28,7 @@ jobs:
           gh extension install github/gh-actions-lock --pin v0.4.1
           gh actions-lock --verify
       - name: Generated queries are current
-        run: sqlc diff
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "$unformatted"
-            exit 1
-          fi
-      - run: go vet ./...
-      - run: go build ./...
-      - run: go test ./...
+        run: mise run sqlc:check
+      - run: mise run lint
+      - run: mise run build
+      - run: mise run test

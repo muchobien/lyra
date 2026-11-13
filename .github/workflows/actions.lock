@@ -5,8 +5,7 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/ci.yml':
         - 'actions/checkout@v7'
-        - 'actions/setup-go@v7'
-        - 'sqlc-dev/setup-sqlc@v5'
+        - 'jdx/mise-action@v5.2.8'
     '.github/workflows/image.yml':
         - 'actions/checkout@v7'
         - 'docker/build-push-action@v7'
@@ -20,11 +19,6 @@ dependencies:
         commit: 'sha1-3d3c42e5aac5ba805825da76410c181273ba90b1'
         owner_id: 44036562
         repo_id: 197814629
-    'actions/setup-go@v7':
-        ref: 'v7'
-        commit: 'sha1-b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
-        owner_id: 44036562
-        repo_id: 192624594
     'docker/build-push-action@v7':
         ref: 'v7'
         commit: 'sha1-c3c9e263c25d99ce0380d002d59b67737d91b0dc'
@@ -50,8 +44,8 @@ dependencies:
         commit: 'sha1-99012661954931238ded8c8b007157a8430204e1'
         owner_id: 5429470
         repo_id: 288487894
-    'sqlc-dev/setup-sqlc@v5':
-        ref: 'v5'
-        commit: 'sha1-bac53b7fb28c039a6c7f5736fd1e89744021bdd6'
-        owner_id: 136738596
-        repo_id: 395872747
+    'jdx/mise-action@v5.2.8':
+        ref: 'v5.2.8'
+        commit: 'sha1-d5574b52816a478f9d4e6529a3f6ff17a8a36785'
+        owner_id: 216188
+        repo_id: 738284564
