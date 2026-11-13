@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -719,8 +720,49 @@ merged. Rules apply to admins as well. Setting a pattern again replaces its rule
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit))
 	return root
+}
+
+func imageCommands(call func(*cobra.Command, string, string, any) error, emit func(*cobra.Command, []byte) error) *cobra.Command {
+	image := &cobra.Command{Use: "image", Short: "List and delete container images"}
+	list := &cobra.Command{
+		Use:   "list <repo>",
+		Short: "List a repository's image tags with their digests and pull references",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/repos/"+url.PathEscape(args[0])+"/images", nil)
+		},
+	}
+	var yes bool
+	remove := &cobra.Command{
+		Use:   "delete <name>:<tag>|<name>@<digest>",
+		Short: "Delete an image tag, or a manifest and every tag pointing at it",
+		Long: `Delete an image tag, such as lyra/runner:v1, or a manifest by digest, such as
+lyra@sha256:…, which also removes every tag pointing at it. Needs admin access. Layers stay
+in storage until registry garbage collection exists.`,
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return UsageError{errors.New("image delete can't be undone; pass --yes")}
+			}
+			name, reference, found := strings.Cut(args[0], "@")
+			if !found {
+				colon := strings.LastIndex(args[0], ":")
+				if colon < 0 || colon < strings.LastIndex(args[0], "/") {
+					return UsageError{fmt.Errorf("%s has no tag or digest", args[0])}
+				}
+				name, reference = args[0][:colon], args[0][colon+1:]
+			}
+			if _, err := request(http.MethodDelete, "/v2/"+name+"/manifests/"+url.PathEscape(reference), nil); err != nil {
+				return err
+			}
+			return emit(cmd, []byte(`{"deleted": `+strconv.Quote(args[0])+"}\n"))
+		},
+	}
+	remove.Flags().BoolVar(&yes, "yes", false, "confirm deletion")
+	image.AddCommand(list, remove)
+	return image
 }
 
 type releaseInfo struct {
@@ -1175,10 +1217,17 @@ func responseError(response *http.Response) error {
 		return err
 	}
 	var apiError struct {
-		Error string `json:"error"`
+		Error  string `json:"error"`
+		Errors []struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"errors"`
 	}
 	if json.Unmarshal(data, &apiError) == nil && apiError.Error != "" {
 		return fmt.Errorf("%s (HTTP %d)", apiError.Error, response.StatusCode)
+	}
+	if len(apiError.Errors) > 0 {
+		return fmt.Errorf("%s: %s (HTTP %d)", apiError.Errors[0].Code, apiError.Errors[0].Message, response.StatusCode)
 	}
 	return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
 }

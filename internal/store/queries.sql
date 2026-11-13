@@ -228,3 +228,20 @@ SELECT * FROM release_assets WHERE release_id = ? ORDER BY name;
 
 -- name: DeleteAsset :execrows
 DELETE FROM release_assets WHERE id = ?;
+
+-- name: SetImageTag :one
+INSERT INTO images (repo, name, tag, digest, media_type, user, via, agent, session, pushed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (name, tag) DO UPDATE SET
+	digest = excluded.digest, media_type = excluded.media_type, user = excluded.user, via = excluded.via,
+	agent = excluded.agent, session = excluded.session, pushed_at = excluded.pushed_at
+RETURNING *;
+
+-- name: DeleteImageTag :many
+DELETE FROM images WHERE name = ? AND tag = ? RETURNING tag;
+
+-- name: DeleteImageDigest :many
+DELETE FROM images WHERE name = ? AND digest = ? RETURNING tag;
+
+-- name: ListImages :many
+SELECT * FROM images WHERE repo = ? ORDER BY name, pushed_at DESC, tag;

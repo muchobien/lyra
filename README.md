@@ -22,6 +22,9 @@ credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Lyra uses path-s
 requests and serves every download itself, so the bucket doesn't need to be reachable by
 clients.
 
+The same storage holds container images. `--registry-host` (`LYRA_REGISTRY_HOST`) is the host
+name shown in pull references, such as `registry.example.com`; without it, the request's host.
+
 ### Container image
 
 `ghcr.io/muchobien/lyra` is built for `linux/amd64` and `linux/arm64`, tagged `main` and
@@ -170,6 +173,32 @@ A release belongs to a tag:
 - **Events:** `release.created` (drafts), `release.published`, `release.updated`,
   `release.deleted`, and `release.asset` for each upload or deletion.
 
+## Container registry
+
+Lyra serves the OCI distribution API at `/v2/` on any host it answers, using the embedded
+`distribution` registry. An image is named after a Lyra repository, optionally with more
+path components: `registry.example.com/lyra:v1` or `registry.example.com/lyra/runner:v1`.
+Pushing to a name whose repository doesn't exist is refused with `NAME_UNKNOWN`. Because
+the registry owns `/v2/`, no repository can be called `v2`.
+
+```sh
+docker login registry.example.com -u lyra --password-stdin <<< "$LYRA_TOKEN"
+docker push registry.example.com/lyra:v1
+lyra image list <repo>
+lyra image delete <name>:<tag>|<name>@<digest> --yes
+```
+
+- **Access:** pulling needs `read` on the repository, pushing `write`, deleting `admin`.
+  Mounting a layer from another repository also needs `read` there. The catalog
+  (`/v2/_catalog`) needs a token that isn't limited to some repositories.
+- **Login:** behind `tailscale-auth`, clients on the tailnet need no login. Otherwise
+  any user name works, with a token as the password.
+- **Tracking:** each tag pushed is recorded with its digest and pusher, as `image.pushed`;
+  deletions as `image.deleted`. Manifests pushed only by digest, such as the per-platform
+  manifests of a multi-arch image, aren't listed.
+- **Deleting:** `lyra image delete` removes a tag, or a manifest and every tag pointing at
+  it. Layers stay in storage; there's no garbage collection yet.
+
 Issues and pull requests share one number sequence per repository. Assignees are
 logins or agent names; `@me` is the `Lyra-Agent` name when one is set, otherwise the
 login. Labels must exist before they are applied. Every write returns the `event_id` it
@@ -316,6 +345,7 @@ the server restarts.
 
 Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{name}/rules?pattern=` | admin |
+| `GET /api/repos/{name}/images` | read |
 | `GET /api/repos/{name}/releases`, `GET /api/repos/{name}/releases/latest` | read |
 | `GET /api/repos/{name}/releases/notes?tag=&target=&prerelease=` (generated notes preview) | read |
 | `GET /api/repos/{name}/releases/tags/{tag}`, `GET /api/repos/{name}/releases/{id}` | read |

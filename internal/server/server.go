@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -19,11 +20,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/configuration"
+	"github.com/distribution/distribution/v3/registry/handlers"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	"github.com/go-chi/chi/v5"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/muchobien/lyra/internal/repos"
@@ -39,15 +43,17 @@ type Config struct {
 	S3Endpoint     string
 	S3Bucket       string
 	S3Region       string
+	RegistryHost   string
 }
 
 type Server struct {
-	config  Config
-	store   *store.Store
-	git     repos.Git
-	dbPath  string
-	signer  ssh.Signer
-	storage driver.StorageDriver
+	config   Config
+	store    *store.Store
+	git      repos.Git
+	dbPath   string
+	signer   ssh.Signer
+	storage  driver.StorageDriver
+	registry http.Handler
 }
 
 const lyraUser = "lyra"
@@ -65,7 +71,7 @@ var scopeRank = map[string]int{"read": 1, "write": 2, "admin": 3}
 
 var repoNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 
-var reservedNames = []string{"api", "static", "healthz"}
+var reservedNames = []string{"api", "static", "healthz", "v2"}
 
 func New(config Config) (*Server, error) {
 	if len(config.TrustedProxies) > 0 && len(config.AllowedLogins) == 0 {
@@ -91,20 +97,36 @@ func New(config Config) (*Server, error) {
 		git:    repos.Git{},
 		dbPath: dbPath,
 	}
+	var driverName string
+	var driverParams map[string]any
 	switch config.Storage {
 	case "", "filesystem":
-		server.storage, err = factory.Create(context.Background(), "filesystem", map[string]any{"rootdirectory": filepath.Join(config.DataDir, "blobs")})
+		driverName, driverParams = "filesystem", map[string]any{"rootdirectory": filepath.Join(config.DataDir, "blobs")}
 	case "s3":
-		server.storage, err = factory.Create(context.Background(), "s3aws", map[string]any{
+		driverName, driverParams = "s3aws", map[string]any{
 			"regionendpoint": config.S3Endpoint, "bucket": config.S3Bucket, "region": config.S3Region, "forcepathstyle": true,
-		})
+		}
 	default:
-		err = fmt.Errorf("unknown storage %q: use filesystem or s3", config.Storage)
+		db.Close()
+		return nil, fmt.Errorf("unknown storage %q: use filesystem or s3", config.Storage)
 	}
-	if err != nil {
+	if server.storage, err = factory.Create(context.Background(), driverName, driverParams); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("storage: %w", err)
 	}
+	secret := make([]byte, 32)
+	rand.Read(secret)
+	logrus.SetLevel(logrus.WarnLevel)
+	server.registry = handlers.NewApp(context.Background(), &configuration.Configuration{
+		Storage: configuration.Storage{
+			driverName: driverParams,
+			"delete":   configuration.Parameters{"enabled": true},
+			"redirect": configuration.Parameters{"disable": true},
+			"cache":    configuration.Parameters{"blobdescriptor": "inmemory"},
+		},
+		HTTP:    configuration.HTTP{Secret: hex.EncodeToString(secret)},
+		Catalog: configuration.Catalog{MaxEntries: 1000},
+	})
 	keyFile := config.SigningKeyFile
 	if keyFile == "" {
 		keyFile = filepath.Join(config.DataDir, "lyra_signing_key")
@@ -172,6 +194,7 @@ func (s *Server) Handler() http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}, s.authenticate)
+	router.Handle("/v2/*", http.HandlerFunc(s.handleRegistry))
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok\n"))
 	})
@@ -206,6 +229,7 @@ func (s *Server) Handler() http.Handler {
 					pulls.Post("/{number}/merge", s.handleMergePull)
 					pulls.Post("/{number}/reviews", s.handleReviewPull)
 				})
+				repo.Get("/images", s.handleListImages)
 				repo.Route("/releases", func(releases chi.Router) {
 					releases.Get("/", s.handleListReleases)
 					releases.Post("/", s.handleCreateRelease)

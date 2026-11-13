@@ -48,6 +48,20 @@ type Event struct {
 	Item    int64     `json:"item"`
 }
 
+type Image struct {
+	ID        int64     `json:"id"`
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Tag       string    `json:"tag"`
+	Digest    string    `json:"digest"`
+	MediaType string    `json:"media_type"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	PushedAt  time.Time `json:"pushed_at"`
+}
+
 type Item struct {
 	ID        int64        `json:"id"`
 	Repo      string       `json:"repo"`

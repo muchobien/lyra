@@ -540,6 +540,70 @@ func (q *Queries) DeleteAsset(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected()
 }
 
+const deleteImageDigest = `-- name: DeleteImageDigest :many
+DELETE FROM images WHERE name = ? AND digest = ? RETURNING tag
+`
+
+type DeleteImageDigestParams struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+func (q *Queries) DeleteImageDigest(ctx context.Context, arg DeleteImageDigestParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, deleteImageDigest, arg.Name, arg.Digest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		items = append(items, tag)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteImageTag = `-- name: DeleteImageTag :many
+DELETE FROM images WHERE name = ? AND tag = ? RETURNING tag
+`
+
+type DeleteImageTagParams struct {
+	Name string `json:"name"`
+	Tag  string `json:"tag"`
+}
+
+func (q *Queries) DeleteImageTag(ctx context.Context, arg DeleteImageTagParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, deleteImageTag, arg.Name, arg.Tag)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		items = append(items, tag)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteKey = `-- name: DeleteKey :execrows
 DELETE FROM keys WHERE user = ? AND id = ?
 `
@@ -1027,6 +1091,45 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.Session,
 			&i.Data,
 			&i.Item,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImages = `-- name: ListImages :many
+SELECT id, repo, name, tag, digest, media_type, user, via, agent, session, pushed_at FROM images WHERE repo = ? ORDER BY name, pushed_at DESC, tag
+`
+
+func (q *Queries) ListImages(ctx context.Context, repo string) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, listImages, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Image
+	for rows.Next() {
+		var i Image
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Name,
+			&i.Tag,
+			&i.Digest,
+			&i.MediaType,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.PushedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1682,6 +1785,58 @@ func (q *Queries) RemoveItemLabel(ctx context.Context, arg RemoveItemLabelParams
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setImageTag = `-- name: SetImageTag :one
+INSERT INTO images (repo, name, tag, digest, media_type, user, via, agent, session, pushed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (name, tag) DO UPDATE SET
+	digest = excluded.digest, media_type = excluded.media_type, user = excluded.user, via = excluded.via,
+	agent = excluded.agent, session = excluded.session, pushed_at = excluded.pushed_at
+RETURNING id, repo, name, tag, digest, media_type, user, via, agent, session, pushed_at
+`
+
+type SetImageTagParams struct {
+	Repo      string    `json:"repo"`
+	Name      string    `json:"name"`
+	Tag       string    `json:"tag"`
+	Digest    string    `json:"digest"`
+	MediaType string    `json:"media_type"`
+	User      string    `json:"user"`
+	Via       string    `json:"via"`
+	Agent     string    `json:"agent"`
+	Session   string    `json:"session"`
+	PushedAt  time.Time `json:"pushed_at"`
+}
+
+func (q *Queries) SetImageTag(ctx context.Context, arg SetImageTagParams) (Image, error) {
+	row := q.db.QueryRowContext(ctx, setImageTag,
+		arg.Repo,
+		arg.Name,
+		arg.Tag,
+		arg.Digest,
+		arg.MediaType,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.PushedAt,
+	)
+	var i Image
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Name,
+		&i.Tag,
+		&i.Digest,
+		&i.MediaType,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.PushedAt,
+	)
+	return i, err
 }
 
 const setRule = `-- name: SetRule :one
