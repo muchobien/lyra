@@ -382,3 +382,20 @@ SELECT * FROM variables WHERE repo = ? ORDER BY name;
 
 -- name: DeleteVariable :execrows
 DELETE FROM variables WHERE repo = ? AND name = ?;
+
+-- name: ListAllAssets :many
+SELECT releases.repo, releases.tag, release_assets.name, release_assets.object, release_assets.size, release_assets.sha256
+FROM release_assets JOIN releases ON releases.id = release_assets.release_id
+ORDER BY releases.repo, releases.tag, release_assets.name;
+
+-- name: ListLogObjects :many
+SELECT runs.repo, tasks.id, tasks.log_object
+FROM tasks JOIN jobs ON jobs.id = tasks.job_id JOIN runs ON runs.id = jobs.run_id
+WHERE tasks.log_object != ''
+ORDER BY tasks.id;
+
+-- name: ListAllImages :many
+SELECT * FROM images ORDER BY name, tag;
+
+-- name: LatestEventByAction :one
+SELECT * FROM events WHERE action = ? ORDER BY id DESC LIMIT 1;

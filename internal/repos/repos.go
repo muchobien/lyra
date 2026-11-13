@@ -495,3 +495,24 @@ func (g Git) RevList(dir, rev string, exclude ...string) ([]string, error) {
 	}
 	return strings.Fields(string(stdout)), nil
 }
+
+func (g Git) Refs(dir string) (map[string]string, error) {
+	stdout, stderr, err := g.run(dir, "for-each-ref", "--format=%(refname) %(objectname)")
+	if err != nil {
+		return nil, fmt.Errorf("for-each-ref: %v: %s", err, stderr)
+	}
+	refs := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(stdout)), "\n") {
+		if name, sha, found := strings.Cut(line, " "); found {
+			refs[name] = sha
+		}
+	}
+	return refs, nil
+}
+
+func (g Git) Fsck(dir string) error {
+	if _, stderr, err := g.run(dir, "fsck", "--connectivity-only", "--no-dangling", "--no-progress"); err != nil {
+		return fmt.Errorf("git fsck: %v: %s", err, strings.TrimSpace(string(stderr)))
+	}
+	return nil
+}

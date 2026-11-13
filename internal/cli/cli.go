@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"context"
@@ -27,14 +28,14 @@ import (
 var ErrTimeout = errors.New("timeout")
 
 type UsageError struct {
-	err error
+	Err error
 }
 
 func (usage UsageError) Error() string {
-	return usage.err.Error()
+	return usage.Err.Error()
 }
 
-func exactArgs(count int) cobra.PositionalArgs {
+func ExactArgs(count int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) != count {
 			return UsageError{fmt.Errorf("%s takes %d argument(s), got %d; see %s --help", cmd.CommandPath(), count, len(args), cmd.CommandPath())}
@@ -84,7 +85,7 @@ lyra owner create.`,
 	me := &cobra.Command{
 		Use:   "me",
 		Short: "Show the authenticated actor and scope",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/me", nil)
 		},
@@ -95,7 +96,7 @@ lyra owner create.`,
 	repoCreate := &cobra.Command{
 		Use:   "create <owner>/<name>",
 		Short: "Create a repository under an existing owner",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, "/api/repos", map[string]string{"name": args[0], "description": description})
 		},
@@ -104,7 +105,7 @@ lyra owner create.`,
 	repoList := &cobra.Command{
 		Use:   "list",
 		Short: "List repositories",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/repos", nil)
 		},
@@ -112,7 +113,7 @@ lyra owner create.`,
 	repoGet := &cobra.Command{
 		Use:   "get <name>",
 		Short: "Show a repository with its branches and clone URL",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0]), nil)
 		},
@@ -121,7 +122,7 @@ lyra owner create.`,
 	repoDelete := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a repository permanently",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
 				return UsageError{errors.New("repo delete removes the repository permanently; pass --yes")}
@@ -138,7 +139,7 @@ lyra owner create.`,
 	commitList := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List commits with signature status",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := url.Values{"limit": {fmt.Sprint(commitLimit)}}
 			if ref != "" {
@@ -152,7 +153,7 @@ lyra owner create.`,
 	commitShow := &cobra.Command{
 		Use:   "show <repo> <rev>",
 		Short: "Show one commit, verified with git verify-commit",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/commits/"+url.PathEscape(args[1]), nil)
 		},
@@ -163,7 +164,7 @@ lyra owner create.`,
 	tag.AddCommand(&cobra.Command{
 		Use:   "list <repo>",
 		Short: "List tags, verified with git verify-tag",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/tags", nil)
 		},
@@ -175,7 +176,7 @@ lyra owner create.`,
 	tokenCreate := &cobra.Command{
 		Use:   "create",
 		Short: "Create a token; the secret is shown once",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if tokenName == "" || scope == "" {
 				return UsageError{errors.New("token create needs --name and --scope")}
@@ -190,7 +191,7 @@ lyra owner create.`,
 	tokenList := &cobra.Command{
 		Use:   "list",
 		Short: "List tokens",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/tokens", nil)
 		},
@@ -198,7 +199,7 @@ lyra owner create.`,
 	tokenRevoke := &cobra.Command{
 		Use:   "revoke <id>",
 		Short: "Revoke a token",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, "/api/tokens/"+url.PathEscape(args[0]), nil)
 		},
@@ -211,7 +212,7 @@ lyra owner create.`,
 	keyAdd := &cobra.Command{
 		Use:   "add <public-key-file|->",
 		Short: "Register an SSH public key for commit and tag signatures",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !signing {
 				return UsageError{errors.New("only signing keys are supported; pass --signing")}
@@ -238,7 +239,7 @@ lyra owner create.`,
 	keyList := &cobra.Command{
 		Use:   "list",
 		Short: "List keys",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/keys", nil)
 		},
@@ -246,7 +247,7 @@ lyra owner create.`,
 	keyDelete := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a key",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, "/api/keys/"+url.PathEscape(args[0]), nil)
 		},
@@ -259,7 +260,7 @@ lyra owner create.`,
 	eventList := &cobra.Command{
 		Use:   "list",
 		Short: "List recent events with their actors",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := url.Values{"limit": {fmt.Sprint(eventLimit)}}
 			if eventRepo != "" {
@@ -306,7 +307,7 @@ events. It exits 3 with {"error":"timeout"} when --timeout passes.
 --assignee me waits until an issue or pull request is assigned to you (your
 LYRA_AGENT name, or your login without one): a work queue. Check
 lyra issue list --assignee @me first for work assigned before you started waiting.`,
-		Args: exactArgs(0),
+		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := url.Values{"action": waitActions}
 			if waitRepo != "" {
@@ -335,7 +336,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		createCommand := &cobra.Command{
 			Use:   "create <repo>",
 			Short: "Open a new " + noun,
-			Args:  exactArgs(1),
+			Args:  ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if itemTitle == "" {
 					return UsageError{errors.New(use + " create needs --title")}
@@ -369,7 +370,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		listCommand := &cobra.Command{
 			Use:   "list <repo>",
 			Short: "List " + noun + "s, newest first",
-			Args:  exactArgs(1),
+			Args:  ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				query := url.Values{"state": {listState}, "limit": {fmt.Sprint(listLimit)}, "label": listLabels, "assignee": listAssignees}
 				return call(cmd, http.MethodGet, itemsPath(args[0])+"?"+query.Encode(), nil)
@@ -383,7 +384,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		viewCommand := &cobra.Command{
 			Use:   "view <repo> <number>",
 			Short: "Show a " + noun + " with its comments",
-			Args:  exactArgs(2),
+			Args:  ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return call(cmd, http.MethodGet, itemsPath(args[0])+"/"+url.PathEscape(args[1]), nil)
 			},
@@ -394,7 +395,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		commentCommand := &cobra.Command{
 			Use:   "comment <repo> <number>",
 			Short: "Comment on a " + noun,
-			Args:  exactArgs(2),
+			Args:  ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				body, set, err := readText(cmd, "body")
 				if err != nil {
@@ -423,7 +424,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		editCommand := &cobra.Command{
 			Use:   "edit <repo> <number>",
 			Short: "Change a " + noun + "'s title, body, labels or assignees",
-			Args:  exactArgs(2),
+			Args:  ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				edit := map[string]any{}
 				if cmd.Flags().Changed("title") {
@@ -461,7 +462,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 			parent.AddCommand(&cobra.Command{
 				Use:   change.use,
 				Short: change.short,
-				Args:  exactArgs(2),
+				Args:  ExactArgs(2),
 				RunE: func(cmd *cobra.Command, args []string) error {
 					return call(cmd, http.MethodPatch, itemsPath(args[0])+"/"+url.PathEscape(args[1]), map[string]string{"state": change.state})
 				},
@@ -492,7 +493,7 @@ ID it starts after that event instead. It reconnects if the connection drops, an
 exits 3 with {"error":"timeout"} when --timeout passes.
 
 --for chooses the actions, from ` + strings.Join(kinds, ", ") + ` (default: ` + strings.Join(defaults, ", ") + `).`,
-			Args: exactArgs(2),
+			Args: ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				chosen := waitFor
 				if len(chosen) == 0 {
@@ -525,7 +526,7 @@ exits 3 with {"error":"timeout"} when --timeout passes.
 	prCommits := &cobra.Command{
 		Use:   "commits <repo> <number>",
 		Short: "List a pull request's commits with signature status",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, pullPath(args)+"/commits", nil)
 		},
@@ -534,7 +535,7 @@ exits 3 with {"error":"timeout"} when --timeout passes.
 	prDiff := &cobra.Command{
 		Use:   "diff <repo> <number>",
 		Short: "Print a pull request's diff, or its changed files with --files",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if filesOnly {
 				return call(cmd, http.MethodGet, pullPath(args)+"/files", nil)
@@ -554,7 +555,7 @@ exits 3 with {"error":"timeout"} when --timeout passes.
 (see lyra signing-key). --ff moves the base branch to the head commit, keeping its
 commits and their signatures. Pass --head with the commit you reviewed to refuse the
 merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squash == fastForward {
 				return UsageError{errors.New("pr merge needs exactly one of --squash or --ff")}
@@ -590,7 +591,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 the author can't use them on their own pull request. --request-changes needs a body.
 --comments-file reads line comments as JSON: [{"path": "main.go", "line": 12, "side":
 "new", "body": "..."}], with lines as numbered in the diff (side defaults to new).`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var state string
 			switch {
@@ -638,7 +639,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 		Use:   "signing-key",
 		Short: "Show the public key Lyra signs merge commits with",
 		Long:  "Show the public key Lyra signs merge commits with, and an allowed_signers line for git verify-commit.",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/signing-key", nil)
 		},
@@ -653,7 +654,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	labelCreate := &cobra.Command{
 		Use:   "create <repo> <name>",
 		Short: "Create a label",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, labelsPath(args[0]), map[string]string{"name": args[1], "color": color, "description": labelDescription})
 		},
@@ -663,7 +664,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	labelList := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List labels",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, labelsPath(args[0]), nil)
 		},
@@ -671,7 +672,7 @@ the author can't use them on their own pull request. --request-changes needs a b
 	labelDelete := &cobra.Command{
 		Use:   "delete <repo> <name>",
 		Short: "Delete a label and remove it from every issue",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, labelsPath(args[0])+"/"+url.PathEscape(args[1]), nil)
 		},
@@ -696,7 +697,7 @@ pull request's current head commit, and while a reviewer's latest review request
 changes. --require-checks refuses merges until the Actions jobs for the pull request's
 head commit have all succeeded. --merge-methods limits how pull requests into a
 matching branch can be merged. Rules apply to admins as well. Setting a pattern again replaces its rule.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, rulesPath(args[0]), map[string]any{
 				"pattern": args[1], "require_signed": requireSigned, "require_approval": requireApproval, "require_checks": requireChecks, "merge_methods": allowedMethods,
@@ -710,7 +711,7 @@ matching branch can be merged. Rules apply to admins as well. Setting a pattern 
 	ruleList := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List branch rules",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, rulesPath(args[0]), nil)
 		},
@@ -718,14 +719,14 @@ matching branch can be merged. Rules apply to admins as well. Setting a pattern 
 	ruleDelete := &cobra.Command{
 		Use:   "delete <repo> <pattern>",
 		Short: "Delete the rule for a pattern",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, rulesPath(args[0])+"?"+url.Values{"pattern": {args[1]}}.Encode(), nil)
 		},
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call), runCommands(call, emit), workflowCommands(call), secretCommands(call), variableCommands(call))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call), ownerCommands(call), runCommands(call, emit), workflowCommands(call), secretCommands(call), variableCommands(call), adminCommands(call))
 	return root
 }
 
@@ -734,7 +735,7 @@ func imageCommands(call func(*cobra.Command, string, string, any) error, emit fu
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List a repository's image tags with their digests and pull references",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/images", nil)
 		},
@@ -746,7 +747,7 @@ func imageCommands(call func(*cobra.Command, string, string, any) error, emit fu
 		Long: `Delete an image tag, such as lyra/runner:v1, or a manifest by digest, such as
 lyra@sha256:…, which also removes every tag pointing at it. Needs admin access. Layers stay
 in storage until registry garbage collection exists.`,
-		Args: exactArgs(1),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
 				return UsageError{errors.New("image delete can't be undone; pass --yes")}
@@ -814,7 +815,7 @@ func releaseCommands(call func(*cobra.Command, string, string, any) error, emit 
 With --asset, the release is created as a draft, the assets are uploaded, and then it is
 published, so release.published fires once with every asset present. If an upload fails,
 the release stays a draft; finish it with lyra release upload and lyra release publish.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			notes, _, err := readText(cmd, "notes")
 			if err != nil {
@@ -868,7 +869,7 @@ the release stays a draft; finish it with lyra release upload and lyra release p
 is reachable from the tag (or --target, if the tag doesn't exist yet) but not from the
 previous release. The previous release is the most recently published one whose commit
 is an ancestor; prereleases count only with --prerelease.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := url.Values{"tag": {args[1]}, "target": {notesTarget}}
 			if notesPrerelease {
@@ -882,7 +883,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List releases, drafts first (drafts need write access)",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, releasesPath(args[0]), nil)
 		},
@@ -890,7 +891,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	view := &cobra.Command{
 		Use:   "view <repo> <tag|latest>",
 		Short: "Show a release with its assets and download URLs",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, path, err := find(args[0], args[1])
 			if err != nil {
@@ -904,7 +905,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	edit := &cobra.Command{
 		Use:   "edit <repo> <tag>",
 		Short: "Change a release's title, notes or prerelease flag, or a draft's target",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			changes := map[string]any{}
 			if cmd.Flags().Changed("title") {
@@ -940,7 +941,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	publish := &cobra.Command{
 		Use:   "publish <repo> <tag>",
 		Short: "Publish a draft, creating its tag if needed",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, path, err := find(args[0], args[1])
 			if err != nil {
@@ -953,7 +954,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	remove := &cobra.Command{
 		Use:   "delete <repo> <tag>",
 		Short: "Delete a release and its assets; the tag stays unless --cleanup-tag",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
 				return UsageError{errors.New("release delete removes its assets permanently; pass --yes")}
@@ -1005,7 +1006,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	download := &cobra.Command{
 		Use:   "download <repo> <tag|latest>",
 		Short: "Download a release's assets and check their sha256",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := filepath.Match(pattern, ""); err != nil {
 				return UsageError{fmt.Errorf("--pattern: %w", err)}
@@ -1046,7 +1047,7 @@ is an ancestor; prereleases count only with --prerelease.`,
 	deleteAsset := &cobra.Command{
 		Use:   "delete-asset <repo> <tag> <name>",
 		Short: "Delete one asset of a release",
-		Args:  exactArgs(3),
+		Args:  ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, path, err := find(args[0], args[1])
 			if err != nil {
@@ -1309,7 +1310,7 @@ func runnerCommands(call func(*cobra.Command, string, string, any) error) *cobra
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List registered runners, with labels, version and whether they polled in the last minute",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/runners", nil)
 		},
@@ -1331,7 +1332,7 @@ forgejo-runner config file instead of forgejo-runner register:
 
 The runner declares its labels and version when it starts. Many processes can share one
 runner, for example forgejo-runner one-job in a fresh pod per job.`,
-		Args: exactArgs(0),
+		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, "/api/runners", map[string]string{"name": runnerName})
 		},
@@ -1340,7 +1341,7 @@ runner, for example forgejo-runner one-job in a fresh pod per job.`,
 	remove := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a runner; it can't fetch jobs any more",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, "/api/runners/"+url.PathEscape(args[0]), nil)
 		},
@@ -1357,7 +1358,7 @@ runner, for example forgejo-runner one-job in a fresh pod per job.`,
 "url" is the address runners reach Lyra at (--actions-url on the server). A token can
 register any number of runners, such as one ephemeral runner per job, until it's deleted.
 Deleting it doesn't remove the runners it registered.`,
-		Args: exactArgs(0),
+		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, "/api/runners/tokens", map[string]string{"name": name})
 		},
@@ -1366,7 +1367,7 @@ Deleting it doesn't remove the runners it registered.`,
 	tokenList := &cobra.Command{
 		Use:   "list",
 		Short: "List registration tokens",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/runners/tokens", nil)
 		},
@@ -1374,7 +1375,7 @@ Deleting it doesn't remove the runners it registered.`,
 	tokenDelete := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a registration token",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, "/api/runners/tokens/"+url.PathEscape(args[0]), nil)
 		},
@@ -1395,7 +1396,7 @@ func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.
 	create := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create an owner, such as krosf, for repositories named <owner>/<name>",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, "/api/owners", map[string]string{"name": args[0], "description": description})
 		},
@@ -1404,7 +1405,7 @@ func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List owners with their repositories",
-		Args:  exactArgs(0),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/owners", nil)
 		},
@@ -1412,7 +1413,7 @@ func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.
 	view := &cobra.Command{
 		Use:   "view <name>",
 		Short: "Show an owner with its repositories",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, "/api/owners/"+url.PathEscape(args[0]), nil)
 		},
@@ -1420,7 +1421,7 @@ func ownerCommands(call func(*cobra.Command, string, string, any) error) *cobra.
 	remove := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete an owner that has no repositories",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, "/api/owners/"+url.PathEscape(args[0]), nil)
 		},
@@ -1459,7 +1460,7 @@ func runCommands(call func(*cobra.Command, string, string, any) error, emit func
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List runs, newest first, with their jobs",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/runs?limit="+fmt.Sprint(limit), nil)
 		},
@@ -1468,7 +1469,7 @@ func runCommands(call func(*cobra.Command, string, string, any) error, emit func
 	view := &cobra.Command{
 		Use:   "view <repo> <number>",
 		Short: "Show a run with its jobs and steps",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, runPath(args[0], args[1]), nil)
 		},
@@ -1480,7 +1481,7 @@ func runCommands(call func(*cobra.Command, string, string, any) error, emit func
 		Short: "Print a run's job logs as plain text",
 		Long: `Print a run's job logs as plain text. With several jobs, each starts with a "== <key>"
 line. --job picks one job by key or id. --follow keeps printing until the jobs finish.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info, _, err := fetch(args[0], args[1])
 			if err != nil {
@@ -1538,7 +1539,7 @@ line. --job picks one job by key or id. --follow keeps printing until the jobs f
 	wait := &cobra.Command{
 		Use:   "wait <repo> <number>",
 		Short: "Wait for a run to finish; exit 0 if it succeeded, 1 if not, 3 on timeout",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cursor := "0"
 			latest, err := request(http.MethodGet, "/api/events?limit=1&repo="+url.QueryEscape(args[0]), nil)
@@ -1592,7 +1593,7 @@ line. --job picks one job by key or id. --follow keeps printing until the jobs f
 	cancel := &cobra.Command{
 		Use:   "cancel <repo> <number>",
 		Short: "Cancel a run; running jobs are stopped by their runners",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPost, runPath(args[0], args[1])+"/cancel", nil)
 		},
@@ -1601,7 +1602,7 @@ line. --job picks one job by key or id. --follow keeps printing until the jobs f
 	rerun := &cobra.Command{
 		Use:   "rerun <repo> <number>",
 		Short: "Run a finished run's jobs again",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := runPath(args[0], args[1]) + "/rerun"
 			if failedOnly {
@@ -1626,7 +1627,7 @@ func workflowCommands(call func(*cobra.Command, string, string, any) error) *cob
 (default: the default branch). <workflow> is the file name, such as deploy.yml, or its
 path. Inputs are checked against the workflow's: unknown ones are refused, missing ones
 take their default, and required ones without a default must be given. Prints the run.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			values := map[string]string{}
 			for _, input := range inputs {
@@ -1653,7 +1654,7 @@ func secretCommands(call func(*cobra.Command, string, string, any) error) *cobra
 		Long: `Set a secret from stdin, so the value stays out of shell history: for example
 lyra secret set krosf/lyra DEPLOY_KEY < key.txt. One trailing newline is dropped. Names are
 upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
-		Args: exactArgs(2),
+		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			value, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {
@@ -1665,7 +1666,7 @@ upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List secret names, never their values",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/secrets", nil)
 		},
@@ -1673,7 +1674,7 @@ upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
 	remove := &cobra.Command{
 		Use:   "delete <repo> <NAME>",
 		Short: "Delete a secret",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, repoAPI(args[0])+"/secrets/"+url.PathEscape(args[1]), nil)
 		},
@@ -1687,7 +1688,7 @@ func variableCommands(call func(*cobra.Command, string, string, any) error) *cob
 	set := &cobra.Command{
 		Use:   "set <repo> <NAME> <value>",
 		Short: "Set a variable; jobs read it as ${{ vars.NAME }}",
-		Args:  exactArgs(3),
+		Args:  ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodPut, repoAPI(args[0])+"/variables/"+url.PathEscape(args[1]), map[string]string{"value": args[2]})
 		},
@@ -1695,7 +1696,7 @@ func variableCommands(call func(*cobra.Command, string, string, any) error) *cob
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List variables with their values",
-		Args:  exactArgs(1),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodGet, repoAPI(args[0])+"/variables", nil)
 		},
@@ -1703,11 +1704,127 @@ func variableCommands(call func(*cobra.Command, string, string, any) error) *cob
 	remove := &cobra.Command{
 		Use:   "delete <repo> <NAME>",
 		Short: "Delete a variable",
-		Args:  exactArgs(2),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return call(cmd, http.MethodDelete, repoAPI(args[0])+"/variables/"+url.PathEscape(args[1]), nil)
 		},
 	}
 	variable.AddCommand(set, list, remove)
 	return variable
+}
+
+func adminCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	admin := &cobra.Command{Use: "admin", Short: "Backups, read-only mode and status (unrestricted admin)"}
+	var output string
+	backup := &cobra.Command{
+		Use:   "backup",
+		Short: "Write a consistent backup of the database and every repository as a tar file",
+		Long: `Write a consistent backup as a tar file: lyra.db (made with VACUUM INTO), every bare
+repository, and manifest.json (repository refs, and the stored files and images the
+database refers to). Writes to Lyra pause while it's taken; the pause is reported.
+
+Signing and secrets keys aren't included, nor are the files in object storage (release
+assets, registry layers, job logs): back those up separately. Restore with lyra restore.
+The command fails if the tar ends without its manifest, so a cut-off download never
+passes as a backup.`,
+		Args: ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			req, err := newRequest(cmd.Context(), http.MethodPost, "/api/admin/backup", nil)
+			if err != nil {
+				return err
+			}
+			req.Header.Del("Accept")
+			response, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return err
+			}
+			defer response.Body.Close()
+			if response.StatusCode >= 400 {
+				return responseError(response)
+			}
+			out := cmd.OutOrStdout()
+			var file *os.File
+			if output != "" && output != "-" {
+				if file, err = os.Create(output); err != nil {
+					return err
+				}
+				defer file.Close()
+				out = file
+			}
+			archive := tar.NewReader(io.TeeReader(response.Body, out))
+			last := ""
+			for {
+				header, err := archive.Next()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("backup stream: %w", err)
+				}
+				last = header.Name
+			}
+			if _, err := io.Copy(io.Discard, io.TeeReader(response.Body, out)); err != nil {
+				return err
+			}
+			if last != "manifest.json" {
+				return errors.New("the backup ended without its manifest; it's incomplete")
+			}
+			if file != nil {
+				if err := file.Sync(); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "{\"file\":%q,\"pause_ms\":%s}\n", output, response.Header.Get("Lyra-Backup-Pause-Ms"))
+			}
+			return nil
+		},
+	}
+	backup.Flags().StringVar(&output, "output", "", "file to write (default: stdout)")
+	readOnly := &cobra.Command{
+		Use:   "readonly on|off|status",
+		Short: "Refuse every write with 503 while reads keep working; a restart turns it off",
+		Args:  ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "on", "off":
+				return call(cmd, http.MethodPost, "/api/admin/readonly", map[string]bool{"enabled": args[0] == "on"})
+			case "status":
+				return call(cmd, http.MethodGet, "/api/admin/status", nil)
+			}
+			return UsageError{fmt.Errorf("readonly takes on, off or status, not %q", args[0])}
+		},
+	}
+	status := &cobra.Command{
+		Use:   "status",
+		Short: "Show read-only mode and the last backup",
+		Args:  ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/admin/status", nil)
+		},
+	}
+	storageCheck := &cobra.Command{
+		Use:   "storage-check",
+		Short: "List stored files and images the database refers to but storage lacks; exit 1 if any",
+		Args:  ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := request(http.MethodGet, "/api/admin/storage-check", nil)
+			if err != nil {
+				return err
+			}
+			var result struct {
+				Missing []json.RawMessage `json:"missing"`
+			}
+			if err := json.Unmarshal(output, &result); err != nil {
+				return err
+			}
+			if _, err := cmd.OutOrStdout().Write(output); err != nil {
+				return err
+			}
+			if len(result.Missing) > 0 {
+				return fmt.Errorf("%d stored objects are missing", len(result.Missing))
+			}
+			return nil
+		},
+	}
+	admin.AddCommand(backup, readOnly, status, storageCheck)
+	return admin
 }

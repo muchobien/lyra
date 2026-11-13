@@ -1507,6 +1507,28 @@ func (q *Queries) InsertLogRow(ctx context.Context, arg InsertLogRowParams) erro
 	return err
 }
 
+const latestEventByAction = `-- name: LatestEventByAction :one
+SELECT id, at, "action", repo, user, via, agent, session, data, item FROM events WHERE action = ? ORDER BY id DESC LIMIT 1
+`
+
+func (q *Queries) LatestEventByAction(ctx context.Context, action string) (Event, error) {
+	row := q.db.QueryRowContext(ctx, latestEventByAction, action)
+	var i Event
+	err := row.Scan(
+		&i.ID,
+		&i.At,
+		&i.Action,
+		&i.Repo,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.Data,
+		&i.Item,
+	)
+	return i, err
+}
+
 const latestEventID = `-- name: LatestEventID :one
 SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) AS id FROM events
 `
@@ -1545,6 +1567,90 @@ func (q *Queries) LatestRelease(ctx context.Context, repo string) (Release, erro
 		&i.PublishedAt,
 	)
 	return i, err
+}
+
+const listAllAssets = `-- name: ListAllAssets :many
+SELECT releases.repo, releases.tag, release_assets.name, release_assets.object, release_assets.size, release_assets.sha256
+FROM release_assets JOIN releases ON releases.id = release_assets.release_id
+ORDER BY releases.repo, releases.tag, release_assets.name
+`
+
+type ListAllAssetsRow struct {
+	Repo   string `json:"repo"`
+	Tag    string `json:"tag"`
+	Name   string `json:"name"`
+	Object string `json:"object"`
+	Size   int64  `json:"size"`
+	Sha256 string `json:"sha256"`
+}
+
+func (q *Queries) ListAllAssets(ctx context.Context) ([]ListAllAssetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllAssets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllAssetsRow
+	for rows.Next() {
+		var i ListAllAssetsRow
+		if err := rows.Scan(
+			&i.Repo,
+			&i.Tag,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllImages = `-- name: ListAllImages :many
+SELECT id, repo, name, tag, digest, media_type, user, via, agent, session, pushed_at FROM images ORDER BY name, tag
+`
+
+func (q *Queries) ListAllImages(ctx context.Context) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, listAllImages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Image
+	for rows.Next() {
+		var i Image
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Name,
+			&i.Tag,
+			&i.Digest,
+			&i.MediaType,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.PushedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAssets = `-- name: ListAssets :many
@@ -1994,6 +2100,42 @@ func (q *Queries) ListLabels(ctx context.Context, repo string) ([]Label, error) 
 			&i.Color,
 			&i.Description,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLogObjects = `-- name: ListLogObjects :many
+SELECT runs.repo, tasks.id, tasks.log_object
+FROM tasks JOIN jobs ON jobs.id = tasks.job_id JOIN runs ON runs.id = jobs.run_id
+WHERE tasks.log_object != ''
+ORDER BY tasks.id
+`
+
+type ListLogObjectsRow struct {
+	Repo      string `json:"repo"`
+	ID        int64  `json:"id"`
+	LogObject string `json:"log_object"`
+}
+
+func (q *Queries) ListLogObjects(ctx context.Context) ([]ListLogObjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLogObjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLogObjectsRow
+	for rows.Next() {
+		var i ListLogObjectsRow
+		if err := rows.Scan(&i.Repo, &i.ID, &i.LogObject); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

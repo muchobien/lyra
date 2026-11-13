@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"code.forgejo.org/forgejo/actions-proto/ping/v1/pingv1connect"
@@ -61,6 +63,8 @@ type Server struct {
 	registry   http.Handler
 	secretsKey []byte
 	stop       context.CancelFunc
+	gate       sync.RWMutex
+	readOnly   atomic.Bool
 }
 
 const lyraUser = "lyra"
@@ -152,7 +156,7 @@ func New(config Config) (*Server, error) {
 			if err := os.WriteFile(keyFile, pem.EncodeToMemory(block), 0o600); err != nil {
 				return nil, err
 			}
-			slog.Info("generated signing key", "file", keyFile)
+			slog.Warn("generated a signing key in the data directory; it exists only there and in backups, so keep it with --signing-key-file", "file", keyFile)
 		}
 	}
 	keyData, err := os.ReadFile(keyFile)
@@ -207,7 +211,7 @@ func (s *Server) Handler() http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
-	}, s.authenticate)
+	}, s.authenticate, s.writeGate)
 	router.Handle("/v2/*", http.HandlerFunc(s.handleRegistry))
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok\n"))
@@ -304,6 +308,12 @@ func (s *Server) Handler() http.Handler {
 		pingPath, pingHandler := pingv1connect.NewPingServiceHandler(pingService{})
 		api.Handle("/actions"+runnerPath+"*", http.StripPrefix("/api/actions", runnerHandler))
 		api.Handle("/actions"+pingPath+"*", http.StripPrefix("/api/actions", pingHandler))
+		api.Route("/admin", func(admin chi.Router) {
+			admin.Post("/backup", s.handleBackup)
+			admin.Post("/readonly", s.handleReadOnly)
+			admin.Get("/status", s.handleStatus)
+			admin.Get("/storage-check", s.handleStorageCheck)
+		})
 		api.Route("/owners", func(owners chi.Router) {
 			owners.Get("/", s.handleListOwners)
 			owners.Post("/", s.handleCreateOwner)

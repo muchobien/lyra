@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/muchobien/lyra/internal/backup"
 	"github.com/muchobien/lyra/internal/cli"
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/server"
@@ -61,7 +62,43 @@ func main() {
 			},
 		})
 	}
-	root.AddCommand(serveCommand, hookCommand)
+	var restoreData string
+	restoreCommand := &cobra.Command{
+		Use:   "restore <backup.tar|->",
+		Short: "Restore a backup from lyra admin backup into a new data directory",
+		Long: `Restore a backup from lyra admin backup into a new, empty data directory, then check it:
+the database's integrity, a schema no newer than this binary, git fsck of every repository,
+and every repository's refs against the manifest. Prints a JSON report. Run lyra serve
+on the directory afterwards, with the same signing and secrets keys and the same storage.
+Then lyra admin storage-check tells whether storage has every file the database refers to.`,
+		Args: cli.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if restoreData == "" {
+				return cli.UsageError{Err: errors.New("--data is required")}
+			}
+			input := cmd.InOrStdin()
+			if args[0] != "-" {
+				file, err := os.Open(args[0])
+				if err != nil {
+					return err
+				}
+				defer file.Close()
+				input = file
+			}
+			report, err := backup.Restore(input, restoreData)
+			if err != nil {
+				return err
+			}
+			encoded, err := json.MarshalIndent(report, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(encoded))
+			return nil
+		},
+	}
+	restoreCommand.Flags().StringVar(&restoreData, "data", "", "new, empty data directory to restore into (required)")
+	root.AddCommand(serveCommand, hookCommand, restoreCommand)
 
 	if err := root.Execute(); err != nil {
 		encoded, _ := json.Marshal(map[string]string{"error": err.Error()})

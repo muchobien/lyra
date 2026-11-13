@@ -425,11 +425,41 @@ lyra variable list | delete <repo> [<NAME>]
 - **Events:** `run.queued`, `job.completed`, `run.completed` (with the result) and
   `run.cancelled`.
 
+## Backups
+
+```sh
+lyra admin backup --output lyra.tar     # or to stdout
+lyra restore lyra.tar --data /new/data   # offline, into an empty directory
+lyra admin storage-check                # stored files the database refers to but storage lacks
+lyra admin readonly on|off|status
+lyra admin status                       # read-only mode and the last backup
+```
+
+- **What a backup holds:** `lyra.db` (a consistent copy made with SQLite's `VACUUM INTO`),
+  every bare repository, and `manifest.json`: each repository's refs, and the stored files
+  (release assets, job logs) and images the database refers to.
+- **Consistency:** writes (pushes, API and UI writes, registry pushes, runner reports, the
+  scheduler) wait while the database is copied and the repositories are hard-linked into
+  a staging directory, then the tar is streamed. `admin status` reports the pause.
+- **Not included:** the signing and secrets keys (keep them with `--signing-key-file` and
+  `--secrets-key-file`; Lyra warns when it generates them in the data directory), and the
+  files in storage (back up the S3 bucket or `blobs` directory separately).
+- **Checks:** `admin backup` fails if the tar ends without its manifest. `restore` refuses a
+  non-empty directory, checks the database's integrity and schema version, runs `git fsck`
+  on every repository, and compares their refs with the manifest. After starting `lyra
+  serve` on the restored directory, with the same keys and storage, `admin storage-check`
+  exits 1 if storage lacks any file the database refers to.
+- **Read-only mode** refuses every write with 503 while reads and clones keep working. It
+  lives in memory, so a restart turns it off.
+- All of these need an unrestricted admin token. Each backup is recorded as
+  `backup.created`.
+
 ## API
 
 | Method and path | Scope |
 | --- | --- |
 | `GET /api/me` | any |
+| `POST /api/admin/backup` (tar stream), `POST /api/admin/readonly` (`enabled`), `GET /api/admin/status`, `GET /api/admin/storage-check` | admin, unrestricted |
 | `GET /api/owners`, `GET /api/owners/{owner}` (with its repositories) | any |
 | `POST /api/owners` (`name`, `description`), `DELETE /api/owners/{owner}` | admin, unrestricted |
 | `GET /api/repos`, `POST /api/repos` (`name` as `owner/name`, `description`) | read, admin |

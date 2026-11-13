@@ -156,6 +156,11 @@ func (s *Server) schedule(ctx context.Context) {
 }
 
 func (s *Server) queueScheduled(minute time.Time) {
+	if s.readOnly.Load() {
+		return
+	}
+	s.gate.RLock()
+	defer s.gate.RUnlock()
 	repos, err := s.store.Repos()
 	if err != nil {
 		slog.Error("schedule", "error", err)

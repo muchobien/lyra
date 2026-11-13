@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ func loadSecretsKey(config Config) ([]byte, error) {
 			if err := os.WriteFile(file, []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
 				return nil, err
 			}
+			slog.Warn("generated a secrets key in the data directory; it exists only there and in backups, so keep it with --secrets-key-file", "file", file)
 		}
 	}
 	content, err := os.ReadFile(file)
