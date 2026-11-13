@@ -6,6 +6,8 @@ import (
 	"code.forgejo.org/forgejo/actions-proto/ping/v1/pingv1connect"
 	"code.forgejo.org/forgejo/actions-proto/runner/v1/runnerv1connect"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/muchobien/lyra/internal/webui"
 )
 
 func headAsGet(next http.Handler) http.Handler {
@@ -31,14 +33,16 @@ func (s *Server) Handler() http.Handler {
 		w.Write([]byte("ok\n"))
 	})
 	router.Route("/api", s.apiRoutes)
-	router.Get("/", s.page(s.uiRepoList))
-	router.Get("/{owner}", s.page(s.uiOwner))
+	router.Handle("/static/assets/*", http.StripPrefix("/static/", webui.Assets()))
+	router.Get("/", s.page(s.uiApplication))
+	router.Get("/{owner}", s.page(s.uiApplication))
 	router.Route("/{owner}/{repo}", s.uiRoutes)
 	return router
 }
 
 func (s *Server) apiRoutes(router chi.Router) {
 	router.Get("/me", api(s.handleMe))
+	router.Get("/code.css", api(s.handleCodeCSS))
 	router.Route("/repos", func(repos chi.Router) {
 		repos.Get("/", api(s.handleListRepos))
 		repos.Post("/", api(s.handleCreateRepo))
@@ -86,6 +90,9 @@ func (s *Server) apiRoutes(router chi.Router) {
 
 func (s *Server) repoRoutes(repo chi.Router) {
 	repo.Get("/", api(s.handleGetRepo))
+	repo.Get("/tree", api(s.handleTree))
+	repo.Get("/blob", api(s.handleBlob))
+	repo.Get("/files", api(s.handleFiles))
 	repo.Delete("/", api(s.handleDeleteRepo))
 	repo.Get("/commits", api(s.handleListCommits))
 	repo.Get("/commits/{rev}", api(s.handleGetCommit))
@@ -158,7 +165,7 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Post("/git-upload-pack", s.handleGit)
 	repo.Post("/git-receive-pack", s.handleGit)
 
-	repo.Get("/", s.page(s.uiRepo))
+	repo.Get("/", s.page(s.uiApplication))
 	repo.Get("/tree/{ref}", s.page(s.uiTree))
 	repo.Get("/tree/{ref}/*", s.page(s.uiTree))
 	repo.Get("/blob/{ref}/*", s.page(s.uiBlob))

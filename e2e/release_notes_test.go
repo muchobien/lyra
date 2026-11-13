@@ -114,8 +114,8 @@ func TestReleaseNotes(test *testing.T) {
 	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v3.0.0", bearer(reader), ""); status != http.StatusNotFound {
 		test.Fatalf("reader's page for a draft: HTTP %d", status)
 	}
-	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo", tailnet(), ""); status != http.StatusOK || !strings.Contains(string(page), `href="/acme/demo/releases">Releases</a>`) {
-		test.Fatalf("repo page lacks the Releases tab: HTTP %d", status)
+	if status, page := call(test, http.MethodGet, srv.url+"/acme/demo", tailnet(), ""); status != http.StatusOK || !strings.Contains(string(page), `<div id="root"></div>`) {
+		test.Fatalf("repo page lacks the embedded workspace: HTTP %d", status)
 	}
 }
 

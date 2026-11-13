@@ -1,0 +1,193 @@
+.header {
+  background: #18171f;
+  color: #efeafa;
+  border-bottom: 1px solid #34323f;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  min-height: 4rem;
+  padding: 0.65rem 1.75rem;
+}
+.brand {
+  display: flex;
+  flex-shrink: 0;
+  & svg {
+    width: 1.8rem;
+    height: 1.8rem;
+    fill: none;
+    stroke: #bca6ff;
+    stroke-width: 1.4;
+  }
+}
+.context {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+  flex: 1;
+  font-size: 0.85rem;
+  & > a {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & > span {
+    color: #8b839b;
+  }
+  & > a:hover {
+    text-decoration: underline;
+  }
+}
+.repositoryTrigger {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0;
+  anchor-name: --repository-trigger;
+  min-width: 0;
+  & strong {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & svg {
+    color: #a09cac;
+  }
+}
+.appearance {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.theme {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #34323f;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #b7afc6;
+  &:hover {
+    background: #282834;
+  }
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #c7afea;
+  color: #2b1e3c;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.navigation {
+  display: flex;
+  align-items: stretch;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding: 0 1.75rem;
+  scrollbar-width: none;
+  & a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.2rem;
+    color: #b7afc6;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    font-size: 0.8rem;
+  }
+  & a:hover {
+    color: #efeafa;
+  }
+  & a.selected {
+    border-color: #bca6ff;
+    color: #efeafa;
+    font-weight: 550;
+  }
+}
+.main {
+  max-width: 1320px;
+  margin: auto;
+  padding: 1.8rem 2.5rem 3rem;
+}
+.repositoryPicker {
+  position-anchor: --repository-trigger;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-inline, flip-block;
+  inset: auto;
+  margin: 0.5rem 0 0;
+  min-width: 17rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  & a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.7rem;
+    border-radius: 0.4rem;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &:last-child {
+      border-top: 1px solid var(--border);
+      margin-top: 0.35rem;
+    }
+  }
+}
+.pickerLabel {
+  display: block;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.skip {
+  position: fixed;
+  top: -10rem;
+  left: 1rem;
+  z-index: 10;
+  padding: 0.65rem 1rem;
+  background: var(--surface);
+  color: var(--accent);
+  &:focus {
+    top: 1rem;
+  }
+}
+@media (width <= 600px) {
+  .bar {
+    padding: 0.65rem 1.15rem;
+    gap: 1rem;
+  }
+  .appearance {
+    gap: 0.75rem;
+  }
+  .context {
+    gap: 0.6rem;
+    font-size: 0.75rem;
+  }
+  .navigation {
+    padding-inline: 1.15rem;
+    gap: 1.3rem;
+  }
+  .main {
+    padding: 1.25rem 1.15rem 2rem;
+  }
+}

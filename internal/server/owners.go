@@ -119,16 +119,3 @@ func (s *Server) handleDeleteOwner(w http.ResponseWriter, r *http.Request) error
 	}
 	return writeJSON(w, http.StatusOK, deletedWithEvent{Deleted: name, EventID: eventID})
 }
-
-func (s *Server) uiOwner(w http.ResponseWriter, r *http.Request) error {
-	name := r.PathValue("owner")
-	groups, err := s.ownerGroups(r.Context(), identityFrom(r), name)
-	if err != nil {
-		return err
-	}
-	if len(groups) == 0 {
-		return notFound("Owner " + name + " not found.")
-	}
-	s.render(w, r, http.StatusOK, "repos", page{Title: name, Data: groups})
-	return nil
-}

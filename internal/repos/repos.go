@@ -481,6 +481,20 @@ func (g Git) Tree(ctx context.Context, dir, sha, path string) ([]Entry, error) {
 	return entries, nil
 }
 
+func (g Git) Files(ctx context.Context, dir, sha string) ([]string, error) {
+	stdout, stderr, err := g.run(ctx, dir, "ls-tree", "-r", "--name-only", "-z", sha, "--")
+	if err != nil {
+		return nil, fmt.Errorf("ls-tree: %v: %s", err, stderr)
+	}
+	files := []string{}
+	for _, name := range strings.Split(string(stdout), "\x00") {
+		if name != "" {
+			files = append(files, name)
+		}
+	}
+	return files, nil
+}
+
 func (g Git) Blob(ctx context.Context, dir, sha, path string) ([]byte, error) {
 	object := sha + ":" + path
 	kind, _, err := g.run(ctx, dir, "cat-file", "-t", object)

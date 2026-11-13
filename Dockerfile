@@ -1,8 +1,17 @@
+FROM --platform=$BUILDPLATFORM node:26.13.1 AS ui
+WORKDIR /src/web
+RUN npm install --global pnpm@12.18.0
+COPY web/package.json web/pnpm-workspace.yaml web/pnpm-lock.yaml ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+COPY web/ ./
+RUN pnpm build
+
 FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine3.24 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+COPY --from=ui /src/internal/webui/dist ./internal/webui/dist
 ARG TARGETOS TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/lyra ./cmd/lyra

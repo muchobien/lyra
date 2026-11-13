@@ -36,7 +36,6 @@ type page struct {
 }
 
 var pageNames = []string{
-	"repos",
 	"tree",
 	"blob",
 	"commits",

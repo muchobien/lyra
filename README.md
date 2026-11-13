@@ -7,8 +7,10 @@ issues in the web UI.
 ## Run
 
 ```sh
-go build -o bin/lyra ./cmd/lyra
-lyra serve --listen :8080 --data /var/lib/lyra \
+mise install &&
+mise run ui:build &&
+go build -o bin/lyra ./cmd/lyra &&
+./bin/lyra serve --listen :8080 --data /var/lib/lyra \
   --trusted-proxy 10.42.0.0/16 --allow-login you@example.com
 ```
 
@@ -565,6 +567,20 @@ files at the default branch,
 `/{owner}/{repo}/tree/{ref}/{path}`, `/{owner}/{repo}/blob/{ref}/{path}` (`?raw` for the raw file),
 `/{owner}/{repo}/commits/{ref}`, `/{owner}/{repo}/commit/{sha}` and `/{owner}/{repo}/tags`.
 
+Repository lists and the repository workspace use an embedded React application. The
+workspace keeps the selected branch, directory (`path`), or file (`file`) in the URL's
+search parameters. Its file finder opens with `T`. The latest stable release and matching
+container images appear in the repository sidebar. Markdown and syntax highlighting are
+rendered in Go. The remaining views use their existing server-rendered pages.
+
+Read-only workspace endpoints, behind repository read access:
+
+- `GET /api/repos/{owner}/{repo}/tree?ref=&path=`: entries, head commit, and rendered README.
+- `GET /api/repos/{owner}/{repo}/blob?ref=&path=`: highlighted file or binary/large-file status;
+  add `&raw` for the original bytes.
+- `GET /api/repos/{owner}/{repo}/files?ref=`: recursive file paths for the file finder.
+- `GET /api/code.css`: Chroma styles for system and explicit light/dark appearance.
+
 `/{owner}/{repo}/runs` lists Actions runs, and `/{owner}/{repo}/runs/{number}` shows a run's jobs.
 The selected job (`?job=<id>`) shows its steps with their logs. While it runs, a small
 script appends new log lines every second and reloads the page when the job finishes.
@@ -599,7 +615,23 @@ request. The CLI and git send neither header and aren't affected.
 
 ## Development
 
-`mise install` provides Go and sqlc. The schema lives in goose migrations under
+`mise install` provides the pinned Go, Node, pnpm, and development tools. Run
+`mise run build` to install the frontend dependencies, build its assets, and compile Go.
+The assets in `internal/webui/dist` are generated and embedded; a clean checkout needs
+`mise run ui:build` before invoking Go build/test commands directly. Production runs one
+Go binary and does not need Node. The Docker build performs both build stages.
+
+`mise run ui:check` runs Vite+ formatting, lint, and type checks. Frontend dependencies use
+exact versions and a frozen pnpm lockfile. Component styles use CSS Modules and target
+current stable Chrome, including native dialogs, popovers, and customizable selects.
+
+For frontend development, start a local Lyra server with its usual authentication setup,
+then run `pnpm --dir web dev`. `LYRA_DEV_URL` selects the backend (default
+`http://127.0.0.1:8080`); `LYRA_DEV_LOGIN` optionally supplies the trusted-proxy login header
+for a locally configured backend. These are development-server variables and are not
+included in the browser application.
+
+The schema lives in goose migrations under
 `internal/store/migrations`, applied by the server at startup. Queries live in
 `internal/store/queries.sql`; run `sqlc generate` after changing either, and commit the
 generated `internal/store/queries` package.

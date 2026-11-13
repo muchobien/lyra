@@ -68,19 +68,6 @@ func crumbs(path string) []crumb {
 	return trail
 }
 
-func (s *Server) uiRepoList(w http.ResponseWriter, r *http.Request) error {
-	groups, err := s.ownerGroups(r.Context(), identityFrom(r), "")
-	if err != nil {
-		return err
-	}
-	s.render(w, r, http.StatusOK, "repos", page{Title: "Repositories", Data: groups})
-	return nil
-}
-
-func (s *Server) uiRepo(w http.ResponseWriter, r *http.Request) error {
-	return s.showTree(w, r, "", "")
-}
-
 func (s *Server) uiTree(w http.ResponseWriter, r *http.Request) error {
 	return s.showTree(w, r, r.PathValue("ref"), strings.Trim(r.PathValue("*"), "/"))
 }

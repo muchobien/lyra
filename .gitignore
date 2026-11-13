@@ -1,2 +1,5 @@
 bin/
 data/
+web/node_modules/
+web/.vite/
+internal/webui/dist/

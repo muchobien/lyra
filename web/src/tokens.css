@@ -1,0 +1,117 @@
+@layer reset, tokens, base;
+
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  body,
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+    --canvas: light-dark(#f5f4f8, #15151b);
+    --surface: light-dark(#fff, #1c1c24);
+    --raised: light-dark(#f8f7fb, #23232d);
+    --hover: light-dark(#eeebf5, #282834);
+    --text: light-dark(#25212f, #efedf6);
+    --muted: light-dark(#696273, #a09cac);
+    --border: light-dark(#dedbe5, #34323f);
+    --soft-border: light-dark(#e9e6ef, #2b2936);
+    --accent: light-dark(#6e47bc, #bca6ff);
+    --accent-surface: light-dark(#eee7fa, #30273f);
+    --success: light-dark(#26744f, #83d2ac);
+    --shadow: 0 12px 40px light-dark(#33234419, #0006);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  html {
+    scrollbar-gutter: stable;
+    font-family: system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background: var(--canvas);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    min-width: 320px;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  code,
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+  button,
+  a,
+  input,
+  select,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  body:has(dialog:modal) {
+    overflow: hidden;
+  }
+  ::selection {
+    background: var(--accent-surface);
+    color: var(--accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0s !important;
+      transition-duration: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
