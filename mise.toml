@@ -1,7 +1,21 @@
 [tools]
+"github:github/gh-actions-lock" = { version = "0.4.1", bin = "gh-actions-lock" }
 go = "1.27.4"
 golangci-lint = "2.15.0"
+jactionlint = "2.5.0"
 sqlc = "1.31.1"
+
+[tasks."actions:lock"]
+description = "Pin the GitHub Actions used by the workflows in actions.lock"
+run = "gh-actions-lock"
+
+[tasks."actions:verify"]
+description = "Fail if the workflows and actions.lock disagree"
+run = "gh-actions-lock --verify"
+
+[tasks."lint:actions"]
+description = "Lint the GitHub Actions workflows"
+run = "jactionlint"
 
 [tasks.fmt]
 description = "Format Go code with gofmt and goimports"
