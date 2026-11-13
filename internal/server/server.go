@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"code.forgejo.org/forgejo/actions-proto/ping/v1/pingv1connect"
+	"code.forgejo.org/forgejo/actions-proto/runner/v1/runnerv1connect"
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry/handlers"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
@@ -44,6 +46,7 @@ type Config struct {
 	S3Bucket       string
 	S3Region       string
 	RegistryHost   string
+	ActionsURL     string
 }
 
 type Server struct {
@@ -267,6 +270,18 @@ func (s *Server) Handler() http.Handler {
 		api.Get("/events", s.handleListEvents)
 		api.Get("/events/stream", s.handleEventStream)
 		api.Get("/signing-key", s.handleSigningKey)
+		runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerService{server: s})
+		pingPath, pingHandler := pingv1connect.NewPingServiceHandler(pingService{})
+		api.Handle("/actions"+runnerPath+"*", http.StripPrefix("/api/actions", runnerHandler))
+		api.Handle("/actions"+pingPath+"*", http.StripPrefix("/api/actions", pingHandler))
+		api.Route("/runners", func(runners chi.Router) {
+			runners.Get("/", s.handleListRunners)
+			runners.Post("/", s.handleCreateRunner)
+			runners.Delete("/{id}", s.handleDeleteRunner)
+			runners.Get("/tokens", s.handleListRunnerTokens)
+			runners.Post("/tokens", s.handleCreateRunnerToken)
+			runners.Delete("/tokens/{id}", s.handleDeleteRunnerToken)
+		})
 	})
 
 	router.Get("/", s.uiRepoList)
@@ -321,7 +336,7 @@ func (s *Server) trustedProxy(remoteAddr string) bool {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
+		if r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/api/actions/") {
 			next.ServeHTTP(w, r)
 			return
 		}

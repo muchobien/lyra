@@ -171,6 +171,29 @@ type Review struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Runner struct {
+	ID                  int64         `json:"id"`
+	Uuid                string        `json:"uuid"`
+	TokenHash           string        `json:"token_hash"`
+	Name                string        `json:"name"`
+	Labels              string        `json:"labels"`
+	Version             string        `json:"version"`
+	Ephemeral           bool          `json:"ephemeral"`
+	RegistrationTokenID sql.NullInt64 `json:"registration_token_id"`
+	User                string        `json:"user"`
+	CreatedAt           time.Time     `json:"created_at"`
+	LastSeenAt          sql.NullTime  `json:"last_seen_at"`
+}
+
+type RunnerToken struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Hash      string    `json:"hash"`
+	Prefix    string    `json:"prefix"`
+	User      string    `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Token struct {
 	ID         int64        `json:"id"`
 	Name       string       `json:"name"`

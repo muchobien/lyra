@@ -245,3 +245,35 @@ DELETE FROM images WHERE name = ? AND digest = ? RETURNING tag;
 
 -- name: ListImages :many
 SELECT * FROM images WHERE repo = ? ORDER BY name, pushed_at DESC, tag;
+
+-- name: CreateRunnerToken :one
+INSERT INTO runner_tokens (name, hash, prefix, user, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *;
+
+-- name: GetRunnerTokenByHash :one
+SELECT * FROM runner_tokens WHERE hash = ?;
+
+-- name: ListRunnerTokens :many
+SELECT * FROM runner_tokens ORDER BY id;
+
+-- name: DeleteRunnerToken :execrows
+DELETE FROM runner_tokens WHERE id = ?;
+
+-- name: CreateRunner :one
+INSERT INTO runners (uuid, token_hash, name, version, ephemeral, registration_token_id, user, created_at, last_seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetRunnerByUUID :one
+SELECT * FROM runners WHERE uuid = ?;
+
+-- name: DeclareRunner :one
+UPDATE runners SET labels = ?, version = ?, last_seen_at = ? WHERE id = ? RETURNING *;
+
+-- name: TouchRunner :exec
+UPDATE runners SET last_seen_at = ? WHERE id = ?;
+
+-- name: ListRunners :many
+SELECT * FROM runners ORDER BY id;
+
+-- name: DeleteRunner :execrows
+DELETE FROM runners WHERE id = ?;

@@ -720,7 +720,7 @@ merged. Rules apply to admins as well. Setting a pattern again replaces its rule
 	}
 	rule.AddCommand(ruleSet, ruleList, ruleDelete)
 
-	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit))
+	root.AddCommand(me, repo, commit, tag, token, key, event, issue, pr, label, rule, releaseCommands(call, emit), imageCommands(call, emit), runnerCommands(call))
 	return root
 }
 
@@ -1297,4 +1297,84 @@ func waitForEvent(path string, timeout time.Duration) ([]byte, error) {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+func runnerCommands(call func(*cobra.Command, string, string, any) error) *cobra.Command {
+	runner := &cobra.Command{Use: "runner", Short: "Manage Actions runners and their registration tokens"}
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List registered runners, with labels, version and whether they polled in the last minute",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/runners", nil)
+		},
+	}
+	var runnerName string
+	create := &cobra.Command{
+		Use:   "create",
+		Short: "Create a runner and print its uuid and token, shown once",
+		Long: `Create a runner and print its uuid and token, shown once, for a connection in the
+forgejo-runner config file instead of forgejo-runner register:
+
+  server:
+    connections:
+      lyra:
+        url: <url>
+        uuid: <uuid>
+        token: <token>
+        labels: [...]
+
+The runner declares its labels and version when it starts. Many processes can share one
+runner, for example forgejo-runner one-job in a fresh pod per job.`,
+		Args: exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, "/api/runners", map[string]string{"name": runnerName})
+		},
+	}
+	create.Flags().StringVar(&runnerName, "name", "", "runner name (required)")
+	remove := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a runner; it can't fetch jobs any more",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, "/api/runners/"+url.PathEscape(args[0]), nil)
+		},
+	}
+	token := &cobra.Command{Use: "token", Short: "Manage runner registration tokens"}
+	var name string
+	tokenCreate := &cobra.Command{
+		Use:   "create",
+		Short: "Create a registration token, shown once",
+		Long: `Create a registration token, shown once in "secret". Register a runner with it:
+
+  forgejo-runner register --no-interactive --instance <url> --token <secret> --name <name> --labels <labels>
+
+"url" is the address runners reach Lyra at (--actions-url on the server). A token can
+register any number of runners, such as one ephemeral runner per job, until it's deleted.
+Deleting it doesn't remove the runners it registered.`,
+		Args: exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodPost, "/api/runners/tokens", map[string]string{"name": name})
+		},
+	}
+	tokenCreate.Flags().StringVar(&name, "name", "", "what the token is for (required)")
+	tokenList := &cobra.Command{
+		Use:   "list",
+		Short: "List registration tokens",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodGet, "/api/runners/tokens", nil)
+		},
+	}
+	tokenDelete := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a registration token",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return call(cmd, http.MethodDelete, "/api/runners/tokens/"+url.PathEscape(args[0]), nil)
+		},
+	}
+	token.AddCommand(tokenCreate, tokenList, tokenDelete)
+	runner.AddCommand(create, list, remove, token)
+	return runner
 }

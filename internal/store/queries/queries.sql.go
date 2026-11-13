@@ -484,6 +484,85 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 	return i, err
 }
 
+const createRunner = `-- name: CreateRunner :one
+INSERT INTO runners (uuid, token_hash, name, version, ephemeral, registration_token_id, user, created_at, last_seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, token_hash, name, labels, version, ephemeral, registration_token_id, user, created_at, last_seen_at
+`
+
+type CreateRunnerParams struct {
+	Uuid                string        `json:"uuid"`
+	TokenHash           string        `json:"token_hash"`
+	Name                string        `json:"name"`
+	Version             string        `json:"version"`
+	Ephemeral           bool          `json:"ephemeral"`
+	RegistrationTokenID sql.NullInt64 `json:"registration_token_id"`
+	User                string        `json:"user"`
+	CreatedAt           time.Time     `json:"created_at"`
+	LastSeenAt          sql.NullTime  `json:"last_seen_at"`
+}
+
+func (q *Queries) CreateRunner(ctx context.Context, arg CreateRunnerParams) (Runner, error) {
+	row := q.db.QueryRowContext(ctx, createRunner,
+		arg.Uuid,
+		arg.TokenHash,
+		arg.Name,
+		arg.Version,
+		arg.Ephemeral,
+		arg.RegistrationTokenID,
+		arg.User,
+		arg.CreatedAt,
+		arg.LastSeenAt,
+	)
+	var i Runner
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TokenHash,
+		&i.Name,
+		&i.Labels,
+		&i.Version,
+		&i.Ephemeral,
+		&i.RegistrationTokenID,
+		&i.User,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+	)
+	return i, err
+}
+
+const createRunnerToken = `-- name: CreateRunnerToken :one
+INSERT INTO runner_tokens (name, hash, prefix, user, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, name, hash, prefix, user, created_at
+`
+
+type CreateRunnerTokenParams struct {
+	Name      string    `json:"name"`
+	Hash      string    `json:"hash"`
+	Prefix    string    `json:"prefix"`
+	User      string    `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateRunnerToken(ctx context.Context, arg CreateRunnerTokenParams) (RunnerToken, error) {
+	row := q.db.QueryRowContext(ctx, createRunnerToken,
+		arg.Name,
+		arg.Hash,
+		arg.Prefix,
+		arg.User,
+		arg.CreatedAt,
+	)
+	var i RunnerToken
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Hash,
+		&i.Prefix,
+		&i.User,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createToken = `-- name: CreateToken :one
 INSERT INTO tokens (name, user, hash, prefix, scope, repos, created_at, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -524,6 +603,41 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
+	)
+	return i, err
+}
+
+const declareRunner = `-- name: DeclareRunner :one
+UPDATE runners SET labels = ?, version = ?, last_seen_at = ? WHERE id = ? RETURNING id, uuid, token_hash, name, labels, version, ephemeral, registration_token_id, user, created_at, last_seen_at
+`
+
+type DeclareRunnerParams struct {
+	Labels     string       `json:"labels"`
+	Version    string       `json:"version"`
+	LastSeenAt sql.NullTime `json:"last_seen_at"`
+	ID         int64        `json:"id"`
+}
+
+func (q *Queries) DeclareRunner(ctx context.Context, arg DeclareRunnerParams) (Runner, error) {
+	row := q.db.QueryRowContext(ctx, declareRunner,
+		arg.Labels,
+		arg.Version,
+		arg.LastSeenAt,
+		arg.ID,
+	)
+	var i Runner
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TokenHash,
+		&i.Name,
+		&i.Labels,
+		&i.Version,
+		&i.Ephemeral,
+		&i.RegistrationTokenID,
+		&i.User,
+		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
@@ -673,6 +787,30 @@ type DeleteRuleParams struct {
 
 func (q *Queries) DeleteRule(ctx context.Context, arg DeleteRuleParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteRule, arg.Repo, arg.Pattern)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteRunner = `-- name: DeleteRunner :execrows
+DELETE FROM runners WHERE id = ?
+`
+
+func (q *Queries) DeleteRunner(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteRunner, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteRunnerToken = `-- name: DeleteRunnerToken :execrows
+DELETE FROM runner_tokens WHERE id = ?
+`
+
+func (q *Queries) DeleteRunnerToken(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteRunnerToken, id)
 	if err != nil {
 		return 0, err
 	}
@@ -899,6 +1037,47 @@ func (q *Queries) GetRepo(ctx context.Context, name string) (Repo, error) {
 		&i.Description,
 		&i.CreatedAt,
 		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const getRunnerByUUID = `-- name: GetRunnerByUUID :one
+SELECT id, uuid, token_hash, name, labels, version, ephemeral, registration_token_id, user, created_at, last_seen_at FROM runners WHERE uuid = ?
+`
+
+func (q *Queries) GetRunnerByUUID(ctx context.Context, uuid string) (Runner, error) {
+	row := q.db.QueryRowContext(ctx, getRunnerByUUID, uuid)
+	var i Runner
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TokenHash,
+		&i.Name,
+		&i.Labels,
+		&i.Version,
+		&i.Ephemeral,
+		&i.RegistrationTokenID,
+		&i.User,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+	)
+	return i, err
+}
+
+const getRunnerTokenByHash = `-- name: GetRunnerTokenByHash :one
+SELECT id, name, hash, prefix, user, created_at FROM runner_tokens WHERE hash = ?
+`
+
+func (q *Queries) GetRunnerTokenByHash(ctx context.Context, hash string) (RunnerToken, error) {
+	row := q.db.QueryRowContext(ctx, getRunnerTokenByHash, hash)
+	var i RunnerToken
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Hash,
+		&i.Prefix,
+		&i.User,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -1618,6 +1797,79 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 	return items, nil
 }
 
+const listRunnerTokens = `-- name: ListRunnerTokens :many
+SELECT id, name, hash, prefix, user, created_at FROM runner_tokens ORDER BY id
+`
+
+func (q *Queries) ListRunnerTokens(ctx context.Context) ([]RunnerToken, error) {
+	rows, err := q.db.QueryContext(ctx, listRunnerTokens)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RunnerToken
+	for rows.Next() {
+		var i RunnerToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Hash,
+			&i.Prefix,
+			&i.User,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunners = `-- name: ListRunners :many
+SELECT id, uuid, token_hash, name, labels, version, ephemeral, registration_token_id, user, created_at, last_seen_at FROM runners ORDER BY id
+`
+
+func (q *Queries) ListRunners(ctx context.Context) ([]Runner, error) {
+	rows, err := q.db.QueryContext(ctx, listRunners)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Runner
+	for rows.Next() {
+		var i Runner
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TokenHash,
+			&i.Name,
+			&i.Labels,
+			&i.Version,
+			&i.Ephemeral,
+			&i.RegistrationTokenID,
+			&i.User,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokens = `-- name: ListTokens :many
 SELECT id, name, user, hash, prefix, scope, repos, created_at, expires_at, last_used_at FROM tokens WHERE user = ? ORDER BY id
 `
@@ -1936,6 +2188,20 @@ type TouchItemParams struct {
 
 func (q *Queries) TouchItem(ctx context.Context, arg TouchItemParams) error {
 	_, err := q.db.ExecContext(ctx, touchItem, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const touchRunner = `-- name: TouchRunner :exec
+UPDATE runners SET last_seen_at = ? WHERE id = ?
+`
+
+type TouchRunnerParams struct {
+	LastSeenAt sql.NullTime `json:"last_seen_at"`
+	ID         int64        `json:"id"`
+}
+
+func (q *Queries) TouchRunner(ctx context.Context, arg TouchRunnerParams) error {
+	_, err := q.db.ExecContext(ctx, touchRunner, arg.LastSeenAt, arg.ID)
 	return err
 }
 

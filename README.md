@@ -22,6 +22,9 @@ credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Lyra uses path-s
 requests and serves every download itself, so the bucket doesn't need to be reachable by
 clients.
 
+`--actions-url` (`LYRA_ACTIONS_URL`) is the URL Actions runners reach Lyra at, such as an
+in-cluster service address; without it, the request's URL.
+
 The same storage holds container images. `--registry-host` (`LYRA_REGISTRY_HOST`) is the host
 name shown in pull references, such as `registry.example.com`; without it, the request's host.
 
@@ -312,6 +315,29 @@ patterns (`push`, `repo.*`). Without `--since` it waits for events after it star
 last event it saw can't miss one that happened in between. It reconnects on its own if
 the server restarts.
 
+## Actions runners
+
+Lyra serves the Forgejo runner protocol (ConnectRPC, `runner.v1`) at `/api/actions/`, for
+`forgejo-runner` 13. Runners authenticate with their own uuid and token, not with the
+tailnet header or Lyra tokens. Managing runners needs an unrestricted admin token.
+
+```sh
+lyra runner create --name vega                # uuid and token for a config connection
+lyra runner token create --name pool          # registration token for forgejo-runner register
+lyra runner list                              # labels, version, online in the last minute
+lyra runner delete <id>
+lyra runner token list | delete <id>
+```
+
+- **`runner create`** prints a uuid and token, shown once, for a `server.connections` entry
+  in the runner's config file. Many processes can share that runner, such as
+  `forgejo-runner one-job` in a fresh pod per job.
+- **Registration tokens** work with `forgejo-runner register`, including `--ephemeral`, and
+  can register any number of runners until they're deleted. Deleting one keeps the runners
+  it registered.
+- **Labels and version** come from the runner's `Declare` call when it starts.
+- Runs and jobs come in a later step; for now runners poll and get no tasks.
+
 ## API
 
 | Method and path | Scope |
@@ -350,6 +376,8 @@ the server restarts.
 Comments on pull requests also take `path`, `line` and `side`.
 | `DELETE /api/repos/{name}/rules?pattern=` | admin |
 | `GET /api/repos/{name}/images` | read |
+| `GET /api/runners`, `POST /api/runners` (`name`), `DELETE /api/runners/{id}` | admin, unrestricted |
+| `GET /api/runners/tokens`, `POST /api/runners/tokens` (`name`), `DELETE /api/runners/tokens/{id}` | admin, unrestricted |
 | `GET /api/repos/{name}/releases`, `GET /api/repos/{name}/releases/latest` | read |
 | `GET /api/repos/{name}/releases/notes?tag=&target=&prerelease=` (generated notes preview) | read |
 | `GET /api/repos/{name}/releases/tags/{tag}`, `GET /api/repos/{name}/releases/{id}` | read |

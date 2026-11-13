@@ -3,6 +3,8 @@ module github.com/muchobien/lyra
 go 1.27.3
 
 require (
+	code.forgejo.org/forgejo/actions-proto v0.8.0
+	connectrpc.com/connect v1.21.1
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/bluekeyes/go-gitdiff v0.9.0
 	github.com/distribution/distribution/v3 v3.1.2
