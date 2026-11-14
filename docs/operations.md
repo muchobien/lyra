@@ -7,9 +7,9 @@ Each version tag publishes a GitHub release with static binaries for `linux-amd6
 `packslip install github.com/muchobien/lyra` checks the signature; to check a download
 yourself, run `packslip verify packslip.sigstore.json --artifact <archive>`.
 
-`ghcr.io/muchobien/lyra` is built for `linux/amd64` and `linux/arm64`, tagged `main` and
-`sha-<short>` from `main`, and `X.Y.Z`, `X.Y` and `latest` from version tags. It runs
-`lyra serve` as a non-root user with data in the `/data` volume:
+`ghcr.io/muchobien/lyra` is built for `linux/amd64` and `linux/arm64`, tagged `main` for
+the latest commit on `main`, and `X.Y.Z` and `X.Y` from version tags, with `latest` on the
+newest release. It runs `lyra serve` as a non-root user with data in the `/data` volume:
 
 ```sh
 docker run -p 8080:8080 -v lyra-data:/data \
