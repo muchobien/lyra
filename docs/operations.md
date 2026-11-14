@@ -83,10 +83,9 @@ they aren't reachable through the main one:
 
 ## Web UI
 
-`/` lists owners and repositories. A repository has pages for files, commits, tags,
-releases, images, issues, pull requests and Actions runs. Issue and pull request pages
-render Markdown with raw HTML removed, and have forms to comment, close, reopen, label,
-assign, review and merge. A pull request's files tab takes line comments.
+The [web UI](web-ui.md) is embedded in the binary. API, Git transport, runner protocol,
+registry, raw-file and release-download requests retain their own routes. Missing assets
+are never served an application shell.
 
 Requests that change data and come from another site are rejected with Go's
 `http.CrossOriginProtection` (`Sec-Fetch-Site` and `Origin`). Without it, any page could

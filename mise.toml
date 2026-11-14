@@ -1,6 +1,8 @@
 [tools]
 "github:github/gh-actions-lock" = { version = "0.4.1", bin = "gh-actions-lock" }
 go = "1.27.4"
+node = "26.13.1"
+pnpm = "12.18.0"
 golangci-lint = "2.15.0"
 goreleaser = "2.20.2"
 jactionlint = "2.5.0"
@@ -21,18 +23,22 @@ description = "Lint the GitHub Actions workflows"
 run = "jactionlint"
 
 [tasks.fmt]
+depends = ["ui:fmt"]
 description = "Format Go code with gofmt and goimports"
 run = "golangci-lint fmt"
 
 [tasks.lint]
+depends = ["ui:build", "ui:check"]
 description = "Check formatting, then run go vet and golangci-lint"
 run = ["golangci-lint fmt --diff", "go vet ./...", "golangci-lint run"]
 
 [tasks.build]
+depends = ["ui:build"]
 description = "Compile every package"
 run = "go build ./..."
 
 [tasks.test]
+depends = ["ui:build"]
 description = "Run the test suite, including the end-to-end tests"
 run = "go test ./..."
 
@@ -41,6 +47,7 @@ description = "Fail if the generated queries are out of date"
 run = "sqlc diff"
 
 [tasks.openapi]
+depends = ["ui:build"]
 description = "Write api/openapi.yaml and generate the CLI's API client from it"
 run = """
 set -e
@@ -52,6 +59,7 @@ oapi-codegen -config internal/cli/lyraapi/oapi-codegen.yaml -o internal/cli/lyra
 """
 
 [tasks."openapi:check"]
+depends = ["ui:build"]
 description = "Fail if api/openapi.yaml or the generated API client is out of date"
 run = """
 set -e
@@ -75,3 +83,27 @@ run = "goreleaser release --clean --skip=publish --snapshot"
 description = "Build the container image from freshly built snapshot archives"
 depends = ["dist:snapshot"]
 run = "docker build -t lyra ."
+
+[tasks."ui:install"]
+description = "Install the pinned frontend dependencies"
+run = "pnpm --dir web install --frozen-lockfile"
+
+[tasks."ui:build"]
+description = "Build the frontend assets embedded in Lyra"
+depends = ["ui:install"]
+run = "pnpm --dir web build"
+
+[tasks."ui:check"]
+description = "Check generated API code, frontend formatting, lint, and types"
+depends = ["ui:install"]
+run = "pnpm --dir web check"
+
+[tasks."ui:generate"]
+description = "Generate the frontend API client from api/openapi.yaml"
+depends = ["ui:install"]
+run = "pnpm --dir web api:generate"
+
+[tasks."ui:fmt"]
+description = "Format the frontend with Vite+"
+depends = ["ui:install"]
+run = "pnpm --dir web fmt"

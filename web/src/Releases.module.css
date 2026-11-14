@@ -1,0 +1,35 @@
+.assets {
+  padding: 1.1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  & h2 {
+    font-size: 0.85rem;
+    font-weight: 550;
+    margin-bottom: 0.75rem;
+  }
+  & > div {
+    padding-inline: 0;
+  }
+  & p code {
+    overflow-wrap: anywhere;
+    font-size: 0.65rem;
+  }
+  & input[type="file"] {
+    max-width: 100%;
+    &::file-selector-button {
+      background: var(--raised);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 0.35rem;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      margin-right: 0.8rem;
+    }
+  }
+}
+.pullCommand {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding-top: 0.8rem;
+}

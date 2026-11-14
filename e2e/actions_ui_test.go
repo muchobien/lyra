@@ -1,12 +1,15 @@
 package e2e
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/muchobien/lyra/internal/store"
 )
 
 const uiWorkflow = `name: CI
@@ -34,25 +37,23 @@ func TestActionsUI(test *testing.T) {
 	auth := "http.extraHeader=Authorization: Bearer " + token
 	remote := srv.url + "/acme/demo.git"
 	src := newSource(test)
-	page := func(target string) string {
+	read := func(target string) []byte {
 		test.Helper()
-		status, body := call(test, http.MethodGet, srv.url+target, tailnet(), "")
+		status, response := call(test, http.MethodGet, srv.url+target, tailnet(), "")
 		if status != http.StatusOK {
-			test.Fatalf("%s: HTTP %d:\n%s", target, status, body)
+			test.Fatalf("%s: HTTP %d:\n%s", target, status, response)
 		}
-		return string(body)
+		return response
 	}
-	expect := func(target string, wants ...string) {
+	run := func() store.Run {
 		test.Helper()
-		body := page(target)
-		for _, want := range wants {
-			if !strings.Contains(body, want) {
-				test.Fatalf("%s lacks %q:\n%s", target, want, body)
-			}
+		var result store.Run
+		if err := json.Unmarshal(read("/api/repos/acme/demo/runs/1"), &result); err != nil {
+			test.Fatal(err)
 		}
+		return result
 	}
 	hostRunner(test, srv, token)
-
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
 	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
 		test.Fatal(err)
@@ -60,66 +61,72 @@ func TestActionsUI(test *testing.T) {
 	commitFile(test, src, ".forgejo/workflows/ci.yml", uiWorkflow, "Add CI")
 	mustGit(test, src, "-c", auth, "push", "-q", remote, "main")
 	sha := mustGit(test, src, "rev-parse", "HEAD")
-
-	var build string
-	eventually(test, "the build job to run", func() bool {
-		build = page("/acme/demo/runs/1")
-		return strings.Contains(build, `id="live-log"`) && strings.Contains(build, "hello from the job")
+	eventually(test, "the live build log", func() bool {
+		current := run()
+		return len(current.Jobs) == 2 && current.Jobs[0].Status == "running" && strings.Contains(string(read("/api/repos/acme/demo/runs/1/jobs/1/logs")), "hello from the job")
 	})
-	for _, want := range []string{
-		`data-url="/api/repos/acme/demo/runs/1/jobs/1/logs"`, `class="badge run-running"`, "Cancel run",
-		`<a href="/acme/demo/runs/1?job=2"><span class="badge run-waiting">waiting</span> gpu</a>`,
-	} {
-		if !strings.Contains(build, want) {
-			test.Fatalf("running run page lacks %q:\n%s", want, build)
+	current := run()
+	if current.Status != "running" || current.Jobs[1].Status != "waiting" || strings.Join(current.Jobs[1].RunsOn, ",") != "gpu" {
+		test.Fatalf("running workspace: %+v", current)
+	}
+	eventually(test, "the build job to finish", func() bool { return run().Jobs[0].Status == "success" })
+	current = run()
+	if len(current.Jobs[0].Steps) != 3 || current.Jobs[0].Steps[0].Name != "Say hello" || current.Jobs[0].Steps[0].Result != "success" || !strings.Contains(string(read("/api/repos/acme/demo/runs/1/jobs/1/logs")), "bye <b>tag</b>") {
+		test.Fatalf("completed job workspace: %+v", current.Jobs[0])
+	}
+	var commit struct {
+		Checks store.Checks `json:"checks"`
+	}
+	if err := json.Unmarshal(read("/api/repos/acme/demo/commits/"+sha+"/view"), &commit); err != nil || commit.Checks.State != "pending" || len(commit.Checks.Jobs) != 2 || commit.Checks.Jobs[0].Status != "success" {
+		test.Fatalf("commit checks: %+v, %v", commit.Checks, err)
+	}
+	for _, target := range []string{"runs", "runs/1", "runs/1?job=2", "commits/main", "commit/" + sha} {
+		if page := read("/acme/demo/" + target); !strings.Contains(string(page), `<div id="root"></div>`) {
+			test.Fatalf("%s lacks the embedded application", target)
 		}
 	}
-	expect("/acme/demo/runs/1?job=2", "Waiting for a runner with the labels <span class=\"mono\">gpu</span>")
-	eventually(test, "the build job to finish", func() bool {
-		return strings.Contains(page("/acme/demo/runs/1"), `<details class="step"`)
-	})
-	expect("/acme/demo/runs/1",
-		`<span class="badge run-success">success</span> Say hello`, "hello from the job", "bye &lt;b&gt;tag&lt;/b&gt;",
-		`<details class="step"><summary><span class="badge">log</span> Set up`, `>Actions</a>`,
-	)
-	if strings.Contains(page("/acme/demo/runs/1"), `id="live-log"`) {
-		test.Fatal("a finished job still shows the live log")
-	}
-	expect("/acme/demo/runs", `<strong>CI</strong> #1</a>`, `class="badge run-running"`)
-	expect("/acme/demo/commits/main", `<span class="badge run-pending">pending</span>`)
-	expect("/acme/demo/commit/"+sha, `<th>Checks</th>`, `<a href="/acme/demo/runs/1?job=1">build</a> <span class="badge run-success">success</span>`)
-
-	if status, _, _ := postForm(test, srv.url+"/acme/demo/runs/1/cancel", url.Values{}, map[string]string{"Sec-Fetch-Site": "cross-site"}); status != http.StatusForbidden {
+	runURL := srv.url + "/api/repos/acme/demo/runs/1"
+	if status, _ := browserCall(test, http.MethodPost, runURL+"/cancel", "", map[string]string{"Sec-Fetch-Site": "cross-site"}); status != http.StatusForbidden {
 		test.Fatalf("cross-site cancel: HTTP %d", status)
 	}
-	status, location, body := postForm(test, srv.url+"/acme/demo/runs/1/cancel", url.Values{}, nil)
-	if status != http.StatusSeeOther || location != "/acme/demo/runs/1" {
-		test.Fatalf("cancel form: HTTP %d %s: %s", status, location, body)
+	status, response := browserCall(test, http.MethodPost, runURL+"/cancel", "", nil)
+	if status != http.StatusOK || run().Status != "cancelled" {
+		test.Fatalf("cancel: HTTP %d: %s", status, response)
 	}
-	expect("/acme/demo/runs/1", `<span class="badge run-cancelled">cancelled</span> CI`, "Rerun all jobs", "Rerun failed jobs")
-	expect("/acme/demo/commits/main", `<span class="badge run-failure">failure</span>`)
-
+	if err := json.Unmarshal(read("/api/repos/acme/demo/commits/"+sha+"/view"), &commit); err != nil || commit.Checks.State != "failure" {
+		test.Fatalf("cancelled checks: %+v, %v", commit.Checks, err)
+	}
 	mustGit(test, src, "switch", "-q", "-c", "feature")
 	commitFile(test, src, "feature.txt", "feature\n", "Add feature")
 	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
 	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
-	expect("/acme/demo/pulls/1", "<strong>Checks</strong>", `<a href="/acme/demo/runs/2?job=3">build</a>`)
-
-	status, location, _ = postForm(test, srv.url+"/acme/demo/runs/1/rerun", url.Values{"failed": {"true"}}, nil)
-	if status != http.StatusSeeOther || location != "/acme/demo/runs/1" {
-		test.Fatalf("rerun form: HTTP %d %s", status, location)
+	var pull struct {
+		Checks store.Checks `json:"checks"`
 	}
-	if rerun := page("/acme/demo/runs/1"); !strings.Contains(rerun, "Cancel run") || strings.Contains(rerun, `class="badge run-cancelled">cancelled</span> CI`) {
-		test.Fatalf("run after rerun --failed:\n%s", rerun)
+	if err := json.Unmarshal(read("/api/repos/acme/demo/pulls/1/view"), &pull); err != nil || len(pull.Checks.Jobs) != 2 || pull.Checks.Jobs[0].Run != 2 {
+		test.Fatalf("pull workspace checks: %+v, %v", pull.Checks, err)
+	}
+	status, response = browserCall(test, http.MethodPost, runURL+"/rerun?failed=true", "", nil)
+	if status != http.StatusOK || run().Status == "cancelled" || run().Jobs[0].Status != "success" || run().Jobs[1].Status != "waiting" {
+		test.Fatalf("rerun failed jobs: HTTP %d %s, %+v", status, response, run())
+	}
+	var listed []store.Run
+	if err := json.Unmarshal(read("/api/repos/acme/demo/runs"), &listed); err != nil || len(listed) != 2 || listed[1].Number != 1 {
+		test.Fatalf("run list: %+v, %v", listed, err)
+	}
+	single := run()
+	if len(listed[1].Jobs) != 2 || listed[1].Jobs[0].TaskID != single.Jobs[0].TaskID || listed[1].Jobs[0].TaskID == 0 || fmt.Sprint(listed[1].Jobs[0].Steps) != fmt.Sprint(single.Jobs[0].Steps) || len(single.Jobs[0].Steps) == 0 {
+		test.Fatalf("listed jobs %+v, want %+v", listed[1].Jobs, single.Jobs)
+	}
+	if err := json.Unmarshal(read("/api/repos/acme/demo/runs?limit=1"), &listed); err != nil || len(listed) != 1 || listed[0].Number != 2 || len(listed[0].Jobs) != 2 {
+		test.Fatalf("latest run: %+v, %v", listed, err)
 	}
 	reader := createToken(test, srv, `{"name":"reader","scope":"read"}`)
-	if status, _ := call(test, http.MethodPost, srv.url+"/acme/demo/runs/1/cancel", bearer(reader), ""); status != http.StatusForbidden {
+	if status, _ := call(test, http.MethodPost, runURL+"/cancel", bearer(reader), ""); status != http.StatusForbidden {
 		test.Fatalf("cancel with a read token: HTTP %d", status)
 	}
-	if strings.Contains(func() string {
-		_, body := call(test, http.MethodGet, srv.url+"/acme/demo/runs/1", bearer(reader), "")
-		return string(body)
-	}(), "Cancel run") {
-		test.Fatal("a read token sees the cancel button")
+	identityStatus, identity := call(test, http.MethodGet, srv.url+"/api/me", bearer(reader), "")
+	if identityStatus != http.StatusOK || !strings.Contains(compactJSON(test, identity), `"scope":"read"`) {
+		test.Fatalf("reader controls identity: HTTP %d %s", identityStatus, identity)
 	}
 }

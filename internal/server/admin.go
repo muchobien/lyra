@@ -75,6 +75,8 @@ func (counter *countingWriter) Write(data []byte) (int, error) {
 
 func isWrite(r *http.Request) bool {
 	switch {
+	case r.URL.Path == "/api/markdown":
+		return false
 	case strings.HasSuffix(r.URL.Path, "/git-upload-pack"):
 		return false
 	case r.Method == http.MethodGet && r.URL.Query().Get("service") == receivePack:

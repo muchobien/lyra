@@ -81,6 +81,24 @@ components:
         - uploader
         - created_at
       type: object
+    BlobResponse:
+      additionalProperties: false
+      properties:
+        binary:
+          type: boolean
+        code:
+          type: string
+        path:
+          type: string
+        size:
+          format: int64
+          type: integer
+      required:
+        - path
+        - size
+        - code
+        - binary
+      type: object
     Check:
       additionalProperties: false
       properties:
@@ -159,6 +177,9 @@ components:
       additionalProperties: false
       properties:
         body:
+          type: string
+        head_sha:
+          description: Reject a line comment if the pull request changed from this head.
           type: string
         line:
           description: "Pull requests only: a line of path in the diff."
@@ -240,6 +261,22 @@ components:
         - subject
         - body
         - signature
+      type: object
+    CommitWorkspace:
+      additionalProperties: false
+      properties:
+        checks:
+          $ref: "#/components/schemas/Checks"
+        commit:
+          $ref: "#/components/schemas/Commit"
+        files:
+          items:
+            $ref: "#/components/schemas/DiffFile"
+          type: array
+      required:
+        - commit
+        - checks
+        - files
       type: object
     CreateIssueRequest:
       additionalProperties: false
@@ -425,6 +462,52 @@ components:
         - deleted
         - event_id
       type: object
+    DiffFile:
+      additionalProperties: false
+      properties:
+        binary:
+          type: boolean
+        lines:
+          items:
+            $ref: "#/components/schemas/DiffLine"
+          type: array
+        old_path:
+          type: string
+        path:
+          type: string
+      required:
+        - path
+        - old_path
+        - binary
+        - lines
+      type: object
+    DiffLine:
+      additionalProperties: false
+      properties:
+        comments:
+          items:
+            $ref: "#/components/schemas/Comment"
+          type: array
+        html:
+          type: string
+        kind:
+          type: string
+        new:
+          format: int64
+          type: integer
+        old:
+          format: int64
+          type: integer
+        text:
+          type: string
+      required:
+        - kind
+        - old
+        - new
+        - text
+        - html
+        - comments
+      type: object
     DispatchRequest:
       additionalProperties: false
       properties:
@@ -501,6 +584,27 @@ components:
           type:
             - string
             - "null"
+      type: object
+    Entry:
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+        name:
+          type: string
+        sha:
+          type: string
+        size:
+          format: int64
+          type: integer
+        type:
+          type: string
+      required:
+        - name
+        - type
+        - mode
+        - sha
+        - size
       type: object
     ErrorBody:
       additionalProperties: false
@@ -702,6 +806,51 @@ components:
         - created_at
         - updated_at
         - closed_at
+      type: object
+    ItemWorkspace:
+      additionalProperties: false
+      properties:
+        can_write:
+          type: boolean
+        checks:
+          anyOf:
+            - $ref: "#/components/schemas/Checks"
+            - type: "null"
+        comments:
+          items:
+            $ref: "#/components/schemas/RenderedComment"
+          type: array
+        html:
+          type: string
+        is_author:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/Item"
+        merge:
+          anyOf:
+            - $ref: "#/components/schemas/MergePlan"
+            - type: "null"
+        merge_error:
+          type: string
+        pull:
+          anyOf:
+            - $ref: "#/components/schemas/Pull"
+            - type: "null"
+        reviews:
+          items:
+            $ref: "#/components/schemas/RenderedReview"
+          type: array
+      required:
+        - item
+        - pull
+        - html
+        - comments
+        - reviews
+        - merge
+        - merge_error
+        - checks
+        - can_write
+        - is_author
       type: object
     ItemWrite:
       additionalProperties: false
@@ -937,6 +1086,14 @@ components:
       required:
         - body
       type: object
+    MarkdownRequest:
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+      required:
+        - body
+      type: object
     MeView:
       additionalProperties: false
       properties:
@@ -1160,6 +1317,19 @@ components:
         - created_at
         - updated_at
         - closed_at
+      type: object
+    PullPatch:
+      additionalProperties: false
+      properties:
+        files:
+          items:
+            $ref: "#/components/schemas/DiffFile"
+          type: array
+        head_sha:
+          type: string
+      required:
+        - head_sha
+        - files
       type: object
     PullView:
       additionalProperties: false
@@ -1524,6 +1694,83 @@ components:
         - created_at
         - published_at
       type: object
+    RenderedComment:
+      additionalProperties: false
+      properties:
+        author:
+          $ref: "#/components/schemas/Actor"
+        body:
+          type: string
+        commit_sha:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        html:
+          type: string
+        id:
+          format: int64
+          type: integer
+        line:
+          format: int64
+          type: integer
+        outdated:
+          type: boolean
+        path:
+          type: string
+        review_id:
+          format: int64
+          type: integer
+        side:
+          type: string
+      required:
+        - html
+        - id
+        - body
+        - author
+        - created_at
+      type: object
+    RenderedMarkdown:
+      additionalProperties: false
+      properties:
+        html:
+          type: string
+      required:
+        - html
+      type: object
+    RenderedReview:
+      additionalProperties: false
+      properties:
+        author:
+          $ref: "#/components/schemas/Actor"
+        body:
+          type: string
+        comments:
+          items:
+            $ref: "#/components/schemas/Comment"
+          type: array
+        commit_sha:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        html:
+          type: string
+        id:
+          format: int64
+          type: integer
+        state:
+          type: string
+      required:
+        - html
+        - id
+        - state
+        - body
+        - commit_sha
+        - author
+        - comments
+        - created_at
+      type: object
     Repo:
       additionalProperties: false
       properties:
@@ -1611,6 +1858,9 @@ components:
           items:
             $ref: "#/components/schemas/LineComment"
           type: array
+        head_sha:
+          description: Reject a review of a changed head.
+          type: string
         state:
           enum:
             - approve
@@ -2273,6 +2523,36 @@ components:
         - secret
         - token
       type: object
+    TreeResponse:
+      additionalProperties: false
+      properties:
+        empty:
+          type: boolean
+        entries:
+          items:
+            $ref: "#/components/schemas/Entry"
+          type: array
+        last:
+          anyOf:
+            - $ref: "#/components/schemas/Commit"
+            - type: "null"
+        path:
+          type: string
+        readme:
+          type: string
+        ref:
+          type: string
+        sha:
+          type: string
+      required:
+        - ref
+        - sha
+        - path
+        - empty
+        - entries
+        - last
+        - readme
+      type: object
     ValueRequest:
       additionalProperties: false
       properties:
@@ -2313,6 +2593,49 @@ components:
         - event_id
         - name
         - value
+      type: object
+    WorkflowInput:
+      additionalProperties: false
+      properties:
+        default:
+          type: string
+        description:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+        required:
+          type: boolean
+        type:
+          type: string
+      required:
+        - description
+        - required
+        - default
+        - type
+        - options
+      type: object
+    WorkflowWorkspace:
+      additionalProperties: false
+      properties:
+        dispatch:
+          type: boolean
+        error:
+          type: string
+        inputs:
+          additionalProperties:
+            $ref: "#/components/schemas/WorkflowInput"
+          type: object
+        name:
+          type: string
+        path:
+          type: string
+      required:
+        - path
+        - name
+        - dispatch
+        - inputs
       type: object
   securitySchemes:
     basic:
@@ -2448,6 +2771,26 @@ paths:
       summary: Stored files the database refers to but storage lacks
       tags:
         - Admin
+  /api/code.css:
+    get:
+      description: "Scope: any."
+      operationId: getCodeStyles
+      responses:
+        "200":
+          content:
+            text/css:
+              schema:
+                type: string
+          description: Chroma styles
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read syntax highlighting styles for light and dark appearance
+      tags:
+        - Workspaces
   /api/events:
     get:
       description: "Scope: read. Account events (tokens, keys) need an unrestricted token."
@@ -2628,6 +2971,32 @@ paths:
       summary: Delete an SSH key
       tags:
         - Account
+  /api/markdown:
+    post:
+      description: "Scope: any. This read-only operation remains available during maintenance."
+      operationId: renderMarkdown
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkdownRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderedMarkdown"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Preview sanitized Markdown
+      tags:
+        - Workspaces
   /api/me:
     get:
       description: "Scope: any."
@@ -2854,6 +3223,51 @@ paths:
       summary: Get a repository
       tags:
         - Repositories
+  /api/repos/{owner}/{repo}/blob:
+    get:
+      description: "Scope: read."
+      operationId: getRepositoryBlob
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobResponse"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read highlighted source or binary/large-file metadata
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/commits:
     get:
       description: "Scope: read."
@@ -2938,6 +3352,89 @@ paths:
       summary: Get a commit
       tags:
         - Repositories
+  /api/repos/{owner}/{repo}/commits/{rev}/view:
+    get:
+      description: "Scope: read."
+      operationId: getCommitWorkspace
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: rev
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitWorkspace"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read a commit with checks and structured diffs
+      tags:
+        - Workspaces
+  /api/repos/{owner}/{repo}/files:
+    get:
+      description: "Scope: read."
+      operationId: listRepositoryFiles
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: List recursive file paths for the file finder
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/images:
     get:
       description: "Scope: read. Images are pushed and pulled through the OCI distribution API at /v2/."
@@ -3019,6 +3516,13 @@ paths:
             description: Defaults to 100.
             format: int64
             type: integer
+        - description: Search the title or an exact issue/pull request number.
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Search the title or an exact issue/pull request number.
+            type: string
       responses:
         "200":
           content:
@@ -3198,6 +3702,44 @@ paths:
       summary: Comment on an issue
       tags:
         - Issues
+  /api/repos/{owner}/{repo}/issues/{number}/view:
+    get:
+      description: "Scope: read."
+      operationId: getIssueWorkspace
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: number
+          required: true
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemWorkspace"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read an issue with rendered discussion and permissions
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/labels:
     get:
       description: "Scope: read."
@@ -3351,6 +3893,13 @@ paths:
             description: Defaults to 100.
             format: int64
             type: integer
+        - description: Search the title or an exact issue/pull request number.
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Search the title or an exact issue/pull request number.
+            type: string
       responses:
         "200":
           content:
@@ -3696,6 +4245,44 @@ paths:
       summary: Merge a pull request
       tags:
         - Pull requests
+  /api/repos/{owner}/{repo}/pulls/{number}/patch:
+    get:
+      description: "Scope: read."
+      operationId: getPullPatch
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: number
+          required: true
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullPatch"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read structured, highlighted diffs and anchored comments
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/pulls/{number}/reviews:
     post:
       description: "Scope: write. Authors can't approve or request changes on their own pull requests."
@@ -3740,6 +4327,94 @@ paths:
       summary: Review a pull request's current head commit
       tags:
         - Pull requests
+  /api/repos/{owner}/{repo}/pulls/{number}/view:
+    get:
+      description: "Scope: read."
+      operationId: getPullWorkspace
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: number
+          required: true
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemWorkspace"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read a pull request with rendered discussion, merge requirements, and checks
+      tags:
+        - Workspaces
+  /api/repos/{owner}/{repo}/raw:
+    get:
+      description: "Scope: read. Served with nosniff and a sandbox policy."
+      operationId: getRepositoryRawFile
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            text/plain:
+              schema:
+                type: string
+          description: Original repository file
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Download the original file bytes
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/releases:
     get:
       description: "Scope: read. Drafts are listed only with write access."
@@ -4301,12 +4976,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: 1 to 100; defaults to 30.
+        - description: 1 to 1000; defaults to 30.
           explode: false
           in: query
           name: limit
           schema:
-            description: 1 to 100; defaults to 30.
+            description: 1 to 1000; defaults to 30.
             format: int64
             type: integer
       responses:
@@ -4660,6 +5335,51 @@ paths:
       summary: List tags
       tags:
         - Repositories
+  /api/repos/{owner}/{repo}/tree:
+    get:
+      description: "Scope: read."
+      operationId: getRepositoryTree
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeResponse"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Browse repository files and rendered README
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/variables:
     get:
       description: "Scope: read."
@@ -4774,6 +5494,53 @@ paths:
       summary: Set a variable
       tags:
         - Actions
+  /api/repos/{owner}/{repo}/workflows:
+    get:
+      description: "Scope: read."
+      operationId: listWorkflows
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/WorkflowWorkspace"
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Discover workflows and declared manual inputs at a ref
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/workflows/dispatch:
     post:
       description: "Scope: write. Unknown inputs are refused, and choice and boolean values are checked."

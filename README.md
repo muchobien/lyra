@@ -15,7 +15,7 @@ backups.
 
 ```sh
 packslip install github.com/muchobien/lyra   # verified release binary
-go build -o bin/lyra ./cmd/lyra              # or from source
+mise run ui:build && go build -o bin/lyra ./cmd/lyra  # or from source
 ```
 
 The container image is `ghcr.io/muchobien/lyra`.

@@ -38,11 +38,6 @@ type registryErrors struct {
 	Errors []registryProblem `json:"errors"`
 }
 
-type imagesView struct {
-	Images []store.Image
-	Host   string
-}
-
 func (recorder *statusRecorder) WriteHeader(status int) {
 	if recorder.status == 0 {
 		recorder.status = status
@@ -211,19 +206,4 @@ func (s *Server) handleListImages(r *http.Request, input *RepoPath) (*body[[]sto
 		return nil, err
 	}
 	return reply(images)
-}
-
-func (s *Server) uiImages(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.uiLookup(r)
-	if err != nil {
-		return err
-	}
-	images, err := s.images(r, repo.Name)
-	if err != nil {
-		return err
-	}
-	view := imagesView{Images: images, Host: s.registryHost(r)}
-	ref := s.git.DefaultBranch(r.Context(), s.repoDir(repo.Name))
-	s.render(w, r, http.StatusOK, "images", s.repoPage(r, &repo, "Images · "+repo.Name, ref, view))
-	return nil
 }

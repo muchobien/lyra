@@ -6,6 +6,8 @@ import (
 	"code.forgejo.org/forgejo/actions-proto/ping/v1/pingv1connect"
 	"code.forgejo.org/forgejo/actions-proto/runner/v1/runnerv1connect"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/muchobien/lyra/internal/webui"
 )
 
 func headAsGet(next http.Handler) http.Handler {
@@ -39,8 +41,9 @@ func (s *Server) Handler() http.Handler {
 	router.Handle("/api/*", api(func(http.ResponseWriter, *http.Request) error {
 		return notFound("no such API endpoint")
 	}))
-	router.Get("/", s.page(s.uiRepoList))
-	router.Get("/{owner}", s.page(s.uiOwner))
+	router.Handle("/static/assets/*", http.StripPrefix("/static/", webui.Assets()))
+	router.Get("/", s.page(s.uiApplication))
+	router.Get("/{owner}", s.page(s.uiApplication))
 	router.Route("/{owner}/{repo}", s.uiRoutes)
 	return router
 }
@@ -50,28 +53,24 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Post("/git-upload-pack", s.handleGit)
 	repo.Post("/git-receive-pack", s.handleGit)
 
-	repo.Get("/", s.page(s.uiRepo))
-	repo.Get("/tree/{ref}", s.page(s.uiTree))
-	repo.Get("/tree/{ref}/*", s.page(s.uiTree))
-	repo.Get("/blob/{ref}/*", s.page(s.uiBlob))
-	repo.Get("/commits/{ref}", s.page(s.uiCommits))
-	repo.Get("/commit/{sha}", s.page(s.uiCommit))
-	repo.Get("/tags", s.page(s.uiTags))
-	repo.Get("/releases", s.page(s.uiReleases))
-	repo.Get("/runs", s.page(s.uiRuns))
-	repo.Get("/runs/{number}", s.page(s.uiRun))
-	repo.Post("/runs/{number}/{action}", s.page(s.uiRunAction))
-	repo.Get("/images", s.page(s.uiImages))
-	repo.Get("/releases/tag/*", s.page(s.uiReleases))
+	repo.Get("/", s.page(s.uiApplication))
+	repo.Get("/tree/{ref}", s.page(s.uiSource))
+	repo.Get("/tree/{ref}/*", s.page(s.uiSource))
+	repo.Get("/blob/{ref}/*", s.page(s.uiSource))
+	repo.Get("/commits/{ref}", s.page(s.uiApplication))
+	repo.Get("/commit/{sha}", s.page(s.uiApplication))
+	repo.Get("/tags", s.page(s.uiApplication))
+	repo.Get("/releases", s.page(s.uiApplication))
+	repo.Get("/runs", s.page(s.uiApplication))
+	repo.Get("/runs/{number}", s.page(s.uiApplication))
+	repo.Get("/images", s.page(s.uiApplication))
+	repo.Get("/settings", s.page(s.uiApplication))
+	repo.Get("/activity", s.page(s.uiApplication))
+	repo.Get("/releases/tag/*", s.page(s.uiApplication))
 	repo.Get("/releases/download/*", api(s.handleStableDownload))
 	repo.Get("/releases/latest/download/{name}", api(s.handleLatestDownload))
-	repo.Post("/issues", s.page(s.uiCreateIssue))
-	repo.Post("/pulls/{number}/merge", s.page(s.uiMergePull))
-	repo.Post("/pulls/{number}/reviews", s.page(s.uiReviewPull))
-	for kind, path := range itemPaths {
-		repo.Get("/"+path, s.page(s.uiItems(kind)))
-		repo.Get("/"+path+"/{number}", s.page(s.uiItemPage(kind)))
-		repo.Post("/"+path+"/{number}/comments", s.page(s.uiCommentItem(kind)))
-		repo.Post("/"+path+"/{number}/edit", s.page(s.uiEditItem(kind)))
+	for _, path := range itemPaths {
+		repo.Get("/"+path, s.page(s.uiApplication))
+		repo.Get("/"+path+"/{number}", s.page(s.uiApplication))
 	}
 }

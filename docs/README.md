@@ -4,6 +4,7 @@ How Lyra behaves beyond what a single command's `--help` says. For flags and per
 details, use `lyra <command> --help`; for the HTTP API, [`api/openapi.yaml`](../api/openapi.yaml).
 
 - [Authentication](authentication.md): the tailnet login, tokens, agents and sessions.
+- [Web UI](web-ui.md): navigation, collaboration, delivery and permissions.
 - [Repositories and Git](repositories.md): owners, names, pushing, signatures, Lyra's
   signing key.
 - [Issues and pull requests](pull-requests.md): how pushes update them, merging, reviews and
@@ -13,5 +14,5 @@ details, use `lyra <command> --help`; for the HTTP API, [`api/openapi.yaml`](../
 - [Container registry](registry.md): image names, access and garbage collection.
 - [Actions](actions.md): triggers, runners, job tokens, secrets and checks.
 - [Operations](operations.md): running the container, data directory, storage, keys,
-  backups, read-only mode, metrics and the web UI.
+  backups, read-only mode and metrics.
 - [Development](development.md): tools, tests, generated code, the image and releases.

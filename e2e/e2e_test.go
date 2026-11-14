@@ -146,6 +146,15 @@ func tailnet() map[string]string {
 	return map[string]string{"Tailscale-User-Login": login}
 }
 
+func compactJSON(test *testing.T, data []byte) string {
+	test.Helper()
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, data); err != nil {
+		test.Fatal(err)
+	}
+	return compact.String()
+}
+
 func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }
@@ -389,12 +398,16 @@ func TestCLI(test *testing.T) {
 		test.Errorf("owner view acme: %q", result.stdout)
 	}
 	status, page := call(test, http.MethodGet, srv.url+"/", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), `<a href="/acme/demo">demo</a>`) || !strings.Contains(string(page), `<a href="/beta">beta</a>`) {
+	if status != http.StatusOK || !strings.Contains(string(page), `<div id="root"></div>`) {
 		test.Errorf("root page: HTTP %d:\n%s", status, page)
 	}
 	status, page = call(test, http.MethodGet, srv.url+"/beta", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), `<a href="/beta/tool">tool</a>`) || strings.Contains(string(page), "acme/demo") {
+	if status != http.StatusOK || !strings.Contains(string(page), `<div id="root"></div>`) {
 		test.Errorf("owner page: HTTP %d:\n%s", status, page)
+	}
+	status, page = call(test, http.MethodGet, srv.url+"/api/owners/beta", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(string(page), `"beta/tool"`) || strings.Contains(string(page), "acme/demo") {
+		test.Errorf("owner data: HTTP %d:\n%s", status, page)
 	}
 	if status, _ := call(test, http.MethodGet, srv.url+"/nobody", tailnet(), ""); status != http.StatusNotFound {
 		test.Errorf("missing owner page: HTTP %d", status)

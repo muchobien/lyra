@@ -1,7 +1,0 @@
-{{define "content"}}
-<table>
-{{range .Data}}<tr><td>{{template "status" .Status}} <a href="/{{pathesc $.Repo.Name}}/runs/{{.Number}}"><strong>{{.Name}}</strong> #{{.Number}}</a> <span class="muted">· {{.Title}}</span><br><span class="muted">{{.Event}}{{with .Pull}} · <a href="/{{pathesc $.Repo.Name}}/pulls/{{.}}">#{{.}}</a>{{end}} · <span class="mono">{{refName .Ref}}</span> · <a class="mono" href="/{{pathesc $.Repo.Name}}/commit/{{.SHA}}">{{short .SHA}}</a> · {{with .Author.Agent}}{{.}} · {{end}}{{.Author.User}}</span></td><td class="right muted hide-sm">{{.CreatedAt.Format "2006-01-02 15:04"}}{{if .StartedAt}}<br>{{duration .StartedAt .StoppedAt}}{{end}}</td></tr>
-{{else}}<tr><td class="muted">No runs yet. Push a workflow in <code>.forgejo/workflows/</code>.</td></tr>
-{{end}}
-</table>
-{{end}}

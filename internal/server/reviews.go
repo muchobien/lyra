@@ -33,6 +33,7 @@ var reviewStates = map[string]string{
 type reviewRequest struct {
 	State    string              `json:"state" enum:"approve,request_changes,comment"`
 	Body     string              `json:"body,omitzero"`
+	HeadSHA  string              `json:"head_sha,omitzero" doc:"Reject a review of a changed head."`
 	Comments []store.LineComment `json:"comments,omitzero" doc:"Line comments on lines in the diff."`
 }
 
@@ -136,6 +137,9 @@ func (s *Server) commentLine(
 	pull, err := s.store.Pull(ctx, repo, number)
 	if err != nil {
 		return ref, err
+	}
+	if ref.CommitSHA != "" && ref.CommitSHA != pull.HeadSHA {
+		return ref, conflict("the pull request changed; refresh the diff before commenting on this line")
 	}
 	err = s.checkLines(ctx, repo, pull, []*store.LineRef{&ref})
 	return ref, err
@@ -242,6 +246,9 @@ func (s *Server) reviewPull(
 	if err != nil {
 		return store.Review{}, 0, err
 	}
+	if request.HeadSHA != "" && request.HeadSHA != pull.HeadSHA {
+		return store.Review{}, 0, conflict("the pull request changed; refresh the diff before submitting this review")
+	}
 	if request.State != reviewComment && isAuthor(pull, id.actor) {
 		return store.Review{}, 0, store.InvalidError("the author of a pull request can't approve it or request changes")
 	}
@@ -265,17 +272,4 @@ func (s *Server) reviewPull(
 		pull.HeadSHA,
 		request.Comments,
 	)
-}
-
-func (s *Server) uiReviewPull(w http.ResponseWriter, r *http.Request) error {
-	repo, item, err := s.uiItem(r, kindPull, true)
-	if err != nil {
-		return err
-	}
-	request := reviewRequest{State: r.FormValue("state"), Body: r.FormValue("body")}
-	if _, _, err := s.reviewPull(r, repo.Name, item.Number, request); err != nil {
-		return missing(err, "Pull request not found.")
-	}
-	http.Redirect(w, r, fmt.Sprintf("/%s/pulls/%d", repo.Name, item.Number), http.StatusSeeOther)
-	return nil
 }

@@ -41,13 +41,13 @@ func TestImagesInReleases(test *testing.T) {
 		test.Fatalf("images of release v1.0.0: %v", references)
 	}
 
-	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/releases/tag/v1.0.0", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), `value="docker pull `+host+`/acme/demo/runner:1.0.0"`) || strings.Contains(string(page), "v2.0.0") {
+	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases/tags/v1.0.0", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(compactJSON(test, page), `"reference":"`+host+`/acme/demo/runner:1.0.0"`) || strings.Contains(compactJSON(test, page), "v2.0.0") {
 		test.Fatalf("release page: HTTP %d:\n%s", status, page)
 	}
-	status, page = call(test, http.MethodGet, srv.url+"/acme/demo/images", tailnet(), "")
-	for _, want := range []string{`value="docker pull ` + host + `/acme/demo:v2.0.0"`, `value="docker pull ` + host + `/acme/demo/runner:1.0.0"`, `title="` + digest.String() + `"`, `href="/acme/demo/images">Images</a>`} {
-		if status != http.StatusOK || !strings.Contains(string(page), want) {
+	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/images", tailnet(), "")
+	for _, want := range []string{`"reference":"` + host + `/acme/demo:v2.0.0"`, `"reference":"` + host + `/acme/demo/runner:1.0.0"`, `"digest":"` + digest.String() + `"`} {
+		if status != http.StatusOK || !strings.Contains(compactJSON(test, page), want) {
 			test.Fatalf("images page lacks %q: HTTP %d:\n%s", want, status, page)
 		}
 	}

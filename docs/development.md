@@ -1,12 +1,32 @@
 # Development
 
 ```sh
-mise install          # Go, sqlc, golangci-lint, GoReleaser, packslip, workflow linters
+mise install          # Go, Node, pnpm, sqlc, GoReleaser and linters
 mise tasks            # every task CI runs
 mise run fmt
 mise run lint
 mise run test         # end-to-end tests in e2e/
 ```
+
+## Frontend
+
+The UI uses React, TanStack Router and Query, CSS Modules and Vite+, with exact frontend
+versions and a frozen pnpm lockfile. Go retains authorization, Git operations, Markdown,
+syntax highlighting, diff parsing, signatures and merge rules.
+
+`mise run build`, `lint` and `test` build the frontend assets embedded in
+`internal/webui/dist` before compiling Go. A clean checkout needs `mise run ui:build`
+before direct Go build/test commands. Node is a build dependency only.
+
+`mise run ui:check` checks generated API code, Vite+ formatting and lint, and TypeScript.
+`mise run ui:fmt` formats the frontend. Current stable Chrome is the browser target;
+native dialogs, invoker commands, customizable selects and anchored popovers need no
+browser polyfills.
+
+For UI development, start a local Lyra server and run `pnpm --dir web dev`.
+`LYRA_DEV_URL` chooses the backend (default `http://127.0.0.1:8080`). `LYRA_DEV_LOGIN`
+optionally supplies a trusted-proxy login for a locally configured backend. These
+development-server variables are never included in the browser bundle.
 
 ## Tests
 
@@ -31,6 +51,14 @@ The tests build the binary at run time, so Go's test cache doesn't see server ch
   so a server change that breaks the CLI fails to compile. After changing the API, run
   `mise run openapi` and commit `api/openapi.yaml` and `internal/cli/lyraapi/client.gen.go`.
   `mise run openapi:check` fails when either is out of date.
+- **Frontend API:** Orval generates the models, fetch functions, query keys and TanStack
+  Query hooks in `web/src/api/generated` from `api/openapi.yaml`. After regenerating the
+  OpenAPI document, run `mise run ui:generate` and commit both generated files.
+  `mise run ui:check` fails when they are out of date. Generated code is checked by
+  TypeScript and excluded from formatting and lint. The shared fetch adapter preserves
+  same-origin authentication, request cancellation, API errors and binary downloads.
+  Live event and backup streams are excluded from this UI client. EventSource handles
+  live events; incremental job logs retain their offset and response-header handling.
 
 ## Image
 
@@ -39,7 +67,8 @@ with `mise run image`, not a bare `docker build`.
 
 ## Releases
 
-Pushing a `v*` tag runs the release workflow. GoReleaser builds the archives and the
+Pushing a `v*` tag runs the release workflow. GoReleaser builds the frontend before
+compiling the embedded binaries, then builds the archives and the
 changelog, the container image is built from those archives and pushed, packslip signs and
 attests the archives with the workflow's identity, and the last job creates the GitHub
 release with the archives, `checksums.txt` and `packslip.sigstore.json`. Pushes to `main`

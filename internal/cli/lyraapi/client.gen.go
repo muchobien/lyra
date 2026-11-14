@@ -164,6 +164,14 @@ type AssetWrite struct {
 	Uploader    Actor     `json:"uploader"`
 }
 
+// BlobResponse defines model for BlobResponse.
+type BlobResponse struct {
+	Binary bool   `json:"binary"`
+	Code   string `json:"code"`
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+}
+
 // Check defines model for Check.
 type Check struct {
 	Event    string `json:"event"`
@@ -198,6 +206,9 @@ type Comment struct {
 // CommentRequest defines model for CommentRequest.
 type CommentRequest struct {
 	Body string `json:"body"`
+
+	// HeadSha Reject a line comment if the pull request changed from this head.
+	HeadSha *string `json:"head_sha,omitempty"`
 
 	// Line Pull requests only: a line of path in the diff.
 	Line *int64 `json:"line,omitempty"`
@@ -236,6 +247,13 @@ type Commit struct {
 	Sha       string    `json:"sha"`
 	Signature Signature `json:"signature"`
 	Subject   string    `json:"subject"`
+}
+
+// CommitWorkspace defines model for CommitWorkspace.
+type CommitWorkspace struct {
+	Checks Checks     `json:"checks"`
+	Commit Commit     `json:"commit"`
+	Files  []DiffFile `json:"files"`
 }
 
 // CreateIssueRequest defines model for CreateIssueRequest.
@@ -350,6 +368,24 @@ type DeletedWithEvent struct {
 	EventId int64  `json:"event_id"`
 }
 
+// DiffFile defines model for DiffFile.
+type DiffFile struct {
+	Binary  bool       `json:"binary"`
+	Lines   []DiffLine `json:"lines"`
+	OldPath string     `json:"old_path"`
+	Path    string     `json:"path"`
+}
+
+// DiffLine defines model for DiffLine.
+type DiffLine struct {
+	Comments []Comment `json:"comments"`
+	Html     string    `json:"html"`
+	Kind     string    `json:"kind"`
+	New      int64     `json:"new"`
+	Old      int64     `json:"old"`
+	Text     string    `json:"text"`
+}
+
 // DispatchRequest defines model for DispatchRequest.
 type DispatchRequest struct {
 	Inputs *map[string]string `json:"inputs,omitempty"`
@@ -385,6 +421,15 @@ type EditReleaseRequest struct {
 	// Target Drafts only.
 	Target *string `json:"target,omitempty"`
 	Title  *string `json:"title,omitempty"`
+}
+
+// Entry defines model for Entry.
+type Entry struct {
+	Mode string `json:"mode"`
+	Name string `json:"name"`
+	Sha  string `json:"sha"`
+	Size int64  `json:"size"`
+	Type string `json:"type"`
 }
 
 // ErrorBody defines model for ErrorBody.
@@ -458,6 +503,20 @@ type ItemView struct {
 	State        string     `json:"state"`
 	Title        string     `json:"title"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// ItemWorkspace defines model for ItemWorkspace.
+type ItemWorkspace struct {
+	CanWrite   bool              `json:"can_write"`
+	Checks     Checks            `json:"checks"`
+	Comments   []RenderedComment `json:"comments"`
+	Html       string            `json:"html"`
+	IsAuthor   bool              `json:"is_author"`
+	Item       Item              `json:"item"`
+	Merge      MergePlan         `json:"merge"`
+	MergeError string            `json:"merge_error"`
+	Pull       Pull              `json:"pull"`
+	Reviews    []RenderedReview  `json:"reviews"`
 }
 
 // ItemWrite defines model for ItemWrite.
@@ -541,6 +600,11 @@ type LineComment struct {
 	Line      *int64  `json:"line,omitempty"`
 	Path      *string `json:"path,omitempty"`
 	Side      *string `json:"side,omitempty"`
+}
+
+// MarkdownRequest defines model for MarkdownRequest.
+type MarkdownRequest struct {
+	Body string `json:"body"`
 }
 
 // MeView defines model for MeView.
@@ -636,6 +700,12 @@ type Pull struct {
 	State        string     `json:"state"`
 	Title        string     `json:"title"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// PullPatch defines model for PullPatch.
+type PullPatch struct {
+	Files   []DiffFile `json:"files"`
+	HeadSha string     `json:"head_sha"`
 }
 
 // PullView defines model for PullView.
@@ -762,6 +832,38 @@ type ReleaseWrite struct {
 	Title       string     `json:"title"`
 }
 
+// RenderedComment defines model for RenderedComment.
+type RenderedComment struct {
+	Author    Actor     `json:"author"`
+	Body      string    `json:"body"`
+	CommitSha *string   `json:"commit_sha,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	Html      string    `json:"html"`
+	Id        int64     `json:"id"`
+	Line      *int64    `json:"line,omitempty"`
+	Outdated  *bool     `json:"outdated,omitempty"`
+	Path      *string   `json:"path,omitempty"`
+	ReviewId  *int64    `json:"review_id,omitempty"`
+	Side      *string   `json:"side,omitempty"`
+}
+
+// RenderedMarkdown defines model for RenderedMarkdown.
+type RenderedMarkdown struct {
+	Html string `json:"html"`
+}
+
+// RenderedReview defines model for RenderedReview.
+type RenderedReview struct {
+	Author    Actor     `json:"author"`
+	Body      string    `json:"body"`
+	Comments  []Comment `json:"comments"`
+	CommitSha string    `json:"commit_sha"`
+	CreatedAt time.Time `json:"created_at"`
+	Html      string    `json:"html"`
+	Id        int64     `json:"id"`
+	State     string    `json:"state"`
+}
+
 // Repo defines model for Repo.
 type Repo struct {
 	CreatedAt   time.Time `json:"created_at"`
@@ -797,8 +899,11 @@ type ReviewRequest struct {
 	Body *string `json:"body,omitempty"`
 
 	// Comments Line comments on lines in the diff.
-	Comments *[]LineComment     `json:"comments,omitempty"`
-	State    ReviewRequestState `json:"state"`
+	Comments *[]LineComment `json:"comments,omitempty"`
+
+	// HeadSha Reject a review of a changed head.
+	HeadSha *string            `json:"head_sha,omitempty"`
+	State   ReviewRequestState `json:"state"`
 }
 
 // ReviewRequestState defines model for ReviewRequest.State.
@@ -1060,6 +1165,17 @@ type TokenCreated struct {
 	Token  Token  `json:"token"`
 }
 
+// TreeResponse defines model for TreeResponse.
+type TreeResponse struct {
+	Empty   bool    `json:"empty"`
+	Entries []Entry `json:"entries"`
+	Last    Commit  `json:"last"`
+	Path    string  `json:"path"`
+	Readme  string  `json:"readme"`
+	Ref     string  `json:"ref"`
+	Sha     string  `json:"sha"`
+}
+
 // ValueRequest defines model for ValueRequest.
 type ValueRequest struct {
 	Value string `json:"value"`
@@ -1078,6 +1194,24 @@ type VariableSet struct {
 	EventId int64  `json:"event_id"`
 	Name    string `json:"name"`
 	Value   string `json:"value"`
+}
+
+// WorkflowInput defines model for WorkflowInput.
+type WorkflowInput struct {
+	Default     string   `json:"default"`
+	Description string   `json:"description"`
+	Options     []string `json:"options"`
+	Required    bool     `json:"required"`
+	Type        string   `json:"type"`
+}
+
+// WorkflowWorkspace defines model for WorkflowWorkspace.
+type WorkflowWorkspace struct {
+	Dispatch bool                     `json:"dispatch"`
+	Error    *string                  `json:"error,omitempty"`
+	Inputs   map[string]WorkflowInput `json:"inputs"`
+	Name     string                   `json:"name"`
+	Path     string                   `json:"path"`
 }
 
 // ListEventsParams defines parameters for ListEvents.
@@ -1111,6 +1245,15 @@ type StreamEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// GetRepositoryBlobParams defines parameters for GetRepositoryBlob.
+type GetRepositoryBlobParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // ListCommitsParams defines parameters for ListCommits.
 type ListCommitsParams struct {
 	// Ref Defaults to the default branch.
@@ -1118,6 +1261,15 @@ type ListCommitsParams struct {
 
 	// Limit 1 to 500; defaults to 30.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListRepositoryFilesParams defines parameters for ListRepositoryFiles.
+type ListRepositoryFilesParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
 // ListIssuesParams defines parameters for ListIssues.
@@ -1133,6 +1285,9 @@ type ListIssuesParams struct {
 
 	// Limit Defaults to 100.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Search the title or an exact issue/pull request number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListPullsParams defines parameters for ListPulls.
@@ -1148,6 +1303,18 @@ type ListPullsParams struct {
 
 	// Limit Defaults to 100.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q Search the title or an exact issue/pull request number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// GetRepositoryRawFileParams defines parameters for GetRepositoryRawFile.
+type GetRepositoryRawFileParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
 // PreviewReleaseNotesParams defines parameters for PreviewReleaseNotes.
@@ -1180,7 +1347,7 @@ type DeleteRuleParams struct {
 
 // ListRunsParams defines parameters for ListRuns.
 type ListRunsParams struct {
-	// Limit 1 to 100; defaults to 30.
+	// Limit 1 to 1000; defaults to 30.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
@@ -1196,11 +1363,32 @@ type RerunRunParams struct {
 	Failed *bool `form:"failed,omitempty" json:"failed,omitempty"`
 }
 
+// GetRepositoryTreeParams defines parameters for GetRepositoryTree.
+type GetRepositoryTreeParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// ListWorkflowsParams defines parameters for ListWorkflows.
+type ListWorkflowsParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // SetReadOnlyJSONRequestBody defines body for SetReadOnly for application/json ContentType.
 type SetReadOnlyJSONRequestBody = ReadOnlyRequest
 
 // CreateKeyJSONRequestBody defines body for CreateKey for application/json ContentType.
 type CreateKeyJSONRequestBody = CreateKeyRequest
+
+// RenderMarkdownJSONRequestBody defines body for RenderMarkdown for application/json ContentType.
+type RenderMarkdownJSONRequestBody = MarkdownRequest
 
 // CreateOwnerJSONRequestBody defines body for CreateOwner for application/json ContentType.
 type CreateOwnerJSONRequestBody = CreateOwnerRequest
@@ -1382,6 +1570,13 @@ type ClientInterface interface {
 	// Corresponds with GET /api/admin/storage-check (the `CheckStorage` operationId).
 	CheckStorage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetCodeStyles Read syntax highlighting styles for light and dark appearance
+	//
+	// Scope: any.
+	//
+	// Corresponds with GET /api/code.css (the `GetCodeStyles` operationId).
+	GetCodeStyles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEvents List recent events
 	//
 	// Scope: read. Account events (tokens, keys) need an unrestricted token.
@@ -1427,6 +1622,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/keys/{id} (the `DeleteKey` operationId).
 	DeleteKey(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenderMarkdownWithBody Preview sanitized Markdown
+	//
+	// Scope: any. This read-only operation remains available during maintenance.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+	RenderMarkdownWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenderMarkdown Preview sanitized Markdown
+	//
+	// Scope: any. This read-only operation remains available during maintenance.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+	RenderMarkdown(ctx context.Context, body RenderMarkdownJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetMe The caller's identity
 	//
@@ -1513,6 +1726,13 @@ type ClientInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo} (the `GetRepo` operationId).
 	GetRepo(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetRepositoryBlob Read highlighted source or binary/large-file metadata
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
+	GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCommits List commits
 	//
 	// Scope: read.
@@ -1526,6 +1746,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev} (the `GetCommit` operationId).
 	GetCommit(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCommitWorkspace Read a commit with checks and structured diffs
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
+	GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRepositoryFiles List recursive file paths for the file finder
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/files (the `ListRepositoryFiles` operationId).
+	ListRepositoryFiles(ctx context.Context, owner string, repo string, params *ListRepositoryFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListImages List container image tags
 	//
@@ -1601,6 +1835,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/repos/{owner}/{repo}/issues/{number}/comments (the `CommentIssue` operationId).
 	CommentIssue(ctx context.Context, owner string, repo string, number int64, body CommentIssueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIssueWorkspace Read an issue with rendered discussion and permissions
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/issues/{number}/view (the `GetIssueWorkspace` operationId).
+	GetIssueWorkspace(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListLabels List labels
 	//
@@ -1741,6 +1982,13 @@ type ClientInterface interface {
 	// Corresponds with POST /api/repos/{owner}/{repo}/pulls/{number}/merge (the `MergePull` operationId).
 	MergePull(ctx context.Context, owner string, repo string, number int64, body MergePullJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetPullPatch Read structured, highlighted diffs and anchored comments
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/patch (the `GetPullPatch` operationId).
+	GetPullPatch(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReviewPullWithBody Review a pull request's current head commit
 	//
 	// Scope: write. Authors can't approve or request changes on their own pull requests.
@@ -1758,6 +2006,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/repos/{owner}/{repo}/pulls/{number}/reviews (the `ReviewPull` operationId).
 	ReviewPull(ctx context.Context, owner string, repo string, number int64, body ReviewPullJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPullWorkspace Read a pull request with rendered discussion, merge requirements, and checks
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/view (the `GetPullWorkspace` operationId).
+	GetPullWorkspace(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRepositoryRawFile Download the original file bytes
+	//
+	// Scope: read. Served with nosniff and a sandbox policy.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/raw (the `GetRepositoryRawFile` operationId).
+	GetRepositoryRawFile(ctx context.Context, owner string, repo string, params *GetRepositoryRawFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListReleases List releases
 	//
@@ -1966,6 +2228,13 @@ type ClientInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo}/tags (the `ListTags` operationId).
 	ListTags(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetRepositoryTree Browse repository files and rendered README
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/tree (the `GetRepositoryTree` operationId).
+	GetRepositoryTree(ctx context.Context, owner string, repo string, params *GetRepositoryTreeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListVariables List variables
 	//
 	// Scope: read.
@@ -1997,6 +2266,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/repos/{owner}/{repo}/variables/{name} (the `SetVariable` operationId).
 	SetVariable(ctx context.Context, owner string, repo string, name string, body SetVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListWorkflows Discover workflows and declared manual inputs at a ref
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/workflows (the `ListWorkflows` operationId).
+	ListWorkflows(ctx context.Context, owner string, repo string, params *ListWorkflowsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DispatchWorkflowWithBody Run a workflow with workflow_dispatch
 	//
@@ -2240,6 +2516,23 @@ func (c *Client) CheckStorage(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// GetCodeStyles Read syntax highlighting styles for light and dark appearance
+//
+// Scope: any.
+//
+// Corresponds with GET /api/code.css (the `GetCodeStyles` operationId).
+func (c *Client) GetCodeStyles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCodeStylesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListEvents List recent events
 //
 // Scope: read. Account events (tokens, keys) need an unrestricted token.
@@ -2336,6 +2629,44 @@ func (c *Client) CreateKey(ctx context.Context, body CreateKeyJSONRequestBody, r
 // Corresponds with DELETE /api/keys/{id} (the `DeleteKey` operationId).
 func (c *Client) DeleteKey(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteKeyRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenderMarkdownWithBody Preview sanitized Markdown
+//
+// Scope: any. This read-only operation remains available during maintenance.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+func (c *Client) RenderMarkdownWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenderMarkdownRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenderMarkdown Preview sanitized Markdown
+//
+// Scope: any. This read-only operation remains available during maintenance.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+func (c *Client) RenderMarkdown(ctx context.Context, body RenderMarkdownJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenderMarkdownRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2541,6 +2872,23 @@ func (c *Client) GetRepo(ctx context.Context, owner string, repo string, reqEdit
 	return c.Client.Do(req)
 }
 
+// GetRepositoryBlob Read highlighted source or binary/large-file metadata
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
+func (c *Client) GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRepositoryBlobRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListCommits List commits
 //
 // Scope: read.
@@ -2565,6 +2913,40 @@ func (c *Client) ListCommits(ctx context.Context, owner string, repo string, par
 // Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev} (the `GetCommit` operationId).
 func (c *Client) GetCommit(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCommitRequest(c.Server, owner, repo, rev)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCommitWorkspace Read a commit with checks and structured diffs
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
+func (c *Client) GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCommitWorkspaceRequest(c.Server, owner, repo, rev)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRepositoryFiles List recursive file paths for the file finder
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/files (the `ListRepositoryFiles` operationId).
+func (c *Client) ListRepositoryFiles(ctx context.Context, owner string, repo string, params *ListRepositoryFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRepositoryFilesRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2730,6 +3112,23 @@ func (c *Client) CommentIssueWithBody(ctx context.Context, owner string, repo st
 // Corresponds with POST /api/repos/{owner}/{repo}/issues/{number}/comments (the `CommentIssue` operationId).
 func (c *Client) CommentIssue(ctx context.Context, owner string, repo string, number int64, body CommentIssueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCommentIssueRequest(c.Server, owner, repo, number, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIssueWorkspace Read an issue with rendered discussion and permissions
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/issues/{number}/view (the `GetIssueWorkspace` operationId).
+func (c *Client) GetIssueWorkspace(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIssueWorkspaceRequest(c.Server, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}
@@ -3049,6 +3448,23 @@ func (c *Client) MergePull(ctx context.Context, owner string, repo string, numbe
 	return c.Client.Do(req)
 }
 
+// GetPullPatch Read structured, highlighted diffs and anchored comments
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/patch (the `GetPullPatch` operationId).
+func (c *Client) GetPullPatch(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPullPatchRequest(c.Server, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReviewPullWithBody Review a pull request's current head commit
 //
 // Scope: write. Authors can't approve or request changes on their own pull requests.
@@ -3077,6 +3493,40 @@ func (c *Client) ReviewPullWithBody(ctx context.Context, owner string, repo stri
 // Corresponds with POST /api/repos/{owner}/{repo}/pulls/{number}/reviews (the `ReviewPull` operationId).
 func (c *Client) ReviewPull(ctx context.Context, owner string, repo string, number int64, body ReviewPullJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReviewPullRequest(c.Server, owner, repo, number, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPullWorkspace Read a pull request with rendered discussion, merge requirements, and checks
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/view (the `GetPullWorkspace` operationId).
+func (c *Client) GetPullWorkspace(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPullWorkspaceRequest(c.Server, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRepositoryRawFile Download the original file bytes
+//
+// Scope: read. Served with nosniff and a sandbox policy.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/raw (the `GetRepositoryRawFile` operationId).
+func (c *Client) GetRepositoryRawFile(ctx context.Context, owner string, repo string, params *GetRepositoryRawFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRepositoryRawFileRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3564,6 +4014,23 @@ func (c *Client) ListTags(ctx context.Context, owner string, repo string, reqEdi
 	return c.Client.Do(req)
 }
 
+// GetRepositoryTree Browse repository files and rendered README
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/tree (the `GetRepositoryTree` operationId).
+func (c *Client) GetRepositoryTree(ctx context.Context, owner string, repo string, params *GetRepositoryTreeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRepositoryTreeRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListVariables List variables
 //
 // Scope: read.
@@ -3626,6 +4093,23 @@ func (c *Client) SetVariableWithBody(ctx context.Context, owner string, repo str
 // Corresponds with PUT /api/repos/{owner}/{repo}/variables/{name} (the `SetVariable` operationId).
 func (c *Client) SetVariable(ctx context.Context, owner string, repo string, name string, body SetVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetVariableRequest(c.Server, owner, repo, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListWorkflows Discover workflows and declared manual inputs at a ref
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/workflows (the `ListWorkflows` operationId).
+func (c *Client) ListWorkflows(ctx context.Context, owner string, repo string, params *ListWorkflowsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWorkflowsRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4089,6 +4573,33 @@ func NewCheckStorageRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetCodeStylesRequest constructs an http.Request for the GetCodeStyles method
+func NewGetCodeStylesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/code.css")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListEventsRequest constructs an http.Request for the ListEvents method
 func NewListEventsRequest(server string, params *ListEventsParams) (*http.Request, error) {
 	var err error
@@ -4381,6 +4892,46 @@ func NewDeleteKeyRequest(server string, id int64) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewRenderMarkdownRequest calls the generic RenderMarkdown builder with application/json body
+func NewRenderMarkdownRequest(server string, body RenderMarkdownJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenderMarkdownRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRenderMarkdownRequestWithBody constructs an http.Request for the RenderMarkdown method, with any body, and a specified content type
+func NewRenderMarkdownRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/markdown")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4696,6 +5247,86 @@ func NewGetRepoRequest(server string, owner string, repo string) (*http.Request,
 	return req, nil
 }
 
+// NewGetRepositoryBlobRequest constructs an http.Request for the GetRepositoryBlob method
+func NewGetRepositoryBlobRequest(server string, owner string, repo string, params *GetRepositoryBlobParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/blob", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCommitsRequest constructs an http.Request for the ListCommits method
 func NewListCommitsRequest(server string, owner string, repo string, params *ListCommitsParams) (*http.Request, error) {
 	var err error
@@ -4814,6 +5445,134 @@ func NewGetCommitRequest(server string, owner string, repo string, rev string) (
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCommitWorkspaceRequest constructs an http.Request for the GetCommitWorkspace method
+func NewGetCommitWorkspaceRequest(server string, owner string, repo string, rev string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "rev", rev, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/commits/%s/view", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListRepositoryFilesRequest constructs an http.Request for the ListRepositoryFiles method
+func NewListRepositoryFilesRequest(server string, owner string, repo string, params *ListRepositoryFilesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/files", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -4946,6 +5705,18 @@ func NewListIssuesRequest(server string, owner string, repo string, params *List
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -5193,6 +5964,54 @@ func NewCommentIssueRequestWithBody(server string, owner string, repo string, nu
 	return req, nil
 }
 
+// NewGetIssueWorkspaceRequest constructs an http.Request for the GetIssueWorkspace method
+func NewGetIssueWorkspaceRequest(server string, owner string, repo string, number int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/issues/%s/view", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListLabelsRequest constructs an http.Request for the ListLabels method
 func NewListLabelsRequest(server string, owner string, repo string) (*http.Request, error) {
 	var err error
@@ -5417,6 +6236,18 @@ func NewListPullsRequest(server string, owner string, repo string, params *ListP
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -5869,6 +6700,54 @@ func NewMergePullRequestWithBody(server string, owner string, repo string, numbe
 	return req, nil
 }
 
+// NewGetPullPatchRequest constructs an http.Request for the GetPullPatch method
+func NewGetPullPatchRequest(server string, owner string, repo string, number int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/pulls/%s/patch", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReviewPullRequest calls the generic ReviewPull builder with application/json body
 func NewReviewPullRequest(server string, owner string, repo string, number int64, body ReviewPullJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5926,6 +6805,134 @@ func NewReviewPullRequestWithBody(server string, owner string, repo string, numb
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPullWorkspaceRequest constructs an http.Request for the GetPullWorkspace method
+func NewGetPullWorkspaceRequest(server string, owner string, repo string, number int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/pulls/%s/view", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRepositoryRawFileRequest constructs an http.Request for the GetRepositoryRawFile method
+func NewGetRepositoryRawFileRequest(server string, owner string, repo string, params *GetRepositoryRawFileParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/raw", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -7256,6 +8263,86 @@ func NewListTagsRequest(server string, owner string, repo string) (*http.Request
 	return req, nil
 }
 
+// NewGetRepositoryTreeRequest constructs an http.Request for the GetRepositoryTree method
+func NewGetRepositoryTreeRequest(server string, owner string, repo string, params *GetRepositoryTreeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/tree", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListVariablesRequest constructs an http.Request for the ListVariables method
 func NewListVariablesRequest(server string, owner string, repo string) (*http.Request, error) {
 	var err error
@@ -7402,6 +8489,86 @@ func NewSetVariableRequestWithBody(server string, owner string, repo string, nam
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListWorkflowsRequest constructs an http.Request for the ListWorkflows method
+func NewListWorkflowsRequest(server string, owner string, repo string, params *ListWorkflowsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/workflows", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -7991,6 +9158,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/admin/storage-check (the `CheckStorage` operationId).
 	CheckStorageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CheckStorageResponse, error)
 
+	// GetCodeStylesWithResponse Read syntax highlighting styles for light and dark appearance
+	//
+	// Scope: any.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/code.css (the `GetCodeStyles` operationId).
+	GetCodeStylesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCodeStylesResponse, error)
+
 	// ListEventsWithResponse List recent events
 	//
 	// Scope: read. Account events (tokens, keys) need an unrestricted token.
@@ -8044,6 +9220,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/keys/{id} (the `DeleteKey` operationId).
 	DeleteKeyWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeleteKeyResponse, error)
+
+	// RenderMarkdownWithBodyWithResponse Preview sanitized Markdown
+	//
+	// Scope: any. This read-only operation remains available during maintenance.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+	RenderMarkdownWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenderMarkdownResponse, error)
+
+	// RenderMarkdownWithResponse Preview sanitized Markdown
+	//
+	// Scope: any. This read-only operation remains available during maintenance.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+	RenderMarkdownWithResponse(ctx context.Context, body RenderMarkdownJSONRequestBody, reqEditors ...RequestEditorFn) (*RenderMarkdownResponse, error)
 
 	// GetMeWithResponse The caller's identity
 	//
@@ -8144,6 +9338,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo} (the `GetRepo` operationId).
 	GetRepoWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*GetRepoResponse, error)
 
+	// GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
+	GetRepositoryBlobWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlobResponse, error)
+
 	// ListCommitsWithResponse List commits
 	//
 	// Scope: read.
@@ -8161,6 +9364,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev} (the `GetCommit` operationId).
 	GetCommitWithResponse(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*GetCommitResponse, error)
+
+	// GetCommitWorkspaceWithResponse Read a commit with checks and structured diffs
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
+	GetCommitWorkspaceWithResponse(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*GetCommitWorkspaceResponse, error)
+
+	// ListRepositoryFilesWithResponse List recursive file paths for the file finder
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/files (the `ListRepositoryFiles` operationId).
+	ListRepositoryFilesWithResponse(ctx context.Context, owner string, repo string, params *ListRepositoryFilesParams, reqEditors ...RequestEditorFn) (*ListRepositoryFilesResponse, error)
 
 	// ListImagesWithResponse List container image tags
 	//
@@ -8242,6 +9463,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/repos/{owner}/{repo}/issues/{number}/comments (the `CommentIssue` operationId).
 	CommentIssueWithResponse(ctx context.Context, owner string, repo string, number int64, body CommentIssueJSONRequestBody, reqEditors ...RequestEditorFn) (*CommentIssueResponse, error)
+
+	// GetIssueWorkspaceWithResponse Read an issue with rendered discussion and permissions
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/issues/{number}/view (the `GetIssueWorkspace` operationId).
+	GetIssueWorkspaceWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetIssueWorkspaceResponse, error)
 
 	// ListLabelsWithResponse List labels
 	//
@@ -8396,6 +9626,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/repos/{owner}/{repo}/pulls/{number}/merge (the `MergePull` operationId).
 	MergePullWithResponse(ctx context.Context, owner string, repo string, number int64, body MergePullJSONRequestBody, reqEditors ...RequestEditorFn) (*MergePullResponse, error)
 
+	// GetPullPatchWithResponse Read structured, highlighted diffs and anchored comments
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/patch (the `GetPullPatch` operationId).
+	GetPullPatchWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetPullPatchResponse, error)
+
 	// ReviewPullWithBodyWithResponse Review a pull request's current head commit
 	//
 	// Scope: write. Authors can't approve or request changes on their own pull requests.
@@ -8413,6 +9652,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/repos/{owner}/{repo}/pulls/{number}/reviews (the `ReviewPull` operationId).
 	ReviewPullWithResponse(ctx context.Context, owner string, repo string, number int64, body ReviewPullJSONRequestBody, reqEditors ...RequestEditorFn) (*ReviewPullResponse, error)
+
+	// GetPullWorkspaceWithResponse Read a pull request with rendered discussion, merge requirements, and checks
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/view (the `GetPullWorkspace` operationId).
+	GetPullWorkspaceWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetPullWorkspaceResponse, error)
+
+	// GetRepositoryRawFileWithResponse Download the original file bytes
+	//
+	// Scope: read. Served with nosniff and a sandbox policy.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/raw (the `GetRepositoryRawFile` operationId).
+	GetRepositoryRawFileWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryRawFileParams, reqEditors ...RequestEditorFn) (*GetRepositoryRawFileResponse, error)
 
 	// ListReleasesWithResponse List releases
 	//
@@ -8657,6 +9914,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo}/tags (the `ListTags` operationId).
 	ListTagsWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*ListTagsResponse, error)
 
+	// GetRepositoryTreeWithResponse Browse repository files and rendered README
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/tree (the `GetRepositoryTree` operationId).
+	GetRepositoryTreeWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryTreeParams, reqEditors ...RequestEditorFn) (*GetRepositoryTreeResponse, error)
+
 	// ListVariablesWithResponse List variables
 	//
 	// Scope: read.
@@ -8692,6 +9958,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/repos/{owner}/{repo}/variables/{name} (the `SetVariable` operationId).
 	SetVariableWithResponse(ctx context.Context, owner string, repo string, name string, body SetVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*SetVariableResponse, error)
+
+	// ListWorkflowsWithResponse Discover workflows and declared manual inputs at a ref
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/workflows (the `ListWorkflows` operationId).
+	ListWorkflowsWithResponse(ctx context.Context, owner string, repo string, params *ListWorkflowsParams, reqEditors ...RequestEditorFn) (*ListWorkflowsResponse, error)
 
 	// DispatchWorkflowWithBodyWithResponse Run a workflow with workflow_dispatch
 	//
@@ -9080,6 +10355,47 @@ func (r CheckStorageResponse) ContentType() string {
 	return ""
 }
 
+type GetCodeStylesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetCodeStylesResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCodeStylesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCodeStylesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCodeStylesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCodeStylesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListEventsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9307,6 +10623,54 @@ func (r DeleteKeyResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DeleteKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenderMarkdownResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RenderedMarkdown
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RenderMarkdownResponse) GetJSON200() *RenderedMarkdown {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RenderMarkdownResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RenderMarkdownResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RenderMarkdownResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenderMarkdownResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenderMarkdownResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9745,6 +11109,54 @@ func (r GetRepoResponse) ContentType() string {
 	return ""
 }
 
+type GetRepositoryBlobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BlobResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRepositoryBlobResponse) GetJSON200() *BlobResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRepositoryBlobResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRepositoryBlobResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRepositoryBlobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRepositoryBlobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRepositoryBlobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCommitsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9835,6 +11247,102 @@ func (r GetCommitResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCommitResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCommitWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CommitWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCommitWorkspaceResponse) GetJSON200() *CommitWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetCommitWorkspaceResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCommitWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCommitWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCommitWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCommitWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListRepositoryFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]string
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRepositoryFilesResponse) GetJSON200() *[]string {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListRepositoryFilesResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRepositoryFilesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRepositoryFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRepositoryFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRepositoryFilesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10123,6 +11631,54 @@ func (r CommentIssueResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CommentIssueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetIssueWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ItemWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIssueWorkspaceResponse) GetJSON200() *ItemWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetIssueWorkspaceResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIssueWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIssueWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIssueWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIssueWorkspaceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10705,6 +12261,54 @@ func (r MergePullResponse) ContentType() string {
 	return ""
 }
 
+type GetPullPatchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PullPatch
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPullPatchResponse) GetJSON200() *PullPatch {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetPullPatchResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPullPatchResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPullPatchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPullPatchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPullPatchResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ReviewPullResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10747,6 +12351,95 @@ func (r ReviewPullResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReviewPullResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetPullWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ItemWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPullWorkspaceResponse) GetJSON200() *ItemWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetPullWorkspaceResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPullWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPullWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPullWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPullWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRepositoryRawFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRepositoryRawFileResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRepositoryRawFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRepositoryRawFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRepositoryRawFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRepositoryRawFileResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11845,6 +13538,54 @@ func (r ListTagsResponse) ContentType() string {
 	return ""
 }
 
+type GetRepositoryTreeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TreeResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRepositoryTreeResponse) GetJSON200() *TreeResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRepositoryTreeResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRepositoryTreeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRepositoryTreeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRepositoryTreeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRepositoryTreeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListVariablesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11983,6 +13724,54 @@ func (r SetVariableResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListWorkflowsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]WorkflowWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWorkflowsResponse) GetJSON200() *[]WorkflowWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListWorkflowsResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWorkflowsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWorkflowsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWorkflowsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWorkflowsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12689,6 +14478,21 @@ func (c *ClientWithResponses) CheckStorageWithResponse(ctx context.Context, reqE
 	return ParseCheckStorageResponse(rsp)
 }
 
+// GetCodeStylesWithResponse Read syntax highlighting styles for light and dark appearance
+//
+// Scope: any.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/code.css (the `GetCodeStyles` operationId).
+func (c *ClientWithResponses) GetCodeStylesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCodeStylesResponse, error) {
+	rsp, err := c.GetCodeStyles(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCodeStylesResponse(rsp)
+}
+
 // ListEventsWithResponse List recent events
 //
 // Scope: read. Account events (tokens, keys) need an unrestricted token.
@@ -12777,6 +14581,36 @@ func (c *ClientWithResponses) DeleteKeyWithResponse(ctx context.Context, id int6
 		return nil, err
 	}
 	return ParseDeleteKeyResponse(rsp)
+}
+
+// RenderMarkdownWithBodyWithResponse Preview sanitized Markdown
+//
+// Scope: any. This read-only operation remains available during maintenance.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+func (c *ClientWithResponses) RenderMarkdownWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenderMarkdownResponse, error) {
+	rsp, err := c.RenderMarkdownWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenderMarkdownResponse(rsp)
+}
+
+// RenderMarkdownWithResponse Preview sanitized Markdown
+//
+// Scope: any. This read-only operation remains available during maintenance.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/markdown (the `RenderMarkdown` operationId).
+func (c *ClientWithResponses) RenderMarkdownWithResponse(ctx context.Context, body RenderMarkdownJSONRequestBody, reqEditors ...RequestEditorFn) (*RenderMarkdownResponse, error) {
+	rsp, err := c.RenderMarkdown(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenderMarkdownResponse(rsp)
 }
 
 // GetMeWithResponse The caller's identity
@@ -12944,6 +14778,21 @@ func (c *ClientWithResponses) GetRepoWithResponse(ctx context.Context, owner str
 	return ParseGetRepoResponse(rsp)
 }
 
+// GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
+func (c *ClientWithResponses) GetRepositoryBlobWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlobResponse, error) {
+	rsp, err := c.GetRepositoryBlob(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRepositoryBlobResponse(rsp)
+}
+
 // ListCommitsWithResponse List commits
 //
 // Scope: read.
@@ -12972,6 +14821,36 @@ func (c *ClientWithResponses) GetCommitWithResponse(ctx context.Context, owner s
 		return nil, err
 	}
 	return ParseGetCommitResponse(rsp)
+}
+
+// GetCommitWorkspaceWithResponse Read a commit with checks and structured diffs
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
+func (c *ClientWithResponses) GetCommitWorkspaceWithResponse(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*GetCommitWorkspaceResponse, error) {
+	rsp, err := c.GetCommitWorkspace(ctx, owner, repo, rev, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCommitWorkspaceResponse(rsp)
+}
+
+// ListRepositoryFilesWithResponse List recursive file paths for the file finder
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/files (the `ListRepositoryFiles` operationId).
+func (c *ClientWithResponses) ListRepositoryFilesWithResponse(ctx context.Context, owner string, repo string, params *ListRepositoryFilesParams, reqEditors ...RequestEditorFn) (*ListRepositoryFilesResponse, error) {
+	rsp, err := c.ListRepositoryFiles(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRepositoryFilesResponse(rsp)
 }
 
 // ListImagesWithResponse List container image tags
@@ -13107,6 +14986,21 @@ func (c *ClientWithResponses) CommentIssueWithResponse(ctx context.Context, owne
 		return nil, err
 	}
 	return ParseCommentIssueResponse(rsp)
+}
+
+// GetIssueWorkspaceWithResponse Read an issue with rendered discussion and permissions
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/issues/{number}/view (the `GetIssueWorkspace` operationId).
+func (c *ClientWithResponses) GetIssueWorkspaceWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetIssueWorkspaceResponse, error) {
+	rsp, err := c.GetIssueWorkspace(ctx, owner, repo, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIssueWorkspaceResponse(rsp)
 }
 
 // ListLabelsWithResponse List labels
@@ -13364,6 +15258,21 @@ func (c *ClientWithResponses) MergePullWithResponse(ctx context.Context, owner s
 	return ParseMergePullResponse(rsp)
 }
 
+// GetPullPatchWithResponse Read structured, highlighted diffs and anchored comments
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/patch (the `GetPullPatch` operationId).
+func (c *ClientWithResponses) GetPullPatchWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetPullPatchResponse, error) {
+	rsp, err := c.GetPullPatch(ctx, owner, repo, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPullPatchResponse(rsp)
+}
+
 // ReviewPullWithBodyWithResponse Review a pull request's current head commit
 //
 // Scope: write. Authors can't approve or request changes on their own pull requests.
@@ -13392,6 +15301,36 @@ func (c *ClientWithResponses) ReviewPullWithResponse(ctx context.Context, owner 
 		return nil, err
 	}
 	return ParseReviewPullResponse(rsp)
+}
+
+// GetPullWorkspaceWithResponse Read a pull request with rendered discussion, merge requirements, and checks
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/pulls/{number}/view (the `GetPullWorkspace` operationId).
+func (c *ClientWithResponses) GetPullWorkspaceWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetPullWorkspaceResponse, error) {
+	rsp, err := c.GetPullWorkspace(ctx, owner, repo, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPullWorkspaceResponse(rsp)
+}
+
+// GetRepositoryRawFileWithResponse Download the original file bytes
+//
+// Scope: read. Served with nosniff and a sandbox policy.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/raw (the `GetRepositoryRawFile` operationId).
+func (c *ClientWithResponses) GetRepositoryRawFileWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryRawFileParams, reqEditors ...RequestEditorFn) (*GetRepositoryRawFileResponse, error) {
+	rsp, err := c.GetRepositoryRawFile(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRepositoryRawFileResponse(rsp)
 }
 
 // ListReleasesWithResponse List releases
@@ -13799,6 +15738,21 @@ func (c *ClientWithResponses) ListTagsWithResponse(ctx context.Context, owner st
 	return ParseListTagsResponse(rsp)
 }
 
+// GetRepositoryTreeWithResponse Browse repository files and rendered README
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/tree (the `GetRepositoryTree` operationId).
+func (c *ClientWithResponses) GetRepositoryTreeWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryTreeParams, reqEditors ...RequestEditorFn) (*GetRepositoryTreeResponse, error) {
+	rsp, err := c.GetRepositoryTree(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRepositoryTreeResponse(rsp)
+}
+
 // ListVariablesWithResponse List variables
 //
 // Scope: read.
@@ -13857,6 +15811,21 @@ func (c *ClientWithResponses) SetVariableWithResponse(ctx context.Context, owner
 		return nil, err
 	}
 	return ParseSetVariableResponse(rsp)
+}
+
+// ListWorkflowsWithResponse Discover workflows and declared manual inputs at a ref
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/workflows (the `ListWorkflows` operationId).
+func (c *ClientWithResponses) ListWorkflowsWithResponse(ctx context.Context, owner string, repo string, params *ListWorkflowsParams, reqEditors ...RequestEditorFn) (*ListWorkflowsResponse, error) {
+	rsp, err := c.ListWorkflows(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWorkflowsResponse(rsp)
 }
 
 // DispatchWorkflowWithBodyWithResponse Run a workflow with workflow_dispatch
@@ -14272,6 +16241,32 @@ func ParseCheckStorageResponse(rsp *http.Response) (*CheckStorageResponse, error
 	return response, nil
 }
 
+// ParseGetCodeStylesResponse parses an HTTP response from a GetCodeStylesWithResponse call
+func ParseGetCodeStylesResponse(rsp *http.Response) (*GetCodeStylesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCodeStylesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListEventsResponse parses an HTTP response from a ListEventsWithResponse call
 func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14413,6 +16408,39 @@ func ParseDeleteKeyResponse(rsp *http.Response) (*DeleteKeyResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest DeletedID
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenderMarkdownResponse parses an HTTP response from a RenderMarkdownWithResponse call
+func ParseRenderMarkdownResponse(rsp *http.Response) (*RenderMarkdownResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenderMarkdownResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RenderedMarkdown
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -14727,6 +16755,39 @@ func ParseGetRepoResponse(rsp *http.Response) (*GetRepoResponse, error) {
 	return response, nil
 }
 
+// ParseGetRepositoryBlobResponse parses an HTTP response from a GetRepositoryBlobWithResponse call
+func ParseGetRepositoryBlobResponse(rsp *http.Response) (*GetRepositoryBlobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRepositoryBlobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BlobResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListCommitsResponse parses an HTTP response from a ListCommitsWithResponse call
 func ParseListCommitsResponse(rsp *http.Response) (*ListCommitsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14776,6 +16837,72 @@ func ParseGetCommitResponse(rsp *http.Response) (*GetCommitResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Commit
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCommitWorkspaceResponse parses an HTTP response from a GetCommitWorkspaceWithResponse call
+func ParseGetCommitWorkspaceResponse(rsp *http.Response) (*GetCommitWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCommitWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CommitWorkspace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListRepositoryFilesResponse parses an HTTP response from a ListRepositoryFilesWithResponse call
+func ParseListRepositoryFilesResponse(rsp *http.Response) (*ListRepositoryFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRepositoryFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []string
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -14978,6 +17105,39 @@ func ParseCommentIssueResponse(rsp *http.Response) (*CommentIssueResponse, error
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIssueWorkspaceResponse parses an HTTP response from a GetIssueWorkspaceWithResponse call
+func ParseGetIssueWorkspaceResponse(rsp *http.Response) (*GetIssueWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIssueWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ItemWorkspace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody
@@ -15393,6 +17553,39 @@ func ParseMergePullResponse(rsp *http.Response) (*MergePullResponse, error) {
 	return response, nil
 }
 
+// ParseGetPullPatchResponse parses an HTTP response from a GetPullPatchWithResponse call
+func ParseGetPullPatchResponse(rsp *http.Response) (*GetPullPatchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPullPatchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PullPatch
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseReviewPullResponse parses an HTTP response from a ReviewPullWithResponse call
 func ParseReviewPullResponse(rsp *http.Response) (*ReviewPullResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15414,6 +17607,65 @@ func ParseReviewPullResponse(rsp *http.Response) (*ReviewPullResponse, error) {
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPullWorkspaceResponse parses an HTTP response from a GetPullWorkspaceWithResponse call
+func ParseGetPullWorkspaceResponse(rsp *http.Response) (*GetPullWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPullWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ItemWorkspace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRepositoryRawFileResponse parses an HTTP response from a GetRepositoryRawFileWithResponse call
+func ParseGetRepositoryRawFileResponse(rsp *http.Response) (*GetRepositoryRawFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRepositoryRawFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -16191,6 +18443,39 @@ func ParseListTagsResponse(rsp *http.Response) (*ListTagsResponse, error) {
 	return response, nil
 }
 
+// ParseGetRepositoryTreeResponse parses an HTTP response from a GetRepositoryTreeWithResponse call
+func ParseGetRepositoryTreeResponse(rsp *http.Response) (*GetRepositoryTreeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRepositoryTreeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TreeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListVariablesResponse parses an HTTP response from a ListVariablesWithResponse call
 func ParseListVariablesResponse(rsp *http.Response) (*ListVariablesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16273,6 +18558,39 @@ func ParseSetVariableResponse(rsp *http.Response) (*SetVariableResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest VariableSet
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListWorkflowsResponse parses an HTTP response from a ListWorkflowsWithResponse call
+func ParseListWorkflowsResponse(rsp *http.Response) (*ListWorkflowsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWorkflowsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []WorkflowWorkspace
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

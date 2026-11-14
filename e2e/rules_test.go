@@ -119,8 +119,8 @@ func TestRules(test *testing.T) {
 	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") || !strings.Contains(result.stderr, "requires verified signatures") {
 		test.Errorf("squash of an unsigned commit: exit %d %s", result.code, result.stderr)
 	}
-	status, page := call(test, http.MethodGet, srv.url+"/acme/demo/pulls/1", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(page), "can't be merged") || strings.Contains(string(page), `value="ff"`) {
+	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/pulls/1/view", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(string(page), "is unsigned") || !strings.Contains(compactJSON(test, page), `"methods":["squash"]`) {
 		test.Errorf("blocked pr page: HTTP %d", status)
 	}
 

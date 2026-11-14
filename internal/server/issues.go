@@ -4,6 +4,7 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -76,10 +77,11 @@ type editItemRequest struct {
 }
 
 type commentRequest struct {
-	Body string `json:"body"`
-	Path string `json:"path,omitzero" doc:"Pull requests only: a file in the diff."`
-	Line int64  `json:"line,omitzero" doc:"Pull requests only: a line of path in the diff."`
-	Side string `json:"side,omitzero" enum:"new,old" doc:"new is the head version, old the base version."`
+	Body    string `json:"body"`
+	Path    string `json:"path,omitzero" doc:"Pull requests only: a file in the diff."`
+	Line    int64  `json:"line,omitzero" doc:"Pull requests only: a line of path in the diff."`
+	Side    string `json:"side,omitzero" enum:"new,old" doc:"new is the head version, old the base version."`
+	HeadSHA string `json:"head_sha,omitzero" doc:"Reject a line comment if the pull request changed from this head."`
 }
 
 type createLabelRequest struct {
@@ -99,6 +101,7 @@ type listItemsInput struct {
 	Label    []string `query:"label,explode" doc:"Items carrying every one of these labels."`
 	Assignee []string `query:"assignee,explode" doc:"Items assigned to every one of these names; @me is the caller."`
 	Limit    int      `query:"limit" doc:"Defaults to 100."`
+	Q        string   `query:"q" doc:"Search the title or an exact issue/pull request number."`
 }
 
 type labelInput struct {
@@ -111,6 +114,7 @@ type itemQuery struct {
 	limit     int
 	labels    []string
 	assignees []string
+	text      string
 }
 
 func checkText(title *string, body *string) error {
@@ -132,6 +136,7 @@ func parseItemQuery(r *http.Request, input *listItemsInput, states []string) (it
 		limit:     queryLimit(input.Limit, 100, math.MaxInt),
 		labels:    input.Label,
 		assignees: identityFrom(r).resolve(input.Assignee),
+		text:      strings.ToLower(strings.TrimSpace(input.Q)),
 	}
 	if parsed.state == "" {
 		parsed.state = stateOpen
@@ -149,6 +154,10 @@ func containsAll(have, want []string) bool {
 }
 
 func (query itemQuery) matches(item store.Item) bool {
+	if query.text != "" && !strings.Contains(strings.ToLower(item.Title), query.text) &&
+		strconv.FormatInt(item.Number, 10) != strings.TrimPrefix(query.text, "#") {
+		return false
+	}
 	return containsAll(item.Labels, query.labels) && containsAll(item.Assignees, query.assignees)
 }
 
@@ -297,7 +306,7 @@ func (s *Server) handleCommentItem(kind string) func(*http.Request, *commentInpu
 		if err := checkText(nil, &request.Body); err != nil {
 			return nil, err
 		}
-		anchor := store.LineRef{Path: request.Path, Line: request.Line, Side: request.Side}
+		anchor := store.LineRef{Path: request.Path, Line: request.Line, Side: request.Side, CommitSHA: request.HeadSHA}
 		line, err := s.commentLine(ctx, repo.Name, kind, input.Number, anchor)
 		if err != nil {
 			return nil, missing(err, nouns[kind]+" not found")

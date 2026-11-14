@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,24 +164,33 @@ func TestReviews(test *testing.T) {
 	}
 
 	sameOrigin := map[string]string{"Sec-Fetch-Site": "same-origin"}
-	if status, location, body := postForm(test, srv.url+"/acme/demo/pulls/1/comments", url.Values{"body": {"From the diff"}, "path": {"app.txt"}, "line": {"30"}, "side": {"new"}}, sameOrigin); status != http.StatusSeeOther || !strings.HasPrefix(location, "/acme/demo/pulls/1?tab=files#comment-") {
-		test.Errorf("UI line comment: HTTP %d location %q %s", status, location, body)
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/1/comments", `{"body":"From the diff","path":"app.txt","line":30,"side":"new"}`, sameOrigin); status != http.StatusCreated {
+		test.Errorf("UI line comment: HTTP %d %s", status, body)
 	}
-	if status, _, body := postForm(test, srv.url+"/acme/demo/pulls/1/reviews", url.Values{"state": {"approve"}, "body": {"Approved from the UI"}}, sameOrigin); status != http.StatusSeeOther {
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/1/reviews", `{"state":"approve","body":"Approved from the UI"}`, sameOrigin); status != http.StatusCreated {
 		test.Errorf("UI approve: HTTP %d %s", status, body)
 	}
 	if got := blocked(); got != "" {
 		test.Errorf("blocked after approving from the UI: %q", got)
 	}
 	for target, wants := range map[string][]string{
-		"/acme/demo/pulls/1":           {"Changes requested", "Approved", "Line 28 needs a test", "Approved from the UI", "Outdated", secondHead[:7], thirdHead[:7]},
-		"/acme/demo/pulls/1?tab=files": {"From the diff", `data-side="new" data-line="30"`, `id="line-form"`},
+		"/api/repos/acme/demo/pulls/1/view":  {`"state":"changes_requested"`, `"state":"approved"`, "Line 28 needs a test", "Approved from the UI", `"outdated":true`, secondHead, thirdHead},
+		"/api/repos/acme/demo/pulls/1/patch": {"From the diff", `"side":"new"`, `"line":30`, `"html":`},
 	} {
 		status, page := call(test, http.MethodGet, srv.url+target, tailnet(), "")
 		for _, text := range wants {
-			if status != http.StatusOK || !strings.Contains(string(page), text) {
+			if status != http.StatusOK || !strings.Contains(compactJSON(test, page), text) {
 				test.Errorf("GET %s: HTTP %d, missing %q", target, status, text)
 			}
+		}
+	}
+	for target, payload := range map[string]string{
+		"reviews":  `{"state":"comment","body":"Stale workspace","head_sha":"` + firstHead + `"}`,
+		"comments": `{"body":"Stale workspace","path":"app.txt","line":30,"head_sha":"` + firstHead + `"}`,
+	} {
+		status, response := call(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/1/"+target, tailnet(), payload)
+		if status != http.StatusConflict || !strings.Contains(string(response), "changed") {
+			test.Errorf("stale %s: HTTP %d %s", target, status, response)
 		}
 	}
 	var merged pullResult

@@ -82,7 +82,7 @@ type RunPath struct {
 
 type listRunsInput struct {
 	RepoPath
-	Limit int `query:"limit" doc:"1 to 100; defaults to 30."`
+	Limit int `query:"limit" doc:"1 to 1000; defaults to 30."`
 }
 
 type runLogsInput struct {
@@ -112,7 +112,7 @@ func (s *Server) handleListRuns(r *http.Request, input *listRunsInput) (*body[[]
 	if err != nil {
 		return nil, err
 	}
-	runs, err := s.store.Runs(r.Context(), repo.Name, int64(queryLimit(input.Limit, 30, 100)))
+	runs, err := s.store.Runs(r.Context(), repo.Name, int64(queryLimit(input.Limit, 30, 1000)))
 	if err != nil {
 		return nil, err
 	}
