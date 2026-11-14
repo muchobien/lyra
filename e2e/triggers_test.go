@@ -49,6 +49,16 @@ jobs:
     steps:
       - run: echo "release=${{ github.event.release.tag_name }} ref=${{ github.ref }} prerelease=${{ github.event.release.prerelease }}"
 `,
+	"tag.yml": `name: Tag
+on:
+  push:
+    tags: ['v*']
+jobs:
+  tag:
+    runs-on: test
+    steps:
+      - run: echo "tag sha=${{ github.sha }}"
+`,
 	"schedule.yml": `name: Nightly
 on:
   schedule:
@@ -165,8 +175,12 @@ func TestTriggers(test *testing.T) {
 		test.Fatalf("the secret leaked into the log:\n%s", logs)
 	}
 
-	mustGit(test, src, "tag", "v0.9.0")
+	mustGit(test, src, "tag", "-a", "-m", "v0.9.0", "v0.9.0")
 	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "v0.9.0")
+	tagCommit := strings.TrimSpace(mustGit(test, src, "rev-parse", "v0.9.0^{commit}"))
+	if logs := logsOf("Tag"); !strings.Contains(logs, "tag sha="+tagCommit) {
+		test.Fatalf("an annotated tag's run lacks its commit %s:\n%s", tagCommit, logs)
+	}
 	var oldDraft struct {
 		Commit  string   `json:"commit"`
 		Actions []string `json:"actions"`
