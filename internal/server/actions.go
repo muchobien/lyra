@@ -343,7 +343,7 @@ func (queue workflowQueue) push(ctx context.Context, update RefUpdate) []string 
 	_, queued := queue.trigger(ctx, trigger{
 		event: eventPush,
 		ref:   update.Ref,
-		sha:   update.New,
+		sha:   commit.SHA,
 		payload: workflowEvent{
 			After:  update.New,
 			Before: update.Old,
