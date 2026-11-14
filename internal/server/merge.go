@@ -330,7 +330,7 @@ func (s *Server) finishMerge(
 			return eventID, err
 		}
 	}
-	_, err = ProcessPush(ctx, s.store, s.git, dir, repo, actor, updates)
+	_, err = ProcessPush(ctx, s.store, s.git, dir, repo, actor, updates, !s.actionsRepo(repo))
 	return eventID, err
 }
 

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,7 @@ func (s *Server) gitBackend(r *http.Request, name string) (*cgi.Handler, error) 
 			"REMOTE_USER=" + actor.User,
 			"LYRA_DB=" + s.dbPath,
 			"LYRA_REPO=" + name,
+			"LYRA_ACTIONS_REPO=" + strconv.FormatBool(s.actionsRepo(name)),
 			"LYRA_USER=" + actor.User,
 			"LYRA_VIA=" + actor.Via,
 			"LYRA_AGENT=" + actor.Agent,

@@ -167,7 +167,10 @@ func (s *Server) handleCreatePull(r *http.Request, input *createPullInput) (*bod
 	if err := s.git.UpdateRef(ctx, dir, pullRef(pull.Number), branches.headSHA, ""); err != nil {
 		return nil, err
 	}
-	actions := QueuePullRuns(ctx, s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
+	actions := []string{}
+	if !s.actionsRepo(repo.Name) {
+		actions = QueuePullRuns(ctx, s.store, s.git, dir, repo.Name, id.actor, pull, "opened")
+	}
 	if err := s.store.AnnounceChecks(ctx, repo.Name, pull.HeadSHA); err != nil {
 		slog.Error("announce checks", "repo", repo.Name, "error", err)
 	}

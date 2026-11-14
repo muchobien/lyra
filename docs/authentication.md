@@ -27,6 +27,12 @@ unrestricted admin token.
 lyra token create --name claude --scope write --repo 'krosf/*' --expires 720h
 ```
 
+## Anonymous clones
+
+Every request needs one of the above, except cloning and fetching repositories of the
+owners in `--actions-owners`, which works without credentials so runners can fetch actions
+from Lyra. See [hosting actions](actions.md#hosting-actions).
+
 ## Agents and sessions
 
 `Lyra-Agent` and `Lyra-Session` headers (`LYRA_AGENT` and `LYRA_SESSION` in the CLI) are

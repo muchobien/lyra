@@ -460,7 +460,10 @@ func (s *Server) queueReopened(
 	if err := s.syncReopened(ctx, &pull, actor); err != nil {
 		return []string{"sync: " + err.Error()}
 	}
-	actions := QueuePullRuns(ctx, s.store, s.git, s.repoDir(repo), repo, actor, pull, "reopened")
+	actions := []string{}
+	if !s.actionsRepo(repo) {
+		actions = QueuePullRuns(ctx, s.store, s.git, s.repoDir(repo), repo, actor, pull, "reopened")
+	}
 	if err := s.store.AnnounceChecks(ctx, repo, pull.HeadSHA); err != nil {
 		slog.Error("announce checks", "repo", repo, "error", err)
 	}

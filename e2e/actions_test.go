@@ -330,3 +330,66 @@ func TestJobMaintenance(test *testing.T) {
 		test.Fatalf("archived logs after retention: %v", entries)
 	}
 }
+
+func TestActionsOwners(test *testing.T) {
+	srv := startServerAt(test, "127.0.0.1:"+freePort(test), filepath.Join(test.TempDir(), "data"), "127.0.0.1", "--actions-owners", "actions,lyrids")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "actions/checkout")
+	createRepo(test, srv, token, "acme/demo")
+	auth := "http.extraHeader=Authorization: Bearer " + token
+	src := newSource(test)
+	if err := os.MkdirAll(filepath.Join(src, ".github", "workflows"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	workflow := "name: Build\non: [push, pull_request, workflow_dispatch]\njobs:\n  build:\n    runs-on: test\n    steps:\n      - run: echo built\n"
+	commitFile(test, src, ".github/workflows/build.yml", workflow, "Add a workflow")
+	commitFile(test, src, "action.yml", "name: Checkout\nruns:\n  using: node20\n  main: dist/index.js\n", "Add the action")
+	mustGit(test, src, "tag", "v4")
+
+	output := mustGit(test, src, "-c", auth, "push", srv.url+"/actions/checkout.git", "main", "v4")
+	if strings.Contains(output, "queued run") {
+		test.Errorf("push to actions/checkout: %s", output)
+	}
+	if output := mustGit(test, src, "-c", auth, "push", srv.url+"/acme/demo.git", "main"); !strings.Contains(output, "lyra: queued run #1 (Build)") {
+		test.Errorf("push to acme/demo: %s", output)
+	}
+
+	mustGit(test, src, "checkout", "-q", "-b", "feature")
+	commitFile(test, src, "README.md", "# Checkout\n", "Add a README")
+	mustGit(test, src, "-c", auth, "push", "-q", srv.url+"/actions/checkout.git", "feature")
+	var pull struct {
+		Actions []string `json:"actions"`
+	}
+	lyraJSON(test, srv, token, &pull, "pr", "create", "actions/checkout", "--head", "feature", "--title", "Feature")
+	if len(pull.Actions) != 0 {
+		test.Errorf("pr create actions = %v", pull.Actions)
+	}
+	commitFile(test, src, "README.md", "# Checkout v4\n", "Update the README")
+	if output := mustGit(test, src, "-c", auth, "push", srv.url+"/actions/checkout.git", "feature"); !strings.Contains(output, "updated pull request #1") || strings.Contains(output, "queued run") {
+		test.Errorf("push to the pull request: %s", output)
+	}
+	if result := runLyra(test, srv, token, "workflow", "run", "actions/checkout", "build.yml"); result.code == 0 || !strings.Contains(result.stderr, "run no workflows") {
+		test.Errorf("workflow run: %+v", result)
+	}
+	if runs := strings.TrimSpace(runLyra(test, srv, token, "run", "list", "actions/checkout").stdout); runs != "[]" {
+		test.Errorf("actions/checkout runs = %s", runs)
+	}
+
+	clone := filepath.Join(test.TempDir(), "checkout")
+	mustGit(test, "", "clone", "-q", "--branch", "v4", srv.url+"/actions/checkout", clone)
+	if got, want := mustGit(test, clone, "rev-parse", "HEAD"), mustGit(test, src, "rev-parse", "v4"); got != want {
+		test.Errorf("anonymous clone HEAD %s, want %s", got, want)
+	}
+	mustGit(test, clone, "fetch", "-q", "origin", "feature")
+	mustGit(test, clone, "commit", "-q", "--allow-empty", "-m", "Anonymous push")
+	if output, err := gitCommand(clone, nil, "push", "origin", "HEAD:refs/heads/anonymous"); err == nil {
+		test.Errorf("push without credentials succeeded: %s", output)
+	}
+	mustGit(test, clone, "-c", auth, "push", "-q", "origin", "HEAD:refs/heads/authenticated")
+	if output, err := gitCommand("", nil, "clone", "-q", srv.url+"/acme/demo", filepath.Join(test.TempDir(), "demo")); err == nil {
+		test.Errorf("clone of acme/demo without credentials succeeded: %s", output)
+	}
+	if status, body := call(test, http.MethodGet, srv.url+"/api/repos/actions/checkout", nil, ""); status != http.StatusUnauthorized {
+		test.Errorf("anonymous API read: %d %s", status, body)
+	}
+}
