@@ -1,17 +1,13 @@
+import { useListOwners } from "./api/generated/lyra";
 import { useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { BookMarked } from "lucide-react";
-import { api, type Owner } from "./api";
 import { ErrorNotice } from "./Controls";
 import styles from "./RepositoryList.module.css";
 
 export function RepositoryList() {
   const { owner } = useParams({ strict: false });
-  const owners = useQuery({
-    queryKey: ["owners"],
-    queryFn: ({ signal }) => api<Owner[]>("/api/owners", signal),
-  });
+  const owners = useListOwners();
   useEffect(() => {
     document.title = `${owner || "Repositories"} · Lyra`;
   }, [owner]);

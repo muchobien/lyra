@@ -18,7 +18,7 @@ syntax highlighting, diff parsing, signatures and merge rules.
 `internal/webui/dist` before compiling Go. A clean checkout needs `mise run ui:build`
 before direct Go build/test commands. Node is a build dependency only.
 
-`mise run ui:check` runs Vite+ formatting and lint checks plus TypeScript checking.
+`mise run ui:check` checks generated API code, Vite+ formatting and lint, and TypeScript.
 `mise run ui:fmt` formats the frontend. Current stable Chrome is the browser target;
 native dialogs, invoker commands, customizable selects and anchored popovers need no
 browser polyfills.
@@ -48,6 +48,14 @@ The tests build the binary at run time, so Go's test cache doesn't see server ch
   and huma builds the OpenAPI document from them and the Go types of their inputs and
   outputs. After changing the API, run `mise run openapi` and commit `api/openapi.yaml`.
   `mise run openapi:check` fails when it's out of date.
+- **Frontend API:** Orval generates the models, fetch functions, query keys and TanStack
+  Query hooks in `web/src/api/generated` from `api/openapi.yaml`. After regenerating the
+  OpenAPI document, run `mise run ui:generate` and commit both generated files.
+  `mise run ui:check` fails when they are out of date. Generated code is checked by
+  TypeScript and excluded from formatting and lint. The shared fetch adapter preserves
+  same-origin authentication, request cancellation, API errors and binary downloads.
+  Live event and backup streams are excluded from this UI client. EventSource handles
+  live events; incremental job logs retain their offset and response-header handling.
 
 ## Image
 

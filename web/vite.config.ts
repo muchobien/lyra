@@ -27,8 +27,9 @@ export default defineConfig(({ command }) => {
           backend,
       },
     },
-    fmt: {},
+    fmt: { ignorePatterns: ["src/api/generated/**"] },
     lint: {
+      ignorePatterns: ["src/api/generated/**"],
       plugins: ["typescript", "react", "jsx-a11y"],
       jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
       rules: {

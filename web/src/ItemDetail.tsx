@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   GitBranch,
   GitCommitHorizontal,
@@ -10,17 +10,21 @@ import {
   ListChecks,
   Pencil,
 } from "lucide-react";
+import { IdentityContext, type DiscussionComment, type Review } from "./api";
+import type { EditItemRequest, ReviewRequest, MergeRequest } from "./api/generated/models";
 import {
-  api,
-  IdentityContext,
-  repositoryAPI,
-  write,
-  type Commit,
-  type DiffFile,
-  type DiscussionComment,
-  type ItemWorkspace,
-  type Review,
-} from "./api";
+  useGetIssueWorkspace,
+  useGetPullWorkspace,
+  useListPullCommits,
+  useGetPullPatch,
+  commentIssue,
+  commentPull,
+  editIssue,
+  editPull,
+  useReviewPull,
+  useMergePull,
+  useCommentPull,
+} from "./api/generated/lyra";
 import { ErrorNotice, CopyButton, ScrollNavigation, formValue } from "./Controls";
 import {
   ActorName,
@@ -47,44 +51,25 @@ type TimelineEntry = {
   at: string;
   id: string;
 };
-type EditRequest = {
-  title?: string;
-  body?: string;
-  state?: string;
-  add_labels?: string[];
-  remove_labels?: string[];
-  add_assignees?: string[];
-  remove_assignees?: string[];
-};
-type ReviewRequest = { state: string; body: string; head_sha: string };
-type MergeRequest = {
-  method: string;
-  head_sha: string;
-  delete_branch: boolean;
-  title: string;
-  message: string;
-};
 export function ItemDetail({ kind, number }: DetailProps) {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
   const name = `${owner}/${repo}`;
-  const endpoint = repositoryAPI(name, `/${kind}/${encodeURIComponent(number)}`);
-  const workspace = useQuery({
-    queryKey: [endpoint, "view"],
-    queryFn: ({ signal }) => api<ItemWorkspace>(`${endpoint}/view`, signal),
+  const issueWorkspace = useGetIssueWorkspace(owner, repo, Number(number), {
+    query: { enabled: kind === "issues" },
   });
+  const pullWorkspace = useGetPullWorkspace(owner, repo, Number(number), {
+    query: { enabled: kind === "pulls" },
+  });
+  const workspace = kind === "pulls" ? pullWorkspace : issueWorkspace;
   const tab = search.tab || "overview";
-  const commits = useQuery({
-    queryKey: [`${endpoint}/commits`],
-    queryFn: ({ signal }) => api<Commit[]>(`${endpoint}/commits`, signal),
-    enabled: kind === "pulls" && tab === "commits",
+  const commits = useListPullCommits(owner, repo, Number(number), {
+    query: { enabled: kind === "pulls" && tab === "commits" },
   });
-  const patch = useQuery({
-    queryKey: [`${endpoint}/patch`],
-    queryFn: ({ signal }) => api<DiffFile[]>(`${endpoint}/patch`, signal),
-    enabled: kind === "pulls" && tab === "files",
+  const patch = useGetPullPatch(owner, repo, Number(number), {
+    query: { enabled: kind === "pulls" && tab === "files" },
   });
   const draftKey = `${identity?.actor.user}/${name}/${kind}/${number}`;
   const comment = useDraft(`${draftKey}/comment`);
@@ -98,8 +83,8 @@ export function ItemDetail({ kind, number }: DetailProps) {
   const mergeBody = useDraft(`${draftKey}/merge/body`, workspace.data?.item.body);
   const [reviewHead, setReviewHead] = useState("");
   const [mergeHead, setMergeHead] = useState("");
-  const [reviewDecision, setReviewDecision] = useState("comment");
-  const [mergeMethod, setMergeMethod] = useState("squash");
+  const [reviewDecision, setReviewDecision] = useState<ReviewRequest["state"]>("comment");
+  const [mergeMethod, setMergeMethod] = useState<MergeRequest["method"]>("squash");
   const [anchor, setAnchor] = useState<CommentAnchor>({
     path: "",
     line: 0,
@@ -113,14 +98,20 @@ export function ItemDetail({ kind, number }: DetailProps) {
     await queryClient.invalidateQueries();
   }
   const commenting = useMutation({
-    mutationFn: (body: string) => write(`${endpoint}/comments`, "POST", { body }),
+    mutationFn: (body: string) =>
+      kind === "pulls"
+        ? commentPull(owner, repo, Number(number), { body })
+        : commentIssue(owner, repo, Number(number), { body }),
     onSuccess: async () => {
       comment.clear();
       await refresh();
     },
   });
   const editing = useMutation({
-    mutationFn: (body: EditRequest) => write(endpoint, "PATCH", body),
+    mutationFn: (body: EditItemRequest) =>
+      kind === "pulls"
+        ? editPull(owner, repo, Number(number), body)
+        : editIssue(owner, repo, Number(number), body),
     onSuccess: async () => {
       document.querySelector<HTMLDialogElement>("#edit-item")?.close();
       editTitle.clear();
@@ -128,30 +119,32 @@ export function ItemDetail({ kind, number }: DetailProps) {
       await refresh();
     },
   });
-  const reviewing = useMutation({
-    mutationFn: (body: ReviewRequest) => write(`${endpoint}/reviews`, "POST", body),
-    onSuccess: async () => {
-      document.querySelector<HTMLDialogElement>("#review-pull")?.close();
-      reviewBody.clear();
-      await refresh();
+  const reviewing = useReviewPull({
+    mutation: {
+      onSuccess: async () => {
+        document.querySelector<HTMLDialogElement>("#review-pull")?.close();
+        reviewBody.clear();
+        await refresh();
+      },
     },
   });
-  const merging = useMutation({
-    mutationFn: (body: MergeRequest) => write(`${endpoint}/merge`, "POST", body),
-    onSuccess: async () => {
-      document.querySelector<HTMLDialogElement>("#merge-pull")?.close();
-      mergeTitle.clear();
-      mergeBody.clear();
-      await refresh();
+  const merging = useMergePull({
+    mutation: {
+      onSuccess: async () => {
+        document.querySelector<HTMLDialogElement>("#merge-pull")?.close();
+        mergeTitle.clear();
+        mergeBody.clear();
+        await refresh();
+      },
     },
   });
-  const lineCommenting = useMutation({
-    mutationFn: (body: CommentAnchor & { body: string }) =>
-      write(`${endpoint}/comments`, "POST", body),
-    onSuccess: async () => {
-      document.querySelector<HTMLDialogElement>("#line-comment")?.close();
-      lineBody.clear();
-      await refresh();
+  const lineCommenting = useCommentPull({
+    mutation: {
+      onSuccess: async () => {
+        document.querySelector<HTMLDialogElement>("#line-comment")?.close();
+        lineBody.clear();
+        await refresh();
+      },
     },
   });
   useEffect(() => {
@@ -208,24 +201,37 @@ export function ItemDetail({ kind, number }: DetailProps) {
     reviewing.reset();
   }
   function decisionChanged(event: ChangeEvent<HTMLSelectElement>) {
-    setReviewDecision(event.target.value);
+    const value = event.target.value;
+    if (value === "comment" || value === "approve" || value === "request_changes") {
+      setReviewDecision(value);
+    }
   }
   function submitReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    reviewing.mutate({ state: reviewDecision, body: reviewBody.value, head_sha: reviewHead });
+    reviewing.mutate({
+      owner,
+      repo,
+      number: Number(number),
+      data: { state: reviewDecision, body: reviewBody.value, head_sha: reviewHead },
+    });
   }
   function openMerge() {
     setMergeHead(workspace.data?.pull?.head_sha || "");
     const plan = workspace.data?.merge;
-    setMergeMethod(
-      plan?.methods.find((method) => method === "squash" && !plan.conflicts.length) ||
-        plan?.methods.find((method) => method === "ff" && plan.fast_forward) ||
-        "squash",
-    );
+    if (plan?.methods.includes("squash") && !plan.conflicts.length) {
+      setMergeMethod("squash");
+    } else if (plan?.methods.includes("ff") && plan.fast_forward) {
+      setMergeMethod("ff");
+    } else {
+      setMergeMethod("squash");
+    }
     merging.reset();
   }
   function methodChanged(event: ChangeEvent<HTMLSelectElement>) {
-    setMergeMethod(event.target.value);
+    const value = event.target.value;
+    if (value === "squash" || value === "ff") {
+      setMergeMethod(value);
+    }
   }
   function mergeTitleChanged(event: ChangeEvent<HTMLInputElement>) {
     mergeTitle.setValue(event.target.value);
@@ -234,11 +240,16 @@ export function ItemDetail({ kind, number }: DetailProps) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     merging.mutate({
-      method: mergeMethod,
-      head_sha: mergeHead,
-      delete_branch: data.get("delete_branch") === "on",
-      title: mergeTitle.value,
-      message: mergeBody.value,
+      owner,
+      repo,
+      number: Number(number),
+      data: {
+        method: mergeMethod,
+        head_sha: mergeHead,
+        delete_branch: data.get("delete_branch") === "on",
+        title: mergeTitle.value,
+        message: mergeBody.value,
+      },
     });
   }
   function openLineComment(next: CommentAnchor) {
@@ -249,7 +260,12 @@ export function ItemDetail({ kind, number }: DetailProps) {
   }
   function submitLine(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    lineCommenting.mutate({ ...anchor, body: lineBody.value });
+    lineCommenting.mutate({
+      owner,
+      repo,
+      number: Number(number),
+      data: { ...anchor, body: lineBody.value },
+    });
   }
   if (workspace.error) {
     return <ErrorNotice error={workspace.error} retry={retry} />;

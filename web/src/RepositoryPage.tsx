@@ -13,16 +13,17 @@ import {
   ShieldCheck,
   GitBranch,
 } from "lucide-react";
+import { APIError } from "./api";
 import {
-  api,
-  APIError,
-  repositoryAPI,
-  type Blob,
-  type Image,
-  type Release,
-  type Repository,
-  type Tree,
-} from "./api";
+  useGetRepo,
+  useGetRepositoryTree,
+  useGetRepositoryBlob,
+  getLatestRelease,
+  getGetLatestReleaseQueryKey,
+  useListImages,
+  useListRepositoryFiles,
+  getGetRepositoryRawFileUrl,
+} from "./api/generated/lyra";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { CodeNavigation } from "./CodeScreens";
 import controls from "./Controls.module.css";
@@ -33,29 +34,22 @@ export function RepositoryPage() {
   const search = useSearch({ from: "/$owner/$repo" });
   const navigate = useNavigate({ from: "/$owner/$repo" });
   const name = `${owner}/${repo}`;
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
+  const metadata = useGetRepo(owner, repo);
   const hasBranches = Boolean(metadata.data?.branches.length);
   const ref = search.ref || metadata.data?.default_branch || "main";
-  const params = new URLSearchParams({ ref, path: search.path || "" });
-  const tree = useQuery({
-    queryKey: ["tree", name, ref, search.path],
-    queryFn: ({ signal }) => api<Tree>(repositoryAPI(name, "/tree?") + params, signal),
-    enabled: !!metadata.data && !search.file,
+  const params = { ref, path: search.path || "" };
+  const tree = useGetRepositoryTree(owner, repo, params, {
+    query: { enabled: !!metadata.data && !search.file },
   });
-  const blobParams = new URLSearchParams({ ref, path: search.file || "" });
-  const blob = useQuery({
-    queryKey: ["blob", name, ref, search.file],
-    queryFn: ({ signal }) => api<Blob>(repositoryAPI(name, "/blob?") + blobParams, signal),
-    enabled: !!metadata.data && !!search.file,
+  const blobParams = { ref, path: search.file || "" };
+  const blob = useGetRepositoryBlob(owner, repo, blobParams, {
+    query: { enabled: !!metadata.data && !!search.file },
   });
   const latest = useQuery({
-    queryKey: ["latest-release", name],
+    queryKey: getGetLatestReleaseQueryKey(owner, repo),
     queryFn: async ({ signal }) => {
       try {
-        return await api<Release>(repositoryAPI(name, "/releases/latest"), signal);
+        return await getLatestRelease(owner, repo, { signal });
       } catch (error) {
         if (error instanceof APIError && error.status === 404) {
           return null;
@@ -64,18 +58,10 @@ export function RepositoryPage() {
       }
     },
   });
-  const images = useQuery({
-    queryKey: ["images", name],
-    queryFn: ({ signal }) => api<Image[]>(repositoryAPI(name, "/images"), signal),
-  });
+  const images = useListImages(owner, repo);
   const [finderOpen, setFinderOpen] = useState(false);
   const [filter, setFilter] = useState("");
-  const files = useQuery({
-    queryKey: ["files", name, ref],
-    queryFn: ({ signal }) =>
-      api<string[]>(repositoryAPI(name, "/files?ref=") + encodeURIComponent(ref), signal),
-    enabled: finderOpen,
-  });
+  const files = useListRepositoryFiles(owner, repo, { ref }, { query: { enabled: finderOpen } });
   const visibleFiles =
     files.data?.filter((path) => path.toLowerCase().includes(filter.toLowerCase())) || [];
 
@@ -153,7 +139,7 @@ export function RepositoryPage() {
     : (images.data || [])
         .toSorted((first, second) => Date.parse(second.pushed_at) - Date.parse(first.pushed_at))
         .slice(0, 1);
-  const rawURL = repositoryAPI(name, "/raw?") + blobParams;
+  const rawURL = getGetRepositoryRawFileUrl(owner, repo, blobParams);
 
   return (
     <>

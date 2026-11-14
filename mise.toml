@@ -78,9 +78,14 @@ depends = ["ui:install"]
 run = "pnpm --dir web build"
 
 [tasks."ui:check"]
-description = "Check frontend formatting, lint, and types with Vite+"
+description = "Check generated API code, frontend formatting, lint, and types"
 depends = ["ui:install"]
 run = "pnpm --dir web check"
+
+[tasks."ui:generate"]
+description = "Generate the frontend API client from api/openapi.yaml"
+depends = ["ui:install"]
+run = "pnpm --dir web api:generate"
 
 [tasks."ui:fmt"]
 description = "Format the frontend with Vite+"

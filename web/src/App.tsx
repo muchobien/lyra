@@ -1,6 +1,12 @@
+import {
+  useGetMe,
+  useListRepos,
+  getGetMeQueryKey,
+  getRenderMarkdownQueryKey,
+} from "./api/generated/lyra";
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Code,
   GitPullRequest,
@@ -13,7 +19,7 @@ import {
   Activity,
   Settings,
 } from "lucide-react";
-import { api, ConnectionContext, IdentityContext, type Identity, type Repository } from "./api";
+import { ConnectionContext, IdentityContext } from "./api";
 import { ErrorNotice, ScrollNavigation } from "./Controls";
 import styles from "./App.module.css";
 
@@ -25,14 +31,8 @@ export function App() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { owner, repo, section } = useParams({ strict: false });
   const queryClient = useQueryClient();
-  const identity = useQuery({
-    queryKey: ["identity"],
-    queryFn: ({ signal }) => api<Identity>("/api/me", signal),
-  });
-  const repositories = useQuery({
-    queryKey: ["repositories"],
-    queryFn: ({ signal }) => api<Repository[]>("/api/repos", signal),
-  });
+  const identity = useGetMe();
+  const repositories = useListRepos();
   const [theme, setTheme] = useState(localStorage.getItem("lyra-theme") || "system");
   const [connection, setConnection] = useState({ repository: "", status: "connecting" });
 
@@ -43,13 +43,15 @@ export function App() {
     const stream = new EventSource(
       `/api/events/stream?repo=${encodeURIComponent(`${owner}/${repo}`)}`,
     );
+    const markdownKey = getRenderMarkdownQueryKey({ body: "" });
     let pending: ReturnType<typeof setTimeout> | undefined;
     function refresh() {
       clearTimeout(pending);
       pending = setTimeout(() => {
         void queryClient.invalidateQueries({
           predicate: (query) =>
-            query.queryKey[0] !== "markdown" && query.queryKey[0] !== "identity",
+            !(query.queryKey[0] === markdownKey[0] && query.queryKey[1] === markdownKey[1]) &&
+            query.queryKey[0] !== getGetMeQueryKey()[0],
         });
       }, 200);
     }

@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, ToggleEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   GitBranch,
   KeyRound,
@@ -12,38 +12,48 @@ import {
   Trash2,
   Variable as VariableIcon,
 } from "lucide-react";
+import { IdentityContext, type Rule } from "./api";
 import {
-  api,
-  IdentityContext,
-  repositoryAPI,
-  write,
-  type AccessToken,
-  type Label,
-  type Rule,
-  type Runner,
-  type RunnerToken,
-  type Secret,
-  type SigningKey,
-  type Variable,
-} from "./api";
+  useListVariables,
+  useListSecrets,
+  useListRules,
+  useListLabels,
+  useListTokens,
+  useListKeys,
+  useGetSigningKey,
+  useListRunners,
+  useListRunnerTokens,
+  useCreateToken,
+  useCreateRunnerToken,
+  setSecret,
+  setVariable,
+  setRule,
+  createLabel,
+  createKey,
+  deleteSecret,
+  deleteVariable,
+  deleteRule,
+  deleteLabel,
+  revokeToken,
+  deleteKey,
+  deleteRunner,
+  deleteRunnerToken,
+} from "./api/generated/lyra";
 import { CopyButton, ErrorNotice, ScrollNavigation, formValue } from "./Controls";
 import { ConfirmDialog, DateTime, DialogClose, FormError } from "./Workspace";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./Settings.module.css";
 
-type ConfigChange = { path: string; method: string; body?: unknown; dialog: string };
-type Deletion = { path: string; title: string; description: string };
+type ConfigChange = { save: () => Promise<unknown>; dialog: string };
+type Deletion = { remove: () => Promise<unknown>; title: string; description: string };
 type MintedSecret = { secret: string; title: string; url?: string };
-type TokenCreation = { name: string; scope: string; repos: string[]; expires_in: string };
-type ServerSigningKey = { fingerprint: string; public_key: string; allowed_signers: string };
 export function Settings() {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
   const name = `${owner}/${repo}`;
-  const base = repositoryAPI(name);
   const canWrite = identity?.scope !== "read";
   const admin = identity?.scope === "admin";
   const instanceAdmin = admin && !identity?.repos.length;
@@ -55,55 +65,25 @@ export function Settings() {
   const [deletion, setDeletion] = useState<Deletion | null>(null);
   const [oneTime, setOneTime] = useState<MintedSecret | null>(null);
   const [validationError, setValidationError] = useState<Error | null>(null);
-  const variables = useQuery({
-    queryKey: [`${base}/variables`],
-    queryFn: ({ signal }) => api<Variable[]>(`${base}/variables`, signal),
-    enabled: area === "variables",
+  const variables = useListVariables(owner, repo, { query: { enabled: area === "variables" } });
+  const secrets = useListSecrets(owner, repo, { query: { enabled: area === "secrets" && admin } });
+  const rules = useListRules(owner, repo, { query: { enabled: area === "rules" } });
+  const labels = useListLabels(owner, repo, { query: { enabled: area === "labels" } });
+  const tokens = useListTokens({ query: { enabled: area === "access" && instanceAdmin } });
+  const keys = useListKeys({ query: { enabled: area === "access" && instanceAdmin } });
+  const serverKey = useGetSigningKey({ query: { enabled: area === "access" && instanceAdmin } });
+  const runners = useListRunners({
+    query: {
+      enabled: area === "runners" && instanceAdmin,
+      refetchInterval: area === "runners" && instanceAdmin ? 15000 : false,
+    },
   });
-  const secrets = useQuery({
-    queryKey: [`${base}/secrets`],
-    queryFn: ({ signal }) => api<Secret[]>(`${base}/secrets`, signal),
-    enabled: area === "secrets" && admin,
-  });
-  const rules = useQuery({
-    queryKey: [`${base}/rules`],
-    queryFn: ({ signal }) => api<Rule[]>(`${base}/rules`, signal),
-    enabled: area === "rules",
-  });
-  const labels = useQuery({
-    queryKey: [`${base}/labels`],
-    queryFn: ({ signal }) => api<Label[]>(`${base}/labels`, signal),
-    enabled: area === "labels",
-  });
-  const tokens = useQuery({
-    queryKey: ["/api/tokens"],
-    queryFn: ({ signal }) => api<AccessToken[]>("/api/tokens", signal),
-    enabled: area === "access" && instanceAdmin,
-  });
-  const keys = useQuery({
-    queryKey: ["/api/keys"],
-    queryFn: ({ signal }) => api<SigningKey[]>("/api/keys", signal),
-    enabled: area === "access" && instanceAdmin,
-  });
-  const serverKey = useQuery({
-    queryKey: ["/api/signing-key"],
-    queryFn: ({ signal }) => api<ServerSigningKey>("/api/signing-key", signal),
-    enabled: area === "access" && instanceAdmin,
-  });
-  const runners = useQuery({
-    queryKey: ["/api/runners"],
-    queryFn: ({ signal }) => api<Runner[]>("/api/runners", signal),
-    enabled: area === "runners" && instanceAdmin,
-    refetchInterval: area === "runners" && instanceAdmin ? 15000 : false,
-  });
-  const runnerTokens = useQuery({
-    queryKey: ["/api/runners/tokens"],
-    queryFn: ({ signal }) => api<RunnerToken[]>("/api/runners/tokens", signal),
-    enabled: area === "runners" && instanceAdmin,
+  const runnerTokens = useListRunnerTokens({
+    query: { enabled: area === "runners" && instanceAdmin },
   });
   const changing = useMutation({
     gcTime: 0,
-    mutationFn: (change: ConfigChange) => write(change.path, change.method, change.body),
+    mutationFn: (change: ConfigChange) => change.save(),
     onSuccess: async (_data, change) => {
       const dialog = document.querySelector<HTMLDialogElement>(`#${change.dialog}`);
       dialog?.close();
@@ -112,32 +92,41 @@ export function Settings() {
     },
   });
   const removing = useMutation({
-    mutationFn: () => write(deletion?.path || "", "DELETE"),
+    mutationFn: () => {
+      if (!deletion) {
+        throw new Error("Choose an item to delete.");
+      }
+      return deletion.remove();
+    },
     onSuccess: async () => {
       document.querySelector<HTMLDialogElement>("#delete-setting")?.close();
       await queryClient.invalidateQueries();
     },
   });
-  const mintToken = useMutation({
-    gcTime: 0,
-    mutationFn: (body: TokenCreation) =>
-      write<{ secret: string; token: AccessToken }>("/api/tokens", "POST", body),
-    onSuccess: (created) => {
-      document.querySelector<HTMLDialogElement>("#new-token")?.close();
-      setOneTime({ title: created.token.name, secret: created.secret });
-      document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
-      void queryClient.invalidateQueries();
+  const mintToken = useCreateToken({
+    mutation: {
+      gcTime: 0,
+      onSuccess: (created) => {
+        document.querySelector<HTMLDialogElement>("#new-token")?.close();
+        setOneTime({ title: created.token.name, secret: created.secret });
+        document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
+        void queryClient.invalidateQueries();
+      },
     },
   });
-  const mintRunnerToken = useMutation({
-    gcTime: 0,
-    mutationFn: (name: string) =>
-      write<{ secret: string; url: string }>("/api/runners/tokens", "POST", { name }),
-    onSuccess: (created) => {
-      document.querySelector<HTMLDialogElement>("#new-runner-token")?.close();
-      setOneTime({ title: "Runner registration token", secret: created.secret, url: created.url });
-      document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
-      void queryClient.invalidateQueries();
+  const mintRunnerToken = useCreateRunnerToken({
+    mutation: {
+      gcTime: 0,
+      onSuccess: (created) => {
+        document.querySelector<HTMLDialogElement>("#new-runner-token")?.close();
+        setOneTime({
+          title: "Runner registration token",
+          secret: created.secret,
+          url: created.url,
+        });
+        document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
+        void queryClient.invalidateQueries();
+      },
     },
   });
   useEffect(() => {
@@ -157,9 +146,10 @@ export function Settings() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
-      path: `${base}/${area}/${encodeURIComponent(formValue(form, "name"))}`,
-      method: "PUT",
-      body: { value: formValue(form, "value") },
+      save: () =>
+        area === "secrets"
+          ? setSecret(owner, repo, formValue(form, "name"), { value: formValue(form, "value") })
+          : setVariable(owner, repo, formValue(form, "name"), { value: formValue(form, "value") }),
       dialog: "value-editor",
     });
   }
@@ -176,73 +166,76 @@ export function Settings() {
     const form = new FormData(event.currentTarget);
     const methods = form
       .getAll("method")
-      .filter((value): value is string => typeof value === "string");
+      .filter((value): value is "squash" | "ff" => value === "squash" || value === "ff");
     if (!methods.length) {
       setValidationError(new Error("Choose at least one merge method."));
       return;
     }
     setValidationError(null);
     changing.mutate({
-      path: `${base}/rules`,
-      method: "POST",
       dialog: "rule-editor",
-      body: {
-        pattern: formValue(form, "pattern"),
-        require_signed: form.has("require_signed"),
-        require_approval: form.has("require_approval"),
-        require_checks: form.has("require_checks"),
-        allow_force_push: form.has("allow_force_push"),
-        allow_deletion: form.has("allow_deletion"),
-        merge_methods: methods,
-      },
+      save: () =>
+        setRule(owner, repo, {
+          pattern: formValue(form, "pattern"),
+          require_signed: form.has("require_signed"),
+          require_approval: form.has("require_approval"),
+          require_checks: form.has("require_checks"),
+          allow_force_push: form.has("allow_force_push"),
+          allow_deletion: form.has("allow_deletion"),
+          merge_methods: methods,
+        }),
     });
   }
   function labelSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
-      path: `${base}/labels`,
-      method: "POST",
       dialog: "label-editor",
-      body: {
-        name: formValue(form, "name"),
-        color: formValue(form, "color"),
-        description: formValue(form, "description"),
-      },
+      save: () =>
+        createLabel(owner, repo, {
+          name: formValue(form, "name"),
+          color: formValue(form, "color"),
+          description: formValue(form, "description"),
+        }),
     });
   }
   function keySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
-      path: "/api/keys",
-      method: "POST",
       dialog: "key-editor",
-      body: {
-        title: formValue(form, "title"),
-        agent: formValue(form, "agent"),
-        public_key: formValue(form, "public_key"),
-        signing: true,
-      },
+      save: () =>
+        createKey({
+          title: formValue(form, "title"),
+          agent: formValue(form, "agent"),
+          public_key: formValue(form, "public_key"),
+          signing: true,
+        }),
     });
   }
   function tokenSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const scope = formValue(form, "scope");
+    if (scope !== "read" && scope !== "write" && scope !== "admin") {
+      return;
+    }
     mintToken.mutate({
-      name: formValue(form, "name"),
-      scope: formValue(form, "scope"),
-      expires_in: formValue(form, "expiry"),
-      repos: formValue(form, "repos")
-        .split(/[\n,]/)
-        .map((repo) => repo.trim())
-        .filter(Boolean),
+      data: {
+        name: formValue(form, "name"),
+        scope,
+        expires_in: formValue(form, "expiry"),
+        repos: formValue(form, "repos")
+          .split(/[\n,]/)
+          .map((repo) => repo.trim())
+          .filter(Boolean),
+      },
     });
   }
   function runnerTokenSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    mintRunnerToken.mutate(formValue(form, "name"));
+    mintRunnerToken.mutate({ data: { name: formValue(form, "name") } });
   }
   function resetChange() {
     changing.reset();
@@ -255,11 +248,42 @@ export function Settings() {
   }
   function prepareDeletion(event: MouseEvent<HTMLButtonElement>) {
     const {
-      path = "",
+      kind = "",
+      name = "",
+      id = "",
       title = "Delete item?",
       description = "This item will be removed.",
     } = event.currentTarget.dataset;
-    setDeletion({ path, title, description });
+    let remove: () => Promise<unknown>;
+    switch (kind) {
+      case "secrets":
+        remove = () => deleteSecret(owner, repo, name);
+        break;
+      case "variables":
+        remove = () => deleteVariable(owner, repo, name);
+        break;
+      case "rules":
+        remove = () => deleteRule(owner, repo, { pattern: name });
+        break;
+      case "labels":
+        remove = () => deleteLabel(owner, repo, name);
+        break;
+      case "tokens":
+        remove = () => revokeToken(Number(id));
+        break;
+      case "keys":
+        remove = () => deleteKey(Number(id));
+        break;
+      case "runners":
+        remove = () => deleteRunner(Number(id));
+        break;
+      case "runner-tokens":
+        remove = () => deleteRunnerToken(Number(id));
+        break;
+      default:
+        return;
+    }
+    setDeletion({ remove, title, description });
     removing.reset();
   }
   function deleteSetting() {
@@ -370,7 +394,8 @@ export function Settings() {
                   <button
                     className={controls.button}
                     type="button"
-                    data-path={`${base}/${area}/${encodeURIComponent(record.name)}`}
+                    data-kind={area}
+                    data-name={record.name}
                     data-title={`Delete ${record.name}?`}
                     data-description={`${record.name} will no longer be available to workflows.`}
                     onClick={prepareDeletion}
@@ -500,7 +525,8 @@ export function Settings() {
                   <button
                     className={controls.button}
                     type="button"
-                    data-path={`${base}/rules?pattern=${encodeURIComponent(rule.pattern)}`}
+                    data-kind="rules"
+                    data-name={rule.pattern}
                     data-title={`Delete rule ${rule.pattern}?`}
                     data-description="This rule will stop protecting matching branches."
                     onClick={prepareDeletion}
@@ -647,7 +673,8 @@ export function Settings() {
                 <button
                   className={controls.button}
                   type="button"
-                  data-path={`${base}/labels/${encodeURIComponent(label.name)}`}
+                  data-kind="labels"
+                  data-name={label.name}
                   data-title={`Delete label ${label.name}?`}
                   data-description="The label will be removed from this repository and its issues and pull requests."
                   onClick={prepareDeletion}
@@ -745,7 +772,8 @@ export function Settings() {
               <button
                 className={controls.button}
                 type="button"
-                data-path={`/api/tokens/${token.id}`}
+                data-kind="tokens"
+                data-id={token.id}
                 data-title={`Revoke ${token.name}?`}
                 data-description="This token will stop authenticating immediately."
                 onClick={prepareDeletion}
@@ -784,7 +812,8 @@ export function Settings() {
               <button
                 className={controls.button}
                 type="button"
-                data-path={`/api/keys/${key.id}`}
+                data-kind="keys"
+                data-id={key.id}
                 data-title={`Remove ${key.title || "signing key"}?`}
                 data-description="Future commits will no longer be verified against this registered key."
                 onClick={prepareDeletion}
@@ -959,7 +988,8 @@ export function Settings() {
               <button
                 className={controls.button}
                 type="button"
-                data-path={`/api/runners/${runner.id}`}
+                data-kind="runners"
+                data-id={runner.id}
                 data-title={`Remove runner ${runner.name}?`}
                 data-description="The runner registration will be removed."
                 onClick={prepareDeletion}
@@ -989,7 +1019,8 @@ export function Settings() {
               <button
                 className={controls.button}
                 type="button"
-                data-path={`/api/runners/tokens/${token.id}`}
+                data-kind="runner-tokens"
+                data-id={token.id}
                 data-title={`Revoke registration token ${token.name}?`}
                 data-description="This token will stop registering new runners. Existing runners are kept."
                 onClick={prepareDeletion}

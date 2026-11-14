@@ -9,6 +9,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/webui"
@@ -35,6 +36,13 @@ type blobResponse struct {
 	Size   int    `json:"size"`
 	Code   string `json:"code"`
 	Binary bool   `json:"binary"`
+}
+
+func (treeResponse) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.Schema {
+	schema.Properties["last"] = &huma.Schema{AnyOf: []*huma.Schema{
+		schema.Properties["last"], {Type: "null"},
+	}}
+	return schema
 }
 
 func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {

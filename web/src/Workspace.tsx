@@ -1,6 +1,6 @@
+import { useRenderMarkdown } from "./api/generated/lyra";
 import { useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -14,7 +14,7 @@ import {
   Minus,
   X,
 } from "lucide-react";
-import { write, type Actor, type Checks, type Commit } from "./api";
+import { type Actor, type Checks, type Commit } from "./api";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
@@ -96,12 +96,10 @@ export function Markdown({ html }: MarkdownProps) {
 
 type RichTextProps = { source: string };
 export function RichText({ source }: RichTextProps) {
-  const rendered = useQuery({
-    queryKey: ["markdown", source],
-    queryFn: () => write<{ html: string }>("/api/markdown", "POST", { body: source }),
-    staleTime: Infinity,
-    enabled: !!source,
-  });
+  const rendered = useRenderMarkdown(
+    { body: source },
+    { query: { staleTime: Infinity, enabled: !!source } },
+  );
   if (!source) {
     return null;
   }

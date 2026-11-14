@@ -813,7 +813,9 @@ components:
         can_write:
           type: boolean
         checks:
-          $ref: "#/components/schemas/Checks"
+          anyOf:
+            - $ref: "#/components/schemas/Checks"
+            - type: "null"
         comments:
           items:
             $ref: "#/components/schemas/RenderedComment"
@@ -825,11 +827,15 @@ components:
         item:
           $ref: "#/components/schemas/Item"
         merge:
-          $ref: "#/components/schemas/MergePlan"
+          anyOf:
+            - $ref: "#/components/schemas/MergePlan"
+            - type: "null"
         merge_error:
           type: string
         pull:
-          $ref: "#/components/schemas/Pull"
+          anyOf:
+            - $ref: "#/components/schemas/Pull"
+            - type: "null"
         reviews:
           items:
             $ref: "#/components/schemas/RenderedReview"
@@ -2514,7 +2520,9 @@ components:
             $ref: "#/components/schemas/Entry"
           type: array
         last:
-          $ref: "#/components/schemas/Commit"
+          anyOf:
+            - $ref: "#/components/schemas/Commit"
+            - type: "null"
         path:
           type: string
         readme:

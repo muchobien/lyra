@@ -1,5 +1,6 @@
 saveExact: true
-allowBuilds: {}
+allowBuilds:
+  esbuild: true
 overrides:
   vite@*: npm:@voidzero-dev/vite-plus-core@1.6.0
   vitest@*: 5.1.0

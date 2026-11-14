@@ -1,9 +1,9 @@
+import { useListEvents } from "./api/generated/lyra";
 import { useContext, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { Activity as ActivityIcon, GitCommitHorizontal } from "lucide-react";
-import { api, ConnectionContext, type ActivityEvent } from "./api";
+import { ConnectionContext } from "./api";
 import { ErrorNotice } from "./Controls";
 import { ActorName, DateTime } from "./Workspace";
 import controls from "./Controls.module.css";
@@ -16,11 +16,7 @@ export function Activity() {
   const navigate = useNavigate({ from: "/$owner/$repo/$section" });
   const name = `${owner}/${repo}`;
   const limit = Math.max(100, Math.min(1000, Number(search.limit) || 100));
-  const endpoint = `/api/events?${new URLSearchParams({ repo: name, limit: String(limit) })}`;
-  const events = useQuery({
-    queryKey: [endpoint],
-    queryFn: ({ signal }) => api<ActivityEvent[]>(endpoint, signal),
-  });
+  const events = useListEvents({ repo: name, limit });
   useEffect(() => {
     document.title = `Activity · ${name} · Lyra`;
   }, [name]);
@@ -82,56 +78,61 @@ export function Activity() {
       {events.isPending && <output className={styles.empty}>Loading activity…</output>}
       {events.data && (
         <div className={styles.panel}>
-          {visible.map((event) => (
-            <article className={styles.row} key={event.id}>
-              <GitCommitHorizontal size={17} />
-              <div className={styles.grow}>
-                <p>
-                  <ActorName actor={event.actor} />{" "}
-                  <span className={styles.muted}>{event.action.replaceAll(".", " ")}</span>
-                  {event.item && (
-                    <Link
-                      className={styles.link}
-                      to="/$owner/$repo/$section/$"
-                      params={{
-                        owner,
-                        repo,
-                        section: event.action.startsWith("pr.") ? "pulls" : "issues",
-                        _splat: String(event.item),
-                      }}
-                      search={{}}
-                    >
-                      {" "}
-                      #{event.item}
-                    </Link>
+          {visible.map((event) => {
+            const data = event.data && typeof event.data === "object" ? event.data : {};
+            return (
+              <article className={styles.row} key={event.id}>
+                <GitCommitHorizontal size={17} />
+                <div className={styles.grow}>
+                  <p>
+                    <ActorName actor={event.actor} />{" "}
+                    <span className={styles.muted}>{event.action.replaceAll(".", " ")}</span>
+                    {event.item && (
+                      <Link
+                        className={styles.link}
+                        to="/$owner/$repo/$section/$"
+                        params={{
+                          owner,
+                          repo,
+                          section: event.action.startsWith("pr.") ? "pulls" : "issues",
+                          _splat: String(event.item),
+                        }}
+                        search={{}}
+                      >
+                        {" "}
+                        #{event.item}
+                      </Link>
+                    )}
+                  </p>
+                  {"title" in data && typeof data.title === "string" && (
+                    <p className={styles.meta}>{data.title}</p>
                   )}
-                </p>
-                {typeof event.data.title === "string" && (
-                  <p className={styles.meta}>{event.data.title}</p>
-                )}
-                {typeof event.data.name === "string" && (
-                  <p className={styles.meta}>{event.data.name}</p>
-                )}
-                {event.action.startsWith("run.") && typeof event.data.number === "number" && (
-                  <Link
-                    className={styles.link}
-                    to="/$owner/$repo/$section/$"
-                    params={{ owner, repo, section: "runs", _splat: String(event.data.number) }}
-                    search={{}}
-                  >
-                    Run #{event.data.number}
-                  </Link>
-                )}
-                <details className={styles.disclosure}>
-                  <summary>Event data</summary>
-                  <pre className={styles.plainText}>{JSON.stringify(event.data, null, 2)}</pre>
-                </details>
-              </div>
-              <span className={styles.meta}>
-                <DateTime value={event.at} />
-              </span>
-            </article>
-          ))}
+                  {"name" in data && typeof data.name === "string" && (
+                    <p className={styles.meta}>{data.name}</p>
+                  )}
+                  {event.action.startsWith("run.") &&
+                    "number" in data &&
+                    typeof data.number === "number" && (
+                      <Link
+                        className={styles.link}
+                        to="/$owner/$repo/$section/$"
+                        params={{ owner, repo, section: "runs", _splat: String(data.number) }}
+                        search={{}}
+                      >
+                        Run #{data.number}
+                      </Link>
+                    )}
+                  <details className={styles.disclosure}>
+                    <summary>Event data</summary>
+                    <pre className={styles.plainText}>{JSON.stringify(event.data, null, 2)}</pre>
+                  </details>
+                </div>
+                <span className={styles.meta}>
+                  <DateTime value={event.at} />
+                </span>
+              </article>
+            );
+          })}
           {visible.length === 0 && <p className={styles.empty}>No matching activity.</p>}
         </div>
       )}

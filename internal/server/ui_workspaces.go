@@ -9,6 +9,7 @@ import (
 	"code.forgejo.org/forgejo/runner/v13/act/model"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/muchobien/lyra/internal/repos"
 	"github.com/muchobien/lyra/internal/store"
@@ -41,6 +42,15 @@ type commitWorkspace struct {
 	Commit repos.Commit `json:"commit"`
 	Checks store.Checks `json:"checks"`
 	Files  []diffFile   `json:"files"`
+}
+
+func (itemWorkspace) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.Schema {
+	for _, field := range []string{"pull", "merge", "checks"} {
+		schema.Properties[field] = &huma.Schema{AnyOf: []*huma.Schema{
+			schema.Properties[field], {Type: "null"},
+		}}
+	}
+	return schema
 }
 
 type workflowWorkspace struct {

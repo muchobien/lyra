@@ -1,15 +1,12 @@
+import {
+  useGetRepo,
+  useListCommits,
+  useListTags,
+  useGetCommitWorkspace,
+} from "./api/generated/lyra";
 import { useEffect } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { Code, GitCommitHorizontal, Tags } from "lucide-react";
-import {
-  api,
-  repositoryAPI,
-  type Commit,
-  type CommitWorkspace,
-  type Repository,
-  type Tag,
-} from "./api";
 import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
@@ -56,31 +53,18 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
   const name = `${owner}/${repo}`;
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
+  const metadata = useGetRepo(owner, repo);
   const reference = target || metadata.data?.default_branch || "main";
   const limit = Math.max(30, Math.min(500, Number(search.limit) || 30));
-  const commitsPath = repositoryAPI(
-    name,
-    `/commits?${new URLSearchParams({ ref: reference, limit: String(limit) })}`,
+  const commits = useListCommits(
+    owner,
+    repo,
+    { ref: reference, limit },
+    { query: { enabled: section === "commits" && !!metadata.data?.branches.length } },
   );
-  const commits = useQuery({
-    queryKey: [commitsPath],
-    queryFn: ({ signal }) => api<Commit[]>(commitsPath, signal),
-    enabled: section === "commits" && !!metadata.data?.branches.length,
-  });
-  const tags = useQuery({
-    queryKey: [repositoryAPI(name, "/tags")],
-    queryFn: ({ signal }) => api<Tag[]>(repositoryAPI(name, "/tags"), signal),
-    enabled: section === "tags",
-  });
-  const detailPath = repositoryAPI(name, `/commits/${encodeURIComponent(target)}/view`);
-  const detail = useQuery({
-    queryKey: [detailPath],
-    queryFn: ({ signal }) => api<CommitWorkspace>(detailPath, signal),
-    enabled: section === "commit" && !!target,
+  const tags = useListTags(owner, repo, { query: { enabled: section === "tags" } });
+  const detail = useGetCommitWorkspace(owner, repo, target, {
+    query: { enabled: section === "commit" && !!target },
   });
   useEffect(() => {
     document.title = `${detail.data?.commit.subject || section} · ${name} · Lyra`;

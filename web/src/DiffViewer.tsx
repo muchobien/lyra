@@ -3,18 +3,24 @@ import type { ChangeEvent, MouseEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { FileCode2, Check } from "lucide-react";
 import type { DiffFile, DiffLine, DiscussionComment } from "./api";
+import type { Comment, CommentRequest } from "./api/generated/models";
 import { ActorName, Markdown, RichText } from "./Workspace";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./DiffViewer.module.css";
 
 const reviewedFiles = new Map<string, Set<string>>();
-export type CommentAnchor = { path: string; line: number; side: string; head_sha: string };
+export type CommentAnchor = {
+  path: string;
+  line: number;
+  side: NonNullable<CommentRequest["side"]>;
+  head_sha: string;
+};
 type DiffDisplayRow = {
   line: DiffLine;
   old?: DiffLine;
   next?: DiffLine;
-  comments: DiscussionComment[];
+  comments: Comment[];
 };
 type DiffProps = {
   files: DiffFile[];
@@ -115,6 +121,9 @@ export function DiffViewer({
   }
   function commentOnLine(event: MouseEvent<HTMLButtonElement>) {
     const { path = "", line = "0", side = "new" } = event.currentTarget.dataset;
+    if (side !== "new" && side !== "old") {
+      return;
+    }
     onComment?.({ path, line: Number(line), side, head_sha: head });
   }
   const selectedIndex = selected ? files.indexOf(selected) : -1;

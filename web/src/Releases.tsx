@@ -1,17 +1,22 @@
 import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
+import { IdentityContext, type Release } from "./api";
+import type { ReleaseWrite } from "./api/generated/models";
 import {
-  api,
-  IdentityContext,
-  repositoryAPI,
-  write,
-  type Image,
-  type Release,
-  type Repository,
-} from "./api";
+  useListReleases,
+  useGetRepo,
+  useGetReleaseByTag,
+  useListImages,
+  useCreateRelease,
+  useEditRelease,
+  usePreviewReleaseNotes,
+  useDeleteRelease,
+  useDeleteAsset,
+  uploadAsset as uploadReleaseAsset,
+} from "./api/generated/lyra";
 import { CopyButton, ErrorNotice, formValue } from "./Controls";
 import {
   ActorName,
@@ -28,14 +33,6 @@ import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 import delivery from "./Releases.module.css";
 
-type ReleaseEditor = {
-  title: string;
-  notes: string;
-  target?: string;
-  tag?: string;
-  draft: boolean;
-  prerelease: boolean;
-};
 type AssetDeletion = { release: number; name: string };
 type ReleasesProps = { tag: string };
 export function Releases({ tag }: ReleasesProps) {
@@ -45,21 +42,9 @@ export function Releases({ tag }: ReleasesProps) {
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
   const name = `${owner}/${repo}`;
-  const base = repositoryAPI(name, "/releases");
-  const list = useQuery({
-    queryKey: [base],
-    queryFn: ({ signal }) => api<Release[]>(base, signal),
-  });
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
-  const singlePath = `${base}/tags/${tag.split("/").map(encodeURIComponent).join("/")}`;
-  const single = useQuery({
-    queryKey: [singlePath],
-    queryFn: ({ signal }) => api<Release>(singlePath, signal),
-    enabled: !!tag,
-  });
+  const list = useListReleases(owner, repo);
+  const metadata = useGetRepo(owner, repo);
+  const single = useGetReleaseByTag(owner, repo, tag, { query: { enabled: !!tag } });
   const [editing, setEditing] = useState<Release | null>(null);
   const [draft, setDraft] = useState(true);
   const [prerelease, setPrerelease] = useState(false);
@@ -75,55 +60,49 @@ export function Releases({ tag }: ReleasesProps) {
   async function refresh() {
     await queryClient.invalidateQueries();
   }
-  const saving = useMutation({
-    mutationFn: (body: ReleaseEditor) =>
-      write<Release>(editing ? `${base}/${editing.id}` : base, editing ? "PATCH" : "POST", body),
-    onSuccess: async (release) => {
-      document.querySelector<HTMLDialogElement>("#release-editor")?.close();
-      title.clear();
-      notes.clear();
-      releaseTag.clear();
-      target.clear();
-      await refresh();
-      void navigate({
-        to: "/$owner/$repo/$section/$",
-        params: { owner, repo, section: "releases", _splat: `tag/${release.tag}` },
-        search: {},
-      });
+  async function saved(release: ReleaseWrite) {
+    document.querySelector<HTMLDialogElement>("#release-editor")?.close();
+    title.clear();
+    notes.clear();
+    releaseTag.clear();
+    target.clear();
+    await refresh();
+    void navigate({
+      to: "/$owner/$repo/$section/$",
+      params: { owner, repo, section: "releases", _splat: `tag/${release.tag}` },
+      search: {},
+    });
+  }
+  const creating = useCreateRelease({ mutation: { onSuccess: saved } });
+  const updating = useEditRelease({ mutation: { onSuccess: saved } });
+  const saving = editing ? updating : creating;
+  const generating = usePreviewReleaseNotes({
+    mutation: {
+      onSuccess: (result) =>
+        notes.setValue([notes.value.trim(), result.notes].filter(Boolean).join("\n\n")),
     },
   });
-  const generating = useMutation({
-    mutationFn: () =>
-      api<{ notes: string }>(
-        `${base}/notes?${new URLSearchParams({ tag: releaseTag.value, target: target.value, prerelease: String(prerelease) })}`,
-      ),
-    onSuccess: (result) =>
-      notes.setValue([notes.value.trim(), result.notes].filter(Boolean).join("\n\n")),
-  });
-  const removing = useMutation({
-    mutationFn: () =>
-      write(`${base}/${deleting?.id}${cleanupTag ? "?cleanup_tag=true" : ""}`, "DELETE"),
-    onSuccess: async () => {
-      document.querySelector<HTMLDialogElement>("#delete-release")?.close();
-      await refresh();
-      if (tag === deleting?.tag) {
-        void navigate({
-          to: "/$owner/$repo/$section",
-          params: { owner, repo, section: "releases" },
-          search: {},
-        });
-      }
+  const removing = useDeleteRelease({
+    mutation: {
+      onSuccess: async () => {
+        document.querySelector<HTMLDialogElement>("#delete-release")?.close();
+        await refresh();
+        if (tag === deleting?.tag) {
+          void navigate({
+            to: "/$owner/$repo/$section",
+            params: { owner, repo, section: "releases" },
+            search: {},
+          });
+        }
+      },
     },
   });
-  const removeAsset = useMutation({
-    mutationFn: () =>
-      write(
-        `${base}/${assetDeletion?.release}/assets/${encodeURIComponent(assetDeletion?.name || "")}`,
-        "DELETE",
-      ),
-    onSuccess: async () => {
-      document.querySelector<HTMLDialogElement>("#delete-asset")?.close();
-      await refresh();
+  const removeAsset = useDeleteAsset({
+    mutation: {
+      onSuccess: async () => {
+        document.querySelector<HTMLDialogElement>("#delete-asset")?.close();
+        await refresh();
+      },
     },
   });
   const upload = useMutation({
@@ -132,14 +111,13 @@ export function Releases({ tag }: ReleasesProps) {
       if (!(file instanceof File) || !file.name) {
         throw new Error("Choose a file to upload.");
       }
-      return api(
-        `${base}/${formValue(form, "release")}/assets?${new URLSearchParams({ name: file.name, clobber: String(form.has("clobber")) })}`,
-        undefined,
-        {
-          method: "POST",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        },
+      return uploadReleaseAsset(
+        owner,
+        repo,
+        Number(formValue(form, "release")),
+        file,
+        { name: file.name, clobber: form.has("clobber") },
+        { headers: { "Content-Type": file.type || "application/octet-stream" } },
       );
     },
     onSuccess: async () => {
@@ -162,7 +140,8 @@ export function Releases({ tag }: ReleasesProps) {
     setEditing(release);
     setDraft(release?.draft ?? true);
     setPrerelease(release?.prerelease ?? false);
-    saving.reset();
+    creating.reset();
+    updating.reset();
     generating.reset();
   }
   function editorChanged(event: ChangeEvent<HTMLInputElement>) {
@@ -185,17 +164,31 @@ export function Releases({ tag }: ReleasesProps) {
   }
   function saveRelease(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body: ReleaseEditor = { title: title.value, notes: notes.value, draft, prerelease };
-    if (!editing) {
-      body.tag = releaseTag.value;
+    const body = { title: title.value, notes: notes.value, draft, prerelease };
+    if (editing) {
+      updating.mutate({
+        owner,
+        repo,
+        id: editing.id,
+        data: {
+          ...body,
+          target: editing.draft ? target.value : undefined,
+        },
+      });
+    } else {
+      creating.mutate({
+        owner,
+        repo,
+        data: { ...body, tag: releaseTag.value, target: target.value },
+      });
     }
-    if (!editing || editing.draft) {
-      body.target = target.value;
-    }
-    saving.mutate(body);
   }
   function generateNotes() {
-    generating.mutate();
+    generating.mutate({
+      owner,
+      repo,
+      params: { tag: releaseTag.value, target: target.value, prerelease },
+    });
   }
   function prepareDelete(event: MouseEvent<HTMLButtonElement>) {
     setDeleting(
@@ -208,7 +201,9 @@ export function Releases({ tag }: ReleasesProps) {
     setCleanupTag(event.target.checked);
   }
   function deleteRelease() {
-    removing.mutate();
+    if (deleting) {
+      removing.mutate({ owner, repo, id: deleting.id, params: { cleanup_tag: cleanupTag } });
+    }
   }
   function prepareAssetDelete(event: MouseEvent<HTMLButtonElement>) {
     setAssetDeletion({
@@ -218,7 +213,9 @@ export function Releases({ tag }: ReleasesProps) {
     removeAsset.reset();
   }
   function deleteAsset() {
-    removeAsset.mutate();
+    if (assetDeletion) {
+      removeAsset.mutate({ owner, repo, id: assetDeletion.release, name: assetDeletion.name });
+    }
   }
   function uploadAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -596,18 +593,9 @@ export function Containers() {
   const search = useSearch({ strict: false });
   const navigate = useNavigate({ from: "/$owner/$repo/$section" });
   const name = `${owner}/${repo}`;
-  const images = useQuery({
-    queryKey: [repositoryAPI(name, "/images")],
-    queryFn: ({ signal }) => api<Image[]>(repositoryAPI(name, "/images"), signal),
-  });
-  const releases = useQuery({
-    queryKey: [repositoryAPI(name, "/releases")],
-    queryFn: ({ signal }) => api<Release[]>(repositoryAPI(name, "/releases"), signal),
-  });
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
+  const images = useListImages(owner, repo);
+  const releases = useListReleases(owner, repo);
+  const metadata = useGetRepo(owner, repo);
   useEffect(() => {
     document.title = `Containers · ${name} · Lyra`;
   }, [name]);

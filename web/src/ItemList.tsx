@@ -1,18 +1,18 @@
 import { useContext, useEffect } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { GitPullRequest, CircleDot, MessageSquare, Plus } from "lucide-react";
+import { IdentityContext } from "./api";
+import type { CreateIssueRequest, ItemWrite, PullWrite, Item, Pull } from "./api/generated/models";
 import {
-  api,
-  IdentityContext,
-  repositoryAPI,
-  write,
-  type Issue,
-  type PullRequest,
-  type Label,
-  type Repository,
-} from "./api";
+  useListIssues,
+  useListPulls,
+  useListLabels,
+  useGetRepo,
+  useCreateIssue,
+  useCreatePull,
+} from "./api/generated/lyra";
 import { ErrorNotice, formValue } from "./Controls";
 import { ActorName, DateTime, DialogClose, FormError, MarkdownEditor, Status } from "./Workspace";
 import { useDraft } from "./drafts";
@@ -20,14 +20,6 @@ import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
 type ItemListProps = { kind: "pulls" | "issues" };
-type NewItem = {
-  title: string;
-  body: string;
-  labels: string[];
-  assignees: string[];
-  head?: string;
-  base?: string;
-};
 export function ItemList({ kind }: ItemListProps) {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
@@ -38,45 +30,35 @@ export function ItemList({ kind }: ItemListProps) {
   const canWrite = identity?.scope !== "read";
   const state = search.state || "open";
   const limit = Math.max(50, Math.min(1000, Number(search.limit) || 50));
-  const params = new URLSearchParams({ state, limit: String(limit) });
-  if (search.label) {
-    params.set("label", search.label);
-  }
-  if (search.assignee) {
-    params.set("assignee", search.assignee);
-  }
-  if (search.q) {
-    params.set("q", search.q);
-  }
-  const endpoint = repositoryAPI(name, `/${kind}?${params}`);
-  const items = useQuery({
-    queryKey: [endpoint],
-    queryFn: ({ signal }) => api<(Issue | PullRequest)[]>(endpoint, signal),
-  });
-  const labels = useQuery({
-    queryKey: [repositoryAPI(name, "/labels")],
-    queryFn: ({ signal }) => api<Label[]>(repositoryAPI(name, "/labels"), signal),
-  });
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
+  const params = {
+    state,
+    limit,
+    q: search.q,
+    label: search.label ? [search.label] : undefined,
+    assignee: search.assignee ? [search.assignee] : undefined,
+  };
+  const issues = useListIssues(owner, repo, params, { query: { enabled: kind === "issues" } });
+  const pulls = useListPulls(owner, repo, params, { query: { enabled: kind === "pulls" } });
+  const items = kind === "pulls" ? pulls : issues;
+  const listedItems: (Item | Pull)[] = items.data || [];
+  const labels = useListLabels(owner, repo);
+  const metadata = useGetRepo(owner, repo);
   const title = useDraft(`${identity?.actor.user}/${name}/${kind}/new/title`);
   const description = useDraft(`${identity?.actor.user}/${name}/${kind}/new/body`);
-  const creation = useMutation({
-    mutationFn: (body: NewItem) => write<Issue>(repositoryAPI(name, `/${kind}`), "POST", body),
-    onSuccess: (item) => {
-      title.clear();
-      description.clear();
-      document.querySelector<HTMLDialogElement>("#new-item")?.close();
-      void queryClient.invalidateQueries();
-      void navigate({
-        to: "/$owner/$repo/$section/$",
-        params: { owner, repo, section: kind, _splat: String(item.number) },
-        search: {},
-      });
-    },
-  });
+  function created(item: ItemWrite | PullWrite) {
+    title.clear();
+    description.clear();
+    document.querySelector<HTMLDialogElement>("#new-item")?.close();
+    void queryClient.invalidateQueries();
+    void navigate({
+      to: "/$owner/$repo/$section/$",
+      params: { owner, repo, section: kind, _splat: String(item.number) },
+      search: {},
+    });
+  }
+  const issueCreation = useCreateIssue({ mutation: { onSuccess: created } });
+  const pullCreation = useCreatePull({ mutation: { onSuccess: created } });
+  const creation = kind === "pulls" ? pullCreation : issueCreation;
   useEffect(() => {
     document.title = `${kind === "pulls" ? "Pull requests" : "Issues"} · ${name} · Lyra`;
   }, [kind, name]);
@@ -110,7 +92,7 @@ export function ItemList({ kind }: ItemListProps) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const body: NewItem = {
+    const body: CreateIssueRequest = {
       title: title.value,
       body: description.value,
       labels: formValue(form, "labels")
@@ -123,10 +105,14 @@ export function ItemList({ kind }: ItemListProps) {
         .filter(Boolean),
     };
     if (kind === "pulls") {
-      body.base = formValue(form, "base");
-      body.head = formValue(form, "head");
+      pullCreation.mutate({
+        owner,
+        repo,
+        data: { ...body, base: formValue(form, "base"), head: formValue(form, "head") },
+      });
+    } else {
+      issueCreation.mutate({ owner, repo, data: body });
     }
-    creation.mutate(body);
   }
   return (
     <>
@@ -228,7 +214,7 @@ export function ItemList({ kind }: ItemListProps) {
       )}
       {items.data && (
         <div className={styles.panel}>
-          {items.data.map((item) => (
+          {listedItems.map((item) => (
             <article className={styles.row} key={item.number}>
               {kind === "pulls" ? <GitPullRequest size={18} /> : <CircleDot size={18} />}
               <div className={styles.grow}>

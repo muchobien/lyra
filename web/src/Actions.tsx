@@ -1,19 +1,20 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CirclePlay, Download, GitBranch, Pause, Play, RotateCw } from "lucide-react";
+import { IdentityContext, request } from "./api";
 import {
-  api,
-  IdentityContext,
-  repositoryAPI,
-  request,
-  write,
-  type Repository,
-  type Run,
-  type Tag,
-  type Workflow,
-} from "./api";
+  useGetRepo,
+  useListWorkflows,
+  useListTags,
+  useListRuns,
+  useDispatchWorkflow,
+  useGetRun,
+  useCancelRun,
+  useRerunRun,
+  getGetJobLogsUrl,
+} from "./api/generated/lyra";
 import { CopyButton, ErrorNotice, formValue } from "./Controls";
 import {
   ActorName,
@@ -28,7 +29,6 @@ import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./Actions.module.css";
 
-type DispatchRequest = { workflow: string; ref: string; inputs: Record<string, string> };
 export function ActionsList() {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
@@ -37,30 +37,28 @@ export function ActionsList() {
   const queryClient = useQueryClient();
   const name = `${owner}/${repo}`;
   const limit = Math.max(50, Math.min(1000, Number(search.limit) || 50));
-  const metadata = useQuery({
-    queryKey: ["repository", name],
-    queryFn: ({ signal }) => api<Repository>(repositoryAPI(name), signal),
-  });
+  const metadata = useGetRepo(owner, repo);
   const reference = search.ref || metadata.data?.default_branch || "main";
-  const workflowsPath = repositoryAPI(name, `/workflows?ref=${encodeURIComponent(reference)}`);
-  const workflows = useQuery({
-    queryKey: [workflowsPath],
-    queryFn: ({ signal }) => api<Workflow[]>(workflowsPath, signal),
-    enabled: !!metadata.data,
-  });
-  const tags = useQuery({
-    queryKey: [repositoryAPI(name, "/tags")],
-    queryFn: ({ signal }) => api<Tag[]>(repositoryAPI(name, "/tags"), signal),
-  });
-  const runsPath = repositoryAPI(name, `/runs?limit=${limit}`);
-  const runs = useQuery({
-    queryKey: [runsPath],
-    queryFn: ({ signal }) => api<Run[]>(runsPath, signal),
-    refetchInterval: (query) =>
-      query.state.data?.some((run) => ["waiting", "running", "blocked"].includes(run.status))
-        ? 3000
-        : false,
-  });
+  const workflows = useListWorkflows(
+    owner,
+    repo,
+    { ref: reference },
+    { query: { enabled: !!metadata.data } },
+  );
+  const tags = useListTags(owner, repo);
+  const runs = useListRuns(
+    owner,
+    repo,
+    { limit },
+    {
+      query: {
+        refetchInterval: (query) =>
+          query.state.data?.some((run) => ["waiting", "running", "blocked"].includes(run.status))
+            ? 3000
+            : false,
+      },
+    },
+  );
   const selected = workflows.data?.find((workflow) => workflow.path === search.workflow);
   const visible =
     runs.data?.filter(
@@ -70,17 +68,17 @@ export function ActionsList() {
         (!search.q ||
           `${run.title} ${run.name} ${run.number}`.toLowerCase().includes(search.q.toLowerCase())),
     ) || [];
-  const dispatch = useMutation({
-    mutationFn: (body: DispatchRequest) =>
-      write<Run>(repositoryAPI(name, "/workflows/dispatch"), "POST", body),
-    onSuccess: (run) => {
-      document.querySelector<HTMLDialogElement>("#dispatch-workflow")?.close();
-      void queryClient.invalidateQueries();
-      void navigate({
-        to: "/$owner/$repo/$section/$",
-        params: { owner, repo, section: "runs", _splat: String(run.number) },
-        search: {},
-      });
+  const dispatch = useDispatchWorkflow({
+    mutation: {
+      onSuccess: (run) => {
+        document.querySelector<HTMLDialogElement>("#dispatch-workflow")?.close();
+        void queryClient.invalidateQueries();
+        void navigate({
+          to: "/$owner/$repo/$section/$",
+          params: { owner, repo, section: "runs", _splat: String(run.number) },
+          search: {},
+        });
+      },
     },
   });
   useEffect(() => {
@@ -110,7 +108,7 @@ export function ActionsList() {
           ? String(form.has(`input:${name}`))
           : formValue(form, `input:${name}`);
     }
-    dispatch.mutate({ workflow: selected.path, ref: reference, inputs });
+    dispatch.mutate({ owner, repo, data: { workflow: selected.path, ref: reference, inputs } });
   }
   function resetDispatch() {
     dispatch.reset();
@@ -369,14 +367,13 @@ export function RunDetail({ number }: RunDetailProps) {
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
   const name = `${owner}/${repo}`;
-  const endpoint = repositoryAPI(name, `/runs/${encodeURIComponent(number)}`);
-  const run = useQuery({
-    queryKey: [endpoint],
-    queryFn: ({ signal }) => api<Run>(endpoint, signal),
-    refetchInterval: (query) =>
-      query.state.data && ["waiting", "blocked", "running"].includes(query.state.data.status)
-        ? 2000
-        : false,
+  const run = useGetRun(owner, repo, Number(number), {
+    query: {
+      refetchInterval: (query) =>
+        query.state.data && ["waiting", "blocked", "running"].includes(query.state.data.status)
+          ? 2000
+          : false,
+    },
   });
   const jobs = run.data?.jobs || [];
   const selected =
@@ -389,14 +386,19 @@ export function RunDetail({ number }: RunDetailProps) {
         (first.started_at ? Date.parse(first.started_at) : 0),
     )[0];
   const active = !!run.data && ["waiting", "blocked", "running"].includes(run.data.status);
-  const logsURL = selected ? `${endpoint}/jobs/${selected.id}/logs` : "";
+  const logsURL = selected ? getGetJobLogsUrl(owner, repo, Number(number), selected.id) : "";
   const logKey = [logsURL, selected?.attempt || 0, selected?.started_at || "queued"];
   const logs = useQuery({
     queryKey: logKey,
     enabled: !!selected?.started_at,
     queryFn: async ({ signal }) => {
       const previous = queryClient.getQueryData<Logs>(logKey);
-      const response = await request(`${logsURL}?offset=${previous?.offset || 0}`, signal);
+      const response = await request(
+        getGetJobLogsUrl(owner, repo, Number(number), selected?.id || 0, {
+          offset: previous?.offset || 0,
+        }),
+        signal,
+      );
       const text = await response.text();
       const lines = text ? text.replace(/\n$/, "").split("\n") : [];
       return {
@@ -415,19 +417,20 @@ export function RunDetail({ number }: RunDetailProps) {
   const [following, setFollowing] = useState(true);
   const logPanel = useRef<HTMLDivElement>(null);
   const [metadataOpen] = useState(() => matchMedia("(width > 600px)").matches);
-  const cancel = useMutation({
-    mutationFn: () => write(`${endpoint}/cancel`, "POST"),
-    onSuccess: () => {
-      document.querySelector<HTMLDialogElement>("#cancel-run")?.close();
-      void queryClient.invalidateQueries();
+  const cancel = useCancelRun({
+    mutation: {
+      onSuccess: () => {
+        document.querySelector<HTMLDialogElement>("#cancel-run")?.close();
+        void queryClient.invalidateQueries();
+      },
     },
   });
-  const rerun = useMutation({
-    mutationFn: (failed: boolean) =>
-      write(`${endpoint}/rerun${failed ? "?failed=true" : ""}`, "POST"),
-    onSuccess: () => {
-      document.getElementById("rerun-options")?.hidePopover();
-      void queryClient.invalidateQueries();
+  const rerun = useRerunRun({
+    mutation: {
+      onSuccess: () => {
+        document.getElementById("rerun-options")?.hidePopover();
+        void queryClient.invalidateQueries();
+      },
     },
   });
   useEffect(() => {
@@ -445,10 +448,15 @@ export function RunDetail({ number }: RunDetailProps) {
     void logs.refetch();
   }
   function rerunClicked(event: MouseEvent<HTMLButtonElement>) {
-    rerun.mutate(event.currentTarget.dataset.failed === "true");
+    rerun.mutate({
+      owner,
+      repo,
+      number: Number(number),
+      params: { failed: event.currentTarget.dataset.failed === "true" },
+    });
   }
   function cancelRun() {
-    cancel.mutate();
+    cancel.mutate({ owner, repo, number: Number(number) });
   }
   function toggleFollow() {
     setFollowing(!following);
