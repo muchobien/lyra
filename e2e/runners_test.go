@@ -84,9 +84,9 @@ func (runner runnerProcess) register(test *testing.T, srv server, token, name st
 	}
 }
 
-func (runner runnerProcess) start(test *testing.T) func() {
+func (runner runnerProcess) start(test *testing.T, mode ...string) func() {
 	test.Helper()
-	command := exec.Command(runnerBinary(test), "--config", runner.config, "daemon")
+	command := exec.Command(runnerBinary(test), append([]string{"--config", runner.config}, mode...)...)
 	command.Dir = filepath.Dir(runner.config)
 	command.Stdout = runner.logs
 	command.Stderr = runner.logs
@@ -153,7 +153,7 @@ func TestRunners(test *testing.T) {
 	if output, err := first.register(test, srv, registration.Secret, "e2e-first"); err != nil {
 		test.Fatalf("register: %v: %s", err, output)
 	}
-	first.start(test)
+	first.start(test, "daemon")
 	eventually(test, "the runner to declare its labels", func() bool {
 		runner := runners()["e2e-first"]
 		return runner.Online && runner.Version == runnerVersion && strings.Join(runner.Labels, ",") == "test" && !runner.Ephemeral
@@ -202,7 +202,7 @@ func TestRunners(test *testing.T) {
 	if err := os.WriteFile(configured.config, []byte(connection), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	configured.start(test)
+	configured.start(test, "daemon")
 	eventually(test, "the configured runner to declare its labels", func() bool {
 		runner := runners()["e2e-configured"]
 		return runner.Online && strings.Join(runner.Labels, ",") == "other" && runner.Version == runnerVersion
@@ -234,5 +234,51 @@ func TestRunners(test *testing.T) {
 	}
 	if status := fetch(strings.Repeat("0", len(saved.Token))); status != http.StatusUnauthorized {
 		test.Fatalf("FetchTask with a wrong token: HTTP %d", status)
+	}
+}
+
+func TestEphemeralRunner(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	src := newSource(test)
+	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	commitFile(test, src, ".forgejo/workflows/once.yml", "on: workflow_dispatch\njobs:\n  once:\n    runs-on: test\n    steps:\n      - run: echo once\n", "Once")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main")
+
+	var registration struct {
+		Secret string `json:"secret"`
+	}
+	lyraJSON(test, srv, token, &registration, "runner", "token", "create", "--name", "e2e")
+	runner := newRunner(test, "ephemeral")
+	dir := filepath.Dir(runner.config)
+	config := "log:\n  level: debug\nrunner:\n  file: " + filepath.Join(dir, "registration.json") + "\n  fetch_interval: 1s\n  capacity: 1\nhost:\n  workdir_parent: " + filepath.Join(dir, "work") + "\n"
+	if err := os.WriteFile(runner.config, []byte(config), 0o644); err != nil {
+		test.Fatal(err)
+	}
+	if output, err := runner.register(test, srv, registration.Secret, "e2e-ephemeral", "--ephemeral"); err != nil {
+		test.Fatalf("register --ephemeral: %v: %s", err, output)
+	}
+	var registered []runnerResult
+	lyraJSON(test, srv, token, &registered, "runner", "list")
+	if len(registered) != 1 || !registered[0].Ephemeral {
+		test.Fatalf("runners after registering: %+v", registered)
+	}
+	runner.start(test, "one-job", "--wait")
+
+	runLyra(test, srv, token, "workflow", "run", "acme/demo", "once.yml")
+	if result := runLyra(test, srv, token, "run", "wait", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+		test.Fatalf("run on the ephemeral runner: %+v\nrunner log:\n%s", result, runner.logs.String())
+	}
+	eventually(test, "the ephemeral runner to be deleted after its job", func() bool {
+		var list []runnerResult
+		lyraJSON(test, srv, token, &list, "runner", "list")
+		return len(list) == 0
+	})
+	deleted := runLyra(test, srv, token, "event", "list", "--limit", "20", "--jq", `[.[] | select(.action == "runner.delete") | .actor.via] | join(",")`).stdout
+	if deleted != "runner:e2e-ephemeral\n" {
+		test.Fatalf("runner.delete events by %q, want the runner itself", deleted)
 	}
 }
