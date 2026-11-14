@@ -4,11 +4,11 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
 func (app *app) eventCommand() *cobra.Command {
@@ -19,21 +19,21 @@ func (app *app) eventCommand() *cobra.Command {
 
 func (app *app) eventListCommand() *cobra.Command {
 	var repo string
-	var limit int
+	var limit int64
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List recent events with their actors",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{"limit": {fmt.Sprint(limit)}}
+			params := lyraapi.ListEventsParams{Limit: &limit}
 			if repo != "" {
-				query.Set("repo", repo)
+				params.Repo = &repo
 			}
-			return app.call(cmd, http.MethodGet, "/api/events?"+query.Encode(), nil)
+			return app.show(cmd)(app.client.api.ListEvents(cmd.Context(), &params))
 		},
 	}
 	list.Flags().StringVar(&repo, "repo", "", "only events for this repository")
-	list.Flags().IntVar(&limit, "limit", 50, "maximum number of events")
+	list.Flags().Int64Var(&limit, "limit", 50, "maximum number of events")
 	return list
 }
 
@@ -56,14 +56,14 @@ LYRA_AGENT name, or your login without one): a work queue. Check
 lyra issue list --assignee @me first for work assigned before you started waiting.`,
 		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{"action": actions}
+			params := lyraapi.StreamEventsParams{Action: &actions}
 			if repo != "" {
-				query.Set("repo", repo)
+				params.Repo = &repo
 			}
 			if assignee != "" {
-				query.Set("assignee", assignee)
+				params.Assignee = &assignee
 			}
-			return app.waitAndEmit(cmd, query, timeout)
+			return app.waitAndEmit(cmd, params, timeout)
 		},
 	}
 	flags := wait.Flags()
@@ -80,16 +80,17 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 	return wait
 }
 
-func (app *app) waitAndEmit(cmd *cobra.Command, query url.Values, timeout time.Duration) error {
+func (app *app) waitAndEmit(cmd *cobra.Command, params lyraapi.StreamEventsParams, timeout time.Duration) error {
 	flags := cmd.Flags()
 	if flags.Changed("since") {
 		since, _ := flags.GetInt64("since")
 		if since < 0 {
 			return UsageError{errors.New("--since must be an event id")}
 		}
-		query.Set("since", fmt.Sprint(since))
+		value := fmt.Sprint(since)
+		params.Since = &value
 	}
-	output, err := app.client.waitForEvent(cmd.Context(), "/api/events/stream?"+query.Encode(), timeout)
+	output, err := app.client.waitForEvent(cmd.Context(), params, timeout)
 	if err != nil {
 		return err
 	}

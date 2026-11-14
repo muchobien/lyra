@@ -276,7 +276,7 @@ func hostRunner(test *testing.T, srv server, token string) runnerProcess {
 	if err := os.WriteFile(runner.config, []byte(config), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	runner.kill = runner.start(test)
+	runner.kill = runner.start(test, "daemon")
 	return runner
 }
 

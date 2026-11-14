@@ -237,7 +237,7 @@ func writeBackup(writer io.Writer, staging string, manifest backup.Manifest) err
 	return archive.Close()
 }
 
-func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request, _ *struct{}) error {
 	ctx := r.Context()
 	if !identityFrom(r).can(scopeAdmin, "") {
 		return forbidden("backups need an unrestricted admin token")

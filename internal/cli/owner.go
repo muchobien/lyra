@@ -1,16 +1,10 @@
 package cli
 
 import (
-	"net/http"
-	"net/url"
-
 	"github.com/spf13/cobra"
-)
 
-type ownerCreateRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
+)
 
 func (app *app) ownerCommand() *cobra.Command {
 	owner := &cobra.Command{Use: "owner", Short: "Manage owners, the namespaces repositories live in"}
@@ -24,17 +18,17 @@ func (app *app) ownerCommand() *cobra.Command {
 }
 
 func (app *app) ownerCreateCommand() *cobra.Command {
-	var body ownerCreateRequest
+	var description string
 	create := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create an owner, such as krosf, for repositories named <owner>/<name>",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body.Name = args[0]
-			return app.call(cmd, http.MethodPost, "/api/owners", body)
+			body := lyraapi.CreateOwnerRequest{Name: args[0], Description: &description}
+			return app.show(cmd)(app.client.api.CreateOwner(cmd.Context(), body))
 		},
 	}
-	create.Flags().StringVar(&body.Description, "description", "", "owner description")
+	create.Flags().StringVar(&description, "description", "", "owner description")
 	return create
 }
 
@@ -44,7 +38,7 @@ func (app *app) ownerListCommand() *cobra.Command {
 		Short: "List owners with their repositories",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/owners", nil)
+			return app.show(cmd)(app.client.api.ListOwners(cmd.Context()))
 		},
 	}
 }
@@ -55,7 +49,7 @@ func (app *app) ownerViewCommand() *cobra.Command {
 		Short: "Show an owner with its repositories",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/owners/"+url.PathEscape(args[0]), nil)
+			return app.show(cmd)(app.client.api.GetOwner(cmd.Context(), args[0]))
 		},
 	}
 }
@@ -66,7 +60,7 @@ func (app *app) ownerDeleteCommand() *cobra.Command {
 		Short: "Delete an owner that has no repositories",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, "/api/owners/"+url.PathEscape(args[0]), nil)
+			return app.show(cmd)(app.client.api.DeleteOwner(cmd.Context(), args[0]))
 		},
 	}
 }

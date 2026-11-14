@@ -3,19 +3,12 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
-)
 
-type keyAddRequest struct {
-	Signing   bool   `json:"signing"`
-	Agent     string `json:"agent"`
-	Title     string `json:"title"`
-	PublicKey string `json:"public_key"`
-}
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
+)
 
 func (app *app) keyCommand() *cobra.Command {
 	key := &cobra.Command{Use: "key", Short: "Manage SSH signing keys"}
@@ -24,13 +17,14 @@ func (app *app) keyCommand() *cobra.Command {
 }
 
 func (app *app) keyAddCommand() *cobra.Command {
-	var body keyAddRequest
+	var signing bool
+	var agent, title string
 	add := &cobra.Command{
 		Use:   "add <public-key-file|->",
 		Short: "Register an SSH public key for commit and tag signatures",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !body.Signing {
+			if !signing {
 				return UsageError{errors.New("only signing keys are supported; pass --signing")}
 			}
 			publicKey, err := readInput(cmd, args[0])
@@ -40,13 +34,18 @@ func (app *app) keyAddCommand() *cobra.Command {
 			if bytes.Contains(publicKey, []byte("PRIVATE KEY")) {
 				return UsageError{errors.New("that is a private key; pass the .pub file")}
 			}
-			body.PublicKey = strings.TrimSpace(string(publicKey))
-			return app.call(cmd, http.MethodPost, "/api/keys", body)
+			body := lyraapi.CreateKeyRequest{
+				Signing:   true,
+				Agent:     &agent,
+				Title:     &title,
+				PublicKey: strings.TrimSpace(string(publicKey)),
+			}
+			return app.show(cmd)(app.client.api.CreateKey(cmd.Context(), body))
 		},
 	}
-	add.Flags().BoolVar(&body.Signing, "signing", false, "register as a signing key (required)")
-	add.Flags().StringVar(&body.Agent, "agent", "", "label the key as belonging to this agent")
-	add.Flags().StringVar(&body.Title, "title", "", "key title (default: the key comment)")
+	add.Flags().BoolVar(&signing, "signing", false, "register as a signing key (required)")
+	add.Flags().StringVar(&agent, "agent", "", "label the key as belonging to this agent")
+	add.Flags().StringVar(&title, "title", "", "key title (default: the key comment)")
 	return add
 }
 
@@ -56,7 +55,7 @@ func (app *app) keyListCommand() *cobra.Command {
 		Short: "List keys",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/keys", nil)
+			return app.show(cmd)(app.client.api.ListKeys(cmd.Context()))
 		},
 	}
 }
@@ -67,7 +66,11 @@ func (app *app) keyDeleteCommand() *cobra.Command {
 		Short: "Delete a key",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, "/api/keys/"+url.PathEscape(args[0]), nil)
+			id, err := parseNumber(args[0])
+			if err != nil {
+				return err
+			}
+			return app.show(cmd)(app.client.api.DeleteKey(cmd.Context(), id))
 		},
 	}
 }

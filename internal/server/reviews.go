@@ -203,7 +203,7 @@ func approvalProblems(pull store.Pull, reviews []store.Review, head string) []st
 }
 
 func (s *Server) handleReviewPull(r *http.Request, input *reviewInput) (*body[reviewWrite], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

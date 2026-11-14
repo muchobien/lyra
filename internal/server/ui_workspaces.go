@@ -208,7 +208,7 @@ func highlightLines(lexer chroma.Lexer, lines []*diffLine) {
 }
 
 func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[pullPatch], error) {
-	repo, pull, err := s.lookupPull(r, input.Number)
+	repo, pull, err := s.lookupPull(r, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[pullPa
 }
 
 func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*body[commitWorkspace], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +257,7 @@ func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*bo
 }
 
 func (s *Server) handleWorkflows(r *http.Request, input *sourceInput) (*body[[]workflowWorkspace], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}

@@ -50,7 +50,7 @@ func (treeResponse) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.
 
 func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 	if r.PathValue("repo") != "" {
-		repo, err := s.lookupRepo(r, scopeRead)
+		repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
 		if err != nil {
 			return err
 		}
@@ -73,7 +73,8 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 					if err != nil {
 						return err
 					}
-					if _, err := s.lookupRun(r, scopeRead, number); err != nil {
+					path := RunPath{RepoPath{r.PathValue("owner"), r.PathValue("repo")}, number}
+					if _, err := s.lookupRun(r, scopeRead, path); err != nil {
 						return err
 					}
 				}
@@ -107,7 +108,7 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
 	if err != nil {
 		return err
 	}
@@ -147,7 +148,7 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) handleTree(r *http.Request, input *sourceInput) (*body[treeResponse], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func (s *Server) handleTree(r *http.Request, input *sourceInput) (*body[treeResp
 
 func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResponse], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +223,7 @@ func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResp
 
 func (s *Server) handleFiles(r *http.Request, input *sourceInput) (*body[[]string], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +264,7 @@ func init() {
 	codeCSSTag = `"` + hex.EncodeToString(sum[:8]) + `"`
 }
 
-func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request, _ *struct{}) error {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("ETag", codeCSSTag)
@@ -271,13 +272,13 @@ func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func (s *Server) handleRawBlob(w http.ResponseWriter, r *http.Request) error {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleRawBlob(w http.ResponseWriter, r *http.Request, input *sourceInput) error {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return err
 	}
 	dir := s.repoDir(repo.Name)
-	ref := r.URL.Query().Get("ref")
+	ref := input.Ref
 	if ref == "" {
 		ref = s.git.DefaultBranch(r.Context(), dir)
 	}
@@ -285,7 +286,7 @@ func (s *Server) handleRawBlob(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return notFound("unknown ref " + ref)
 	}
-	content, err := s.git.Blob(r.Context(), dir, sha, strings.Trim(r.URL.Query().Get("path"), "/"))
+	content, err := s.git.Blob(r.Context(), dir, sha, strings.Trim(input.Path, "/"))
 	if errors.Is(err, repos.ErrNotFound) {
 		return notFound("file not found")
 	}

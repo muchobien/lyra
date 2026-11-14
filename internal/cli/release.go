@@ -2,40 +2,15 @@ package cli
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type releaseInfo struct {
-	ID     int64          `json:"id"`
-	Tag    string         `json:"tag"`
-	Draft  bool           `json:"draft"`
-	Assets []releaseAsset `json:"assets"`
-}
-
-type releaseAsset struct {
-	Name   string `json:"name"`
-	Size   int64  `json:"size"`
-	SHA256 string `json:"sha256"`
-}
-
-type releaseCreateRequest struct {
-	Tag           string `json:"tag"`
-	Target        string `json:"target"`
-	Title         string `json:"title"`
-	Notes         string `json:"notes"`
-	Draft         bool   `json:"draft"`
-	Prerelease    bool   `json:"prerelease"`
-	GenerateNotes bool   `json:"generate_notes"`
-}
 
 type releaseCreateOptions struct {
 	target        string
@@ -46,26 +21,11 @@ type releaseCreateOptions struct {
 	assets        []string
 }
 
-type releaseEditRequest struct {
-	Title      *string `json:"title,omitzero"`
-	Target     *string `json:"target,omitzero"`
-	Prerelease *bool   `json:"prerelease,omitzero"`
-	Notes      *string `json:"notes,omitzero"`
-}
-
-type releasePublishRequest struct {
-	Draft bool `json:"draft"`
-}
-
 type downloadedAsset struct {
 	Name   string `json:"name"`
 	Path   string `json:"path"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
-}
-
-func releasesPath(repo string) string {
-	return repoAPI(repo) + "/releases"
 }
 
 func (app *app) releaseCommand() *cobra.Command {
@@ -85,20 +45,14 @@ func (app *app) releaseCommand() *cobra.Command {
 	return release
 }
 
-func (app *app) findRelease(cmd *cobra.Command, repo, tag string) (releaseInfo, string, error) {
-	path := releasesPath(repo) + "/tags/" + strings.ReplaceAll(url.PathEscape(tag), "%2F", "/")
+func (app *app) findRelease(cmd *cobra.Command, repo, tag string) (lyraapi.Release, error) {
+	owner, name := splitRepo(repo)
 	if tag == "latest" {
-		path = releasesPath(repo) + "/latest"
+		found, _, err := decode[lyraapi.Release](app.client.api.GetLatestRelease(cmd.Context(), owner, name))
+		return found, err
 	}
-	var found releaseInfo
-	output, err := app.client.request(cmd.Context(), http.MethodGet, path, nil)
-	if err != nil {
-		return found, "", err
-	}
-	if err := json.Unmarshal(output, &found); err != nil {
-		return found, "", err
-	}
-	return found, releasesPath(repo) + "/" + fmt.Sprint(found.ID), nil
+	found, _, err := decode[lyraapi.Release](app.client.api.GetReleaseByTag(cmd.Context(), owner, name, tag))
+	return found, err
 }
 
 func (app *app) releaseCreateCommand() *cobra.Command {
@@ -153,35 +107,34 @@ func (app *app) createRelease(cmd *cobra.Command, args []string, options release
 			return UsageError{err}
 		}
 	}
-	output, err := app.client.request(cmd.Context(), http.MethodPost, releasesPath(args[0]), releaseCreateRequest{
+	draft := options.draft || len(options.assets) > 0
+	body := lyraapi.CreateReleaseRequest{
 		Tag:           args[1],
-		Target:        options.target,
-		Title:         options.title,
-		Notes:         notes,
-		Draft:         options.draft || len(options.assets) > 0,
-		Prerelease:    options.prerelease,
-		GenerateNotes: options.generateNotes,
-	})
+		Target:        &options.target,
+		Title:         &options.title,
+		Notes:         &notes,
+		Draft:         &draft,
+		Prerelease:    &options.prerelease,
+		GenerateNotes: &options.generateNotes,
+	}
+	owner, repo := splitRepo(args[0])
+	created, output, err := decode[lyraapi.Release](app.client.api.CreateRelease(cmd.Context(), owner, repo, body))
 	if err != nil {
 		return err
 	}
 	if len(options.assets) == 0 {
 		return app.emit(cmd, output)
 	}
-	var created releaseInfo
-	if err := json.Unmarshal(output, &created); err != nil {
-		return err
-	}
-	path := releasesPath(args[0]) + "/" + fmt.Sprint(created.ID)
 	for _, file := range options.assets {
-		if _, err := app.client.uploadAsset(cmd.Context(), path, file, false); err != nil {
+		if _, err := app.client.uploadAsset(cmd.Context(), args[0], created.Id, file, false); err != nil {
 			return fmt.Errorf("upload %s: %w; the release is still a draft", file, err)
 		}
 	}
 	if options.draft {
-		return app.call(cmd, http.MethodGet, path, nil)
+		return app.show(cmd)(app.client.api.GetRelease(cmd.Context(), owner, repo, created.Id))
 	}
-	return app.call(cmd, http.MethodPatch, path, releasePublishRequest{Draft: false})
+	publish := lyraapi.EditReleaseRequest{Draft: new(false)}
+	return app.show(cmd)(app.client.api.EditRelease(cmd.Context(), owner, repo, created.Id, publish))
 }
 
 func (app *app) releaseNotesCommand() *cobra.Command {
@@ -196,11 +149,9 @@ previous release. The previous release is the most recently published one whose 
 is an ancestor; prereleases count only with --prerelease.`,
 		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{"tag": {args[1]}, "target": {target}}
-			if prerelease {
-				query.Set("prerelease", "true")
-			}
-			return app.call(cmd, http.MethodGet, releasesPath(args[0])+"/notes?"+query.Encode(), nil)
+			owner, repo := splitRepo(args[0])
+			params := lyraapi.PreviewReleaseNotesParams{Tag: &args[1], Target: &target, Prerelease: &prerelease}
+			return app.show(cmd)(app.client.api.PreviewReleaseNotes(cmd.Context(), owner, repo, &params))
 		},
 	}
 	flags := notes.Flags()
@@ -225,7 +176,8 @@ func (app *app) releaseListCommand() *cobra.Command {
 		Short: "List releases, drafts first (drafts need write access)",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, releasesPath(args[0]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListReleases(cmd.Context(), owner, repo))
 		},
 	}
 }
@@ -236,11 +188,12 @@ func (app *app) releaseViewCommand() *cobra.Command {
 		Short: "Show a release with its assets and download URLs",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
-			return app.call(cmd, http.MethodGet, path, nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.GetRelease(cmd.Context(), owner, repo, found.Id))
 		},
 	}
 }
@@ -253,7 +206,7 @@ func (app *app) releaseEditCommand() *cobra.Command {
 		Short: "Change a release's title, notes or prerelease flag, or a draft's target",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var changes releaseEditRequest
+			var changes lyraapi.EditReleaseRequest
 			if cmd.Flags().Changed("title") {
 				changes.Title = &title
 			}
@@ -270,15 +223,16 @@ func (app *app) releaseEditCommand() *cobra.Command {
 			if set {
 				changes.Notes = &notes
 			}
-			if changes == (releaseEditRequest{}) {
+			if changes == (lyraapi.EditReleaseRequest{}) {
 				flags := "--title, --notes, --notes-file, --prerelease or --target"
 				return UsageError{errors.New("nothing to change; pass " + flags)}
 			}
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
-			return app.call(cmd, http.MethodPatch, path, changes)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.EditRelease(cmd.Context(), owner, repo, found.Id, changes))
 		},
 	}
 	flags := edit.Flags()
@@ -295,11 +249,13 @@ func (app *app) releasePublishCommand() *cobra.Command {
 		Short: "Publish a draft, creating its tag if needed",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
-			return app.call(cmd, http.MethodPatch, path, releasePublishRequest{Draft: false})
+			owner, repo := splitRepo(args[0])
+			publish := lyraapi.EditReleaseRequest{Draft: new(false)}
+			return app.show(cmd)(app.client.api.EditRelease(cmd.Context(), owner, repo, found.Id, publish))
 		},
 	}
 }
@@ -315,14 +271,13 @@ func (app *app) releaseDeleteCommand() *cobra.Command {
 				message := "release delete removes its assets permanently; pass --yes"
 				return UsageError{errors.New(message)}
 			}
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
-			if cleanupTag {
-				path += "?cleanup_tag=true"
-			}
-			return app.call(cmd, http.MethodDelete, path, nil)
+			owner, repo := splitRepo(args[0])
+			params := lyraapi.DeleteReleaseParams{CleanupTag: &cleanupTag}
+			return app.show(cmd)(app.client.api.DeleteRelease(cmd.Context(), owner, repo, found.Id, &params))
 		},
 	}
 	remove.Flags().BoolVar(&cleanupTag, "cleanup-tag", false, "delete the tag too")
@@ -344,13 +299,13 @@ func (app *app) releaseUploadCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
 			uploaded := []jsontext.Value{}
 			for _, file := range args[2:] {
-				output, err := app.client.uploadAsset(cmd.Context(), path, file, clobber)
+				output, err := app.client.uploadAsset(cmd.Context(), args[0], found.Id, file, clobber)
 				if err != nil {
 					return fmt.Errorf("upload %s: %w", file, err)
 				}
@@ -382,7 +337,7 @@ func (app *app) downloadRelease(cmd *cobra.Command, args []string, pattern, dir 
 	if _, err := filepath.Match(pattern, ""); err != nil {
 		return UsageError{fmt.Errorf("--pattern: %w", err)}
 	}
-	found, path, err := app.findRelease(cmd, args[0], args[1])
+	found, err := app.findRelease(cmd, args[0], args[1])
 	if err != nil {
 		return err
 	}
@@ -392,15 +347,14 @@ func (app *app) downloadRelease(cmd *cobra.Command, args []string, pattern, dir 
 			continue
 		}
 		file := filepath.Join(dir, asset.Name)
-		assetPath := path + "/assets/" + url.PathEscape(asset.Name)
-		if err := app.client.downloadAsset(cmd.Context(), assetPath, file, asset.SHA256); err != nil {
+		if err := app.client.downloadAsset(cmd.Context(), args[0], found.Id, asset, file); err != nil {
 			return fmt.Errorf("download %s: %w", asset.Name, err)
 		}
 		files = append(files, downloadedAsset{
 			Name:   asset.Name,
 			Path:   file,
 			Size:   asset.Size,
-			SHA256: asset.SHA256,
+			SHA256: asset.Sha256,
 		})
 	}
 	if pattern != "" && len(files) == 0 {
@@ -415,11 +369,12 @@ func (app *app) releaseDeleteAssetCommand() *cobra.Command {
 		Short: "Delete one asset of a release",
 		Args:  ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, path, err := app.findRelease(cmd, args[0], args[1])
+			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
-			return app.call(cmd, http.MethodDelete, path+"/assets/"+url.PathEscape(args[2]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.DeleteAsset(cmd.Context(), owner, repo, found.Id, args[2]))
 		},
 	}
 }

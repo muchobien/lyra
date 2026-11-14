@@ -1,0 +1,4 @@
+package: lyraapi
+generate:
+  models: true
+  client: true

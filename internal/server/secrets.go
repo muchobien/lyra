@@ -140,8 +140,8 @@ func secretName(path string) (string, error) {
 	return name, nil
 }
 
-func (s *Server) handleListSecrets(r *http.Request, _ *RepoPath) (*body[[]store.Secret], error) {
-	repo, err := s.lookupRepo(r, scopeAdmin)
+func (s *Server) handleListSecrets(r *http.Request, input *RepoPath) (*body[[]store.Secret], error) {
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func (s *Server) handleListSecrets(r *http.Request, _ *RepoPath) (*body[[]store.
 }
 
 func (s *Server) handleSetSecret(r *http.Request, input *setValueInput) (*body[secretSet], error) {
-	repo, err := s.lookupRepo(r, scopeAdmin)
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (s *Server) handleSetSecret(r *http.Request, input *setValueInput) (*body[s
 }
 
 func (s *Server) handleDeleteSecret(r *http.Request, input *SecretPath) (*body[deletedWithEvent], error) {
-	repo, err := s.lookupRepo(r, scopeAdmin)
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -192,8 +192,8 @@ func (s *Server) handleDeleteSecret(r *http.Request, input *SecretPath) (*body[d
 	return reply(deletedWithEvent{Deleted: name, EventID: eventID})
 }
 
-func (s *Server) handleListVariables(r *http.Request, _ *RepoPath) (*body[[]store.Variable], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListVariables(r *http.Request, input *RepoPath) (*body[[]store.Variable], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (s *Server) handleListVariables(r *http.Request, _ *RepoPath) (*body[[]stor
 }
 
 func (s *Server) handleSetVariable(r *http.Request, input *setValueInput) (*body[variableSet], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (s *Server) handleSetVariable(r *http.Request, input *setValueInput) (*body
 }
 
 func (s *Server) handleDeleteVariable(r *http.Request, input *SecretPath) (*body[deletedWithEvent], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

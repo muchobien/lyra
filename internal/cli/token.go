@@ -2,18 +2,11 @@ package cli
 
 import (
 	"errors"
-	"net/http"
-	"net/url"
 
 	"github.com/spf13/cobra"
-)
 
-type tokenCreateRequest struct {
-	Name      string   `json:"name"`
-	Scope     string   `json:"scope"`
-	Repos     []string `json:"repos"`
-	ExpiresIn string   `json:"expires_in"`
-}
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
+)
 
 func (app *app) tokenCommand() *cobra.Command {
 	token := &cobra.Command{Use: "token", Short: "Manage API tokens"}
@@ -22,23 +15,30 @@ func (app *app) tokenCommand() *cobra.Command {
 }
 
 func (app *app) tokenCreateCommand() *cobra.Command {
-	var body tokenCreateRequest
+	var name, scope, expires string
+	var repos []string
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create a token; the secret is shown once",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if body.Name == "" || body.Scope == "" {
+			if name == "" || scope == "" {
 				return UsageError{errors.New("token create needs --name and --scope")}
 			}
-			return app.call(cmd, http.MethodPost, "/api/tokens", body)
+			body := lyraapi.CreateTokenRequest{
+				Name:      name,
+				Scope:     lyraapi.CreateTokenRequestScope(scope),
+				Repos:     &repos,
+				ExpiresIn: &expires,
+			}
+			return app.show(cmd)(app.client.api.CreateToken(cmd.Context(), body))
 		},
 	}
 	flags := create.Flags()
-	flags.StringVar(&body.Name, "name", "", "token name, recorded as via token:<name>")
-	flags.StringVar(&body.Scope, "scope", "", "read, write or admin")
-	flags.StringArrayVar(&body.Repos, "repo", nil, "limit the token to this repository (repeatable)")
-	flags.StringVar(&body.ExpiresIn, "expires", "", "lifetime as a Go duration, such as 720h")
+	flags.StringVar(&name, "name", "", "token name, recorded as via token:<name>")
+	flags.StringVar(&scope, "scope", "", "read, write or admin")
+	flags.StringArrayVar(&repos, "repo", nil, "limit the token to this repository (repeatable)")
+	flags.StringVar(&expires, "expires", "", "lifetime as a Go duration, such as 720h")
 	return create
 }
 
@@ -48,7 +48,7 @@ func (app *app) tokenListCommand() *cobra.Command {
 		Short: "List tokens",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/tokens", nil)
+			return app.show(cmd)(app.client.api.ListTokens(cmd.Context()))
 		},
 	}
 }
@@ -59,7 +59,11 @@ func (app *app) tokenRevokeCommand() *cobra.Command {
 		Short: "Revoke a token",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, "/api/tokens/"+url.PathEscape(args[0]), nil)
+			id, err := parseNumber(args[0])
+			if err != nil {
+				return err
+			}
+			return app.show(cmd)(app.client.api.RevokeToken(cmd.Context(), id))
 		},
 	}
 }

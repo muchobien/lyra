@@ -1,19 +1,10 @@
 package cli
 
 import (
-	"net/http"
-	"net/url"
-
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type runnerCreateRequest struct {
-	Name string `json:"name"`
-}
-
-type runnerTokenCreateRequest struct {
-	Name string `json:"name"`
-}
 
 func (app *app) runnerCommand() *cobra.Command {
 	runner := &cobra.Command{Use: "runner", Short: "Manage Actions runners and their registration tokens"}
@@ -32,13 +23,13 @@ func (app *app) runnerListCommand() *cobra.Command {
 		Short: "List registered runners, with labels, version and whether they polled in the last minute",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/runners", nil)
+			return app.show(cmd)(app.client.api.ListRunners(cmd.Context()))
 		},
 	}
 }
 
 func (app *app) runnerCreateCommand() *cobra.Command {
-	var body runnerCreateRequest
+	var name string
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create a runner and print its uuid and token, shown once",
@@ -57,10 +48,10 @@ The runner declares its labels and version when it starts. Many processes can sh
 runner, for example forgejo-runner one-job in a fresh pod per job.`,
 		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodPost, "/api/runners", body)
+			return app.show(cmd)(app.client.api.CreateRunner(cmd.Context(), lyraapi.NameRequest{Name: name}))
 		},
 	}
-	create.Flags().StringVar(&body.Name, "name", "", "runner name (required)")
+	create.Flags().StringVar(&name, "name", "", "runner name (required)")
 	return create
 }
 
@@ -70,7 +61,11 @@ func (app *app) runnerDeleteCommand() *cobra.Command {
 		Short: "Delete a runner; it can't fetch jobs any more",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, "/api/runners/"+url.PathEscape(args[0]), nil)
+			id, err := parseNumber(args[0])
+			if err != nil {
+				return err
+			}
+			return app.show(cmd)(app.client.api.DeleteRunner(cmd.Context(), id))
 		},
 	}
 }
@@ -86,7 +81,7 @@ func (app *app) runnerTokenCommand() *cobra.Command {
 }
 
 func (app *app) runnerTokenCreateCommand() *cobra.Command {
-	var body runnerTokenCreateRequest
+	var name string
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create a registration token, shown once",
@@ -99,10 +94,10 @@ register any number of runners, such as one ephemeral runner per job, until it's
 Deleting it doesn't remove the runners it registered.`,
 		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodPost, "/api/runners/tokens", body)
+			return app.show(cmd)(app.client.api.CreateRunnerToken(cmd.Context(), lyraapi.NameRequest{Name: name}))
 		},
 	}
-	create.Flags().StringVar(&body.Name, "name", "", "what the token is for (required)")
+	create.Flags().StringVar(&name, "name", "", "what the token is for (required)")
 	return create
 }
 
@@ -112,7 +107,7 @@ func (app *app) runnerTokenListCommand() *cobra.Command {
 		Short: "List registration tokens",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/runners/tokens", nil)
+			return app.show(cmd)(app.client.api.ListRunnerTokens(cmd.Context()))
 		},
 	}
 }
@@ -123,7 +118,11 @@ func (app *app) runnerTokenDeleteCommand() *cobra.Command {
 		Short: "Delete a registration token",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, "/api/runners/tokens/"+url.PathEscape(args[0]), nil)
+			id, err := parseNumber(args[0])
+			if err != nil {
+				return err
+			}
+			return app.show(cmd)(app.client.api.DeleteRunnerToken(cmd.Context(), id))
 		},
 	}
 }

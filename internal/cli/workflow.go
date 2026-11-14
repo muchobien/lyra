@@ -2,17 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
-)
 
-type workflowRunRequest struct {
-	Workflow string            `json:"workflow"`
-	Ref      string            `json:"ref"`
-	Inputs   map[string]string `json:"inputs"`
-}
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
+)
 
 func (app *app) workflowCommand() *cobra.Command {
 	workflow := &cobra.Command{Use: "workflow", Short: "Start Actions workflows"}
@@ -32,15 +27,17 @@ path. Inputs are checked against the workflow's: unknown ones are refused, missi
 take their default, and required ones without a default must be given. Prints the run.`,
 		Args: ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := workflowRunRequest{Workflow: args[1], Ref: ref, Inputs: map[string]string{}}
+			values := map[string]string{}
 			for _, input := range inputs {
 				name, value, found := strings.Cut(input, "=")
 				if !found || name == "" {
 					return UsageError{fmt.Errorf("--input %q: want name=value", input)}
 				}
-				body.Inputs[name] = value
+				values[name] = value
 			}
-			return app.call(cmd, http.MethodPost, repoAPI(args[0])+"/workflows/dispatch", body)
+			body := lyraapi.DispatchRequest{Workflow: args[1], Ref: &ref, Inputs: &values}
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.DispatchWorkflow(cmd.Context(), owner, repo, body))
 		},
 	}
 	run.Flags().StringVar(&ref, "ref", "", "branch or tag to run the workflow from (default: the default branch)")

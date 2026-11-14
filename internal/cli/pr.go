@@ -4,10 +4,10 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
 type pullChecks struct {
@@ -22,20 +22,6 @@ type checksEvent struct {
 	Repo   string     `json:"repo"`
 }
 
-type mergeRequest struct {
-	Method       string  `json:"method"`
-	HeadSHA      string  `json:"head_sha"`
-	DeleteBranch bool    `json:"delete_branch"`
-	Title        *string `json:"title,omitzero"`
-	Message      *string `json:"message,omitzero"`
-}
-
-type reviewRequest struct {
-	State    string           `json:"state"`
-	Body     string           `json:"body"`
-	Comments []map[string]any `json:"comments,omitzero"`
-}
-
 type reviewOptions struct {
 	approve        bool
 	requestChanges bool
@@ -43,14 +29,9 @@ type reviewOptions struct {
 	commentsFile   string
 }
 
-func pullPath(args []string) string {
-	return repoAPI(args[0]) + "/pulls/" + url.PathEscape(args[1])
-}
-
 func (app *app) prCommand() *cobra.Command {
 	pr := app.itemCommand(itemKind{
 		use:            "pr",
-		segment:        "pulls",
 		noun:           "pull request",
 		states:         "open, closed, merged or all",
 		prefix:         "pr.",
@@ -66,16 +47,10 @@ func (app *app) prCommand() *cobra.Command {
 	return pr
 }
 
-func (app *app) missingChecks(cmd *cobra.Command, args []string) (*checksEvent, error) {
-	output, err := app.client.request(cmd.Context(), http.MethodGet, pullPath(args), nil)
+func (app *app) missingChecks(cmd *cobra.Command, repo string, number int64) (*checksEvent, error) {
+	owner, name := splitRepo(repo)
+	pull, _, err := decode[lyraapi.PullView](app.client.api.GetPull(cmd.Context(), owner, name, number))
 	if err != nil {
-		return nil, err
-	}
-	var pull struct {
-		Number int64      `json:"number"`
-		Checks pullChecks `json:"checks"`
-	}
-	if err := json.Unmarshal(output, &pull); err != nil {
 		return nil, err
 	}
 	if pull.Checks.State != "none" {
@@ -83,9 +58,9 @@ func (app *app) missingChecks(cmd *cobra.Command, args []string) (*checksEvent, 
 	}
 	return &checksEvent{
 		Action: "pr.checks",
-		Data:   pullChecks{SHA: pull.Checks.SHA, State: "none"},
+		Data:   pullChecks{SHA: pull.Checks.Sha, State: "none"},
 		Item:   pull.Number,
-		Repo:   args[0],
+		Repo:   repo,
 	}, nil
 }
 
@@ -95,7 +70,12 @@ func (app *app) prCommitsCommand() *cobra.Command {
 		Short: "List a pull request's commits with signature status",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, pullPath(args)+"/commits", nil)
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListPullCommits(cmd.Context(), owner, repo, number))
 		},
 	}
 }
@@ -107,10 +87,15 @@ func (app *app) prDiffCommand() *cobra.Command {
 		Short: "Print a pull request's diff, or its changed files with --files",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if filesOnly {
-				return app.call(cmd, http.MethodGet, pullPath(args)+"/files", nil)
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
 			}
-			return app.call(cmd, http.MethodGet, pullPath(args)+"/diff", nil)
+			owner, repo := splitRepo(args[0])
+			if filesOnly {
+				return app.show(cmd)(app.client.api.ListPullFiles(cmd.Context(), owner, repo, number))
+			}
+			return app.show(cmd)(app.client.api.GetPullDiff(cmd.Context(), owner, repo, number))
 		},
 	}
 	diff.Flags().BoolVar(&filesOnly, "files", false, "list changed files as JSON instead")
@@ -118,9 +103,8 @@ func (app *app) prDiffCommand() *cobra.Command {
 }
 
 func (app *app) prMergeCommand() *cobra.Command {
-	var squash, fastForward bool
-	var title string
-	body := mergeRequest{Method: "ff"}
+	var squash, fastForward, deleteBranch bool
+	var title, head string
 	merge := &cobra.Command{
 		Use:   "merge <repo> <number>",
 		Short: "Merge a pull request by squashing or fast-forwarding",
@@ -135,24 +119,34 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 			if squash == fastForward {
 				return UsageError{errors.New("pr merge needs exactly one of --squash or --ff")}
 			}
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			body := lyraapi.MergeRequest{
+				Method:       lyraapi.MergeRequestMethodFf,
+				HeadSha:      &head,
+				DeleteBranch: &deleteBranch,
+			}
 			if squash {
 				message, set, err := readText(cmd, "body")
 				if err != nil {
 					return err
 				}
-				body.Method, body.Title = "squash", &title
+				body.Method, body.Title = lyraapi.MergeRequestMethodSquash, &title
 				if set {
 					body.Message = &message
 				}
 			}
-			return app.call(cmd, http.MethodPost, pullPath(args)+"/merge", body)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.MergePull(cmd.Context(), owner, repo, number, body))
 		},
 	}
 	flags := merge.Flags()
 	flags.BoolVar(&squash, "squash", false, "squash into one commit signed by Lyra")
 	flags.BoolVar(&fastForward, "ff", false, "fast-forward the base branch to the head")
-	flags.BoolVar(&body.DeleteBranch, "delete-branch", false, "delete the head branch after merging")
-	flags.StringVar(&body.HeadSHA, "head", "", "merge only if the head branch is at this commit")
+	flags.BoolVar(&deleteBranch, "delete-branch", false, "delete the head branch after merging")
+	flags.StringVar(&head, "head", "", "merge only if the head branch is at this commit")
 	flags.StringVar(&title, "title", "", "squash commit title (default: the pull request title and number)")
 	addTextFlags(merge, "body", "body text in Markdown")
 	return merge
@@ -183,14 +177,14 @@ the author can't use them on their own pull request. --request-changes needs a b
 	return review
 }
 
-func (options reviewOptions) state() (string, error) {
+func (options reviewOptions) state() (lyraapi.ReviewRequestState, error) {
 	switch {
 	case options.approve && !options.requestChanges && !options.commentOnly:
-		return "approve", nil
+		return lyraapi.ReviewRequestStateApprove, nil
 	case options.requestChanges && !options.approve && !options.commentOnly:
-		return "request_changes", nil
+		return lyraapi.ReviewRequestStateRequestChanges, nil
 	case options.commentOnly && !options.approve && !options.requestChanges:
-		return "comment", nil
+		return lyraapi.ReviewRequestStateComment, nil
 	}
 	return "", UsageError{errors.New("pr review needs exactly one of --approve, --request-changes or --comment")}
 }
@@ -204,15 +198,22 @@ func (app *app) submitReview(cmd *cobra.Command, args []string, options reviewOp
 	if err != nil {
 		return err
 	}
-	review := reviewRequest{State: state, Body: text}
+	number, err := parseNumber(args[1])
+	if err != nil {
+		return err
+	}
+	review := lyraapi.ReviewRequest{State: state, Body: &text}
 	if options.commentsFile != "" {
 		data, err := readInput(cmd, options.commentsFile)
 		if err != nil {
 			return err
 		}
-		if err := json.Unmarshal(data, &review.Comments); err != nil {
+		comments := []lyraapi.LineComment{}
+		if err := json.Unmarshal(data, &comments); err != nil {
 			return UsageError{fmt.Errorf("--comments-file: %w", err)}
 		}
+		review.Comments = &comments
 	}
-	return app.call(cmd, http.MethodPost, pullPath(args)+"/reviews", review)
+	owner, repo := splitRepo(args[0])
+	return app.show(cmd)(app.client.api.ReviewPull(cmd.Context(), owner, repo, number, review))
 }

@@ -8,8 +8,10 @@ Lyra is a self-hosted Git forge for one person and their agents: one Go binary
 
 | Path | What it holds |
 | --- | --- |
-| `cmd/lyra` | `main`: `serve`, `restore`, `version`, `openapi` and the git hooks |
+| `cmd/lyra` | `main`: `serve`, `restore`, `version` and the git hooks |
+| `cmd/openapi` | Prints the API's OpenAPI document (3.1, or 3.0 with `-3.0`) |
 | `internal/cli` | The `lyra` client commands (cobra) |
+| `internal/cli/lyraapi` | Generated API client the commands call; don't edit by hand |
 | `internal/server` | HTTP server: huma API, web UI, Git, registry, Actions runner protocol |
 | `internal/server/openapi.go` | Every API operation, grouped by area |
 | `internal/store` | SQLite access; migrations in `migrations/`, sqlc queries in `queries.sql` |
@@ -59,7 +61,15 @@ Run lint and the e2e tests before committing. `mise tasks` lists everything CI r
   Use `enum`, `minimum` and `doc` tags so the spec documents them.
 - Non-JSON responses (streams, files, tar) use `stream[Input](handler)` with an explicit
   `Responses` entry.
-- After changing the API, run `mise run openapi` and commit `api/openapi.yaml`.
+- After changing the API, run `mise run openapi` and commit `api/openapi.yaml` and
+  `internal/cli/lyraapi/client.gen.go`.
+
+### CLI commands
+
+- Call the API through the generated client: `app.show(cmd)(app.client.api.GetRepo(ctx, owner, repo))`
+  prints the response, and `decode[lyraapi.T](…)` returns it typed when a command needs a field.
+- `splitRepo` turns `owner/name` into the two path parameters; `parseNumber` parses numbers
+  and ids into a usage error when they're invalid.
 
 ## Docs
 

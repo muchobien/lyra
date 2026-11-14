@@ -66,8 +66,11 @@ func (s *Server) repoView(r *http.Request, repo store.Repo) (repoView, error) {
 	}, nil
 }
 
-func (s *Server) lookupRepo(r *http.Request, scope string) (store.Repo, error) {
-	name := r.PathValue("owner") + "/" + r.PathValue("repo")
+func routeRepo(r *http.Request) string {
+	return r.PathValue("owner") + "/" + r.PathValue("repo")
+}
+
+func (s *Server) lookupRepo(r *http.Request, scope, name string) (store.Repo, error) {
 	if !identityFrom(r).can(scope, name) {
 		return store.Repo{}, forbidden("token lacks " + scope + " access to " + name)
 	}
@@ -144,8 +147,8 @@ func (s *Server) handleCreateRepo(r *http.Request, input *bodyInput[createRepoRe
 	return reply(view)
 }
 
-func (s *Server) handleGetRepo(r *http.Request, _ *RepoPath) (*body[repoView], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleGetRepo(r *http.Request, input *RepoPath) (*body[repoView], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +159,9 @@ func (s *Server) handleGetRepo(r *http.Request, _ *RepoPath) (*body[repoView], e
 	return reply(view)
 }
 
-func (s *Server) handleDeleteRepo(r *http.Request, _ *RepoPath) (*body[deletedName], error) {
+func (s *Server) handleDeleteRepo(r *http.Request, input *RepoPath) (*body[deletedName], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeAdmin)
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +248,7 @@ type listCommitsInput struct {
 
 func (s *Server) handleListCommits(r *http.Request, input *listCommitsInput) (*body[[]repos.Commit], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +273,7 @@ type commitInput struct {
 
 func (s *Server) handleGetCommit(r *http.Request, input *commitInput) (*body[repos.Commit], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -299,8 +302,8 @@ func (s *Server) tags(ctx context.Context, repo string) ([]repos.Tag, error) {
 	return tags, s.verifySignatures(ctx, signatures...)
 }
 
-func (s *Server) handleListTags(r *http.Request, _ *RepoPath) (*body[[]repos.Tag], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListTags(r *http.Request, input *RepoPath) (*body[[]repos.Tag], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}

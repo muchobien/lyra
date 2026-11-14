@@ -55,10 +55,10 @@ func newAPI(router chi.Router) huma.API {
 	return humachi.New(router.With(withRequest), config)
 }
 
-func OpenAPI() ([]byte, error) {
+func OpenAPI() *huma.OpenAPI {
 	api := newAPI(chi.NewRouter())
 	(&Server{}).registerAPI(api)
-	return api.OpenAPI().YAML()
+	return api.OpenAPI()
 }
 
 func (s *Server) registerAPI(api huma.API) {

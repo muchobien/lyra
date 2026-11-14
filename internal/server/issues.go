@@ -162,7 +162,7 @@ func (query itemQuery) matches(item store.Item) bool {
 }
 
 func (s *Server) handleListIssues(r *http.Request, input *listItemsInput) (*body[[]store.Item], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ type createIssueInput struct {
 }
 
 func (s *Server) handleCreateIssue(r *http.Request, input *createIssueInput) (*body[itemWrite], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (s *Server) handleCreateIssue(r *http.Request, input *createIssueInput) (*b
 
 func (s *Server) handleGetIssue(r *http.Request, input *ItemPath) (*body[itemView], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ type itemEdited struct {
 
 func (s *Server) editItem(r *http.Request, kind string, input *editItemInput) (itemEdited, error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return itemEdited{}, err
 	}
@@ -295,7 +295,7 @@ type commentInput struct {
 func (s *Server) handleCommentItem(kind string) func(*http.Request, *commentInput) (*body[commentWrite], error) {
 	return func(r *http.Request, input *commentInput) (*body[commentWrite], error) {
 		ctx := r.Context()
-		repo, err := s.lookupRepo(r, scopeWrite)
+		repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 		if err != nil {
 			return nil, err
 		}
@@ -320,8 +320,8 @@ func (s *Server) handleCommentItem(kind string) func(*http.Request, *commentInpu
 	}
 }
 
-func (s *Server) handleListLabels(r *http.Request, _ *RepoPath) (*body[[]store.Label], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListLabels(r *http.Request, input *RepoPath) (*body[[]store.Label], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +338,7 @@ type createLabelInput struct {
 }
 
 func (s *Server) handleCreateLabel(r *http.Request, input *createLabelInput) (*body[labelWrite], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (s *Server) handleCreateLabel(r *http.Request, input *createLabelInput) (*b
 }
 
 func (s *Server) handleDeleteLabel(r *http.Request, input *labelInput) (*body[deletedWithEvent], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

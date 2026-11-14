@@ -3,60 +3,22 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
 type itemKind struct {
 	use            string
-	segment        string
 	noun           string
 	states         string
 	prefix         string
 	actions        []string
 	defaultActions []string
-}
-
-type itemCreateRequest struct {
-	Title     string   `json:"title"`
-	Body      string   `json:"body"`
-	Labels    []string `json:"labels"`
-	Assignees []string `json:"assignees"`
-	*pullBranches
-}
-
-type pullBranches struct {
-	Head string `json:"head"`
-	Base string `json:"base"`
-}
-
-type itemCommentRequest struct {
-	Body string `json:"body"`
-	*lineLocation
-}
-
-type lineLocation struct {
-	Path string `json:"path"`
-	Line int64  `json:"line"`
-	Side string `json:"side"`
-}
-
-type itemEditRequest struct {
-	Title           *string  `json:"title,omitzero"`
-	Body            *string  `json:"body,omitzero"`
-	AddLabels       []string `json:"add_labels,omitempty"`
-	RemoveLabels    []string `json:"remove_labels,omitempty"`
-	AddAssignees    []string `json:"add_assignees,omitempty"`
-	RemoveAssignees []string `json:"remove_assignees,omitempty"`
-}
-
-type itemStateRequest struct {
-	State string `json:"state"`
 }
 
 var itemActions = []string{
@@ -71,21 +33,12 @@ var itemActions = []string{
 }
 
 func (kind itemKind) isPull() bool {
-	return kind.segment == "pulls"
-}
-
-func (kind itemKind) listPath(repo string) string {
-	return repoAPI(repo) + "/" + kind.segment
-}
-
-func (kind itemKind) itemPath(repo, number string) string {
-	return kind.listPath(repo) + "/" + url.PathEscape(number)
+	return kind.use == "pr"
 }
 
 func (app *app) issueCommand() *cobra.Command {
 	return app.itemCommand(itemKind{
 		use:            "issue",
-		segment:        "issues",
 		noun:           "issue",
 		states:         "open, closed or all",
 		prefix:         "issue.",
@@ -97,8 +50,8 @@ func (app *app) issueCommand() *cobra.Command {
 func (app *app) itemCommand(kind itemKind) *cobra.Command {
 	parent := &cobra.Command{Use: kind.use, Short: "Manage " + kind.noun + "s"}
 	parent.AddCommand(
-		app.itemStateCommand(kind, "close <repo> <number>", "Close a "+kind.noun, "closed"),
-		app.itemStateCommand(kind, "reopen <repo> <number>", "Reopen a closed "+kind.noun, "open"),
+		app.itemStateCommand(kind, "close <repo> <number>", "Close a "+kind.noun, lyraapi.Closed),
+		app.itemStateCommand(kind, "reopen <repo> <number>", "Reopen a closed "+kind.noun, lyraapi.Open),
 		app.itemCreateCommand(kind),
 		app.itemListCommand(kind),
 		app.itemViewCommand(kind),
@@ -110,58 +63,67 @@ func (app *app) itemCommand(kind itemKind) *cobra.Command {
 }
 
 func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
-	var body itemCreateRequest
-	var branches pullBranches
+	var title, head, base string
+	var labels, assignees []string
 	create := &cobra.Command{
 		Use:   "create <repo>",
 		Short: "Open a new " + kind.noun,
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if body.Title == "" {
+			if title == "" {
 				return UsageError{errors.New(kind.use + " create needs --title")}
 			}
 			text, _, err := readText(cmd, "body")
 			if err != nil {
 				return err
 			}
-			body.Body = text
-			if kind.isPull() {
-				if branches.Head == "" {
-					return UsageError{errors.New("pr create needs --head")}
-				}
-				body.pullBranches = &branches
+			owner, repo := splitRepo(args[0])
+			if !kind.isPull() {
+				body := lyraapi.CreateIssueRequest{Title: title, Body: &text, Labels: &labels, Assignees: &assignees}
+				return app.show(cmd)(app.client.api.CreateIssue(cmd.Context(), owner, repo, body))
 			}
-			return app.call(cmd, http.MethodPost, kind.listPath(args[0]), body)
+			if head == "" {
+				return UsageError{errors.New("pr create needs --head")}
+			}
+			body := lyraapi.CreatePullRequest{
+				Title:     title,
+				Body:      &text,
+				Head:      head,
+				Base:      &base,
+				Labels:    &labels,
+				Assignees: &assignees,
+			}
+			return app.show(cmd)(app.client.api.CreatePull(cmd.Context(), owner, repo, body))
 		},
 	}
 	flags := create.Flags()
-	flags.StringVar(&body.Title, "title", "", "title (required)")
+	flags.StringVar(&title, "title", "", "title (required)")
 	if kind.isPull() {
-		flags.StringVar(&branches.Head, "head", "", "branch with the changes (required)")
-		flags.StringVar(&branches.Base, "base", "", "branch to merge into (default: the default branch)")
+		flags.StringVar(&head, "head", "", "branch with the changes (required)")
+		flags.StringVar(&base, "base", "", "branch to merge into (default: the default branch)")
 	}
 	addTextFlags(create, "body", "body text in Markdown")
-	flags.StringArrayVar(&body.Labels, "label", nil, "add this label, which must exist (repeatable)")
-	flags.StringArrayVar(&body.Assignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
+	flags.StringArrayVar(&labels, "label", nil, "add this label, which must exist (repeatable)")
+	flags.StringArrayVar(&assignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
 	return create
 }
 
 func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 	var state string
 	var labels, assignees []string
-	var limit int
+	var limit int64
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List " + kind.noun + "s, newest first",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{
-				"state":    {state},
-				"limit":    {fmt.Sprint(limit)},
-				"label":    labels,
-				"assignee": assignees,
+			owner, repo := splitRepo(args[0])
+			if kind.isPull() {
+				params := lyraapi.ListPullsParams{State: &state, Label: &labels, Assignee: &assignees, Limit: &limit}
+				return app.show(cmd)(app.client.api.ListPulls(cmd.Context(), owner, repo, &params))
 			}
-			return app.call(cmd, http.MethodGet, kind.listPath(args[0])+"?"+query.Encode(), nil)
+			params := lyraapi.ListIssuesParams{State: &state, Label: &labels, Assignee: &assignees, Limit: &limit}
+			return app.show(cmd)(app.client.api.ListIssues(cmd.Context(), owner, repo, &params))
 		},
 	}
 	flags := list.Flags()
@@ -173,7 +135,7 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 		nil,
 		"only "+kind.noun+"s assigned to this login or agent, or @me (repeatable)",
 	)
-	flags.IntVar(&limit, "limit", 30, "maximum number of "+kind.noun+"s")
+	flags.Int64Var(&limit, "limit", 30, "maximum number of "+kind.noun+"s")
 	return list
 }
 
@@ -183,13 +145,22 @@ func (app *app) itemViewCommand(kind itemKind) *cobra.Command {
 		Short: "Show a " + kind.noun + " with its comments",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, kind.itemPath(args[0], args[1]), nil)
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			owner, repo := splitRepo(args[0])
+			if kind.isPull() {
+				return app.show(cmd)(app.client.api.GetPull(cmd.Context(), owner, repo, number))
+			}
+			return app.show(cmd)(app.client.api.GetIssue(cmd.Context(), owner, repo, number))
 		},
 	}
 }
 
 func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
-	var location lineLocation
+	var path, side string
+	var line int64
 	comment := &cobra.Command{
 		Use:   "comment <repo> <number>",
 		Short: "Comment on a " + kind.noun,
@@ -202,37 +173,59 @@ func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 			if !set {
 				return UsageError{errors.New(kind.use + " comment needs --body or --body-file")}
 			}
-			body := itemCommentRequest{Body: text}
-			if location.Path != "" || location.Line != 0 {
-				body.lineLocation = &location
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
 			}
-			return app.call(cmd, http.MethodPost, kind.itemPath(args[0], args[1])+"/comments", body)
+			owner, repo := splitRepo(args[0])
+			body := lyraapi.CommentRequest{Body: text}
+			if !kind.isPull() {
+				return app.show(cmd)(app.client.api.CommentIssue(cmd.Context(), owner, repo, number, body))
+			}
+			if path != "" || line != 0 {
+				lineSide := lyraapi.CommentRequestSide(side)
+				body.Path, body.Line, body.Side = &path, &line, &lineSide
+			}
+			return app.show(cmd)(app.client.api.CommentPull(cmd.Context(), owner, repo, number, body))
 		},
 	}
 	addTextFlags(comment, "body", "body text in Markdown")
 	if kind.isPull() {
 		comment.Long = "Comment on a pull request, or with --path and --line on one line of its diff."
 		flags := comment.Flags()
-		flags.StringVar(&location.Path, "path", "", "file the comment is on")
-		flags.Int64Var(&location.Line, "line", 0, "line number in the file, as shown in the diff")
-		flags.StringVar(
-			&location.Side,
-			"side",
-			"new",
-			"new for the head version of the line, old for the base version",
-		)
+		flags.StringVar(&path, "path", "", "file the comment is on")
+		flags.Int64Var(&line, "line", 0, "line number in the file, as shown in the diff")
+		flags.StringVar(&side, "side", "new", "new for the head version of the line, old for the base version")
 	}
 	return comment
 }
 
+func (app *app) editItem(cmd *cobra.Command, kind itemKind, args []string, body lyraapi.EditItemRequest) error {
+	number, err := parseNumber(args[1])
+	if err != nil {
+		return err
+	}
+	owner, repo := splitRepo(args[0])
+	if kind.isPull() {
+		return app.show(cmd)(app.client.api.EditPull(cmd.Context(), owner, repo, number, body))
+	}
+	return app.show(cmd)(app.client.api.EditIssue(cmd.Context(), owner, repo, number, body))
+}
+
 func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 	var title string
-	var body itemEditRequest
+	var addLabels, removeLabels, addAssignees, removeAssignees []string
 	edit := &cobra.Command{
 		Use:   "edit <repo> <number>",
 		Short: "Change a " + kind.noun + "'s title, body, labels or assignees",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := lyraapi.EditItemRequest{
+				AddLabels:       &addLabels,
+				RemoveLabels:    &removeLabels,
+				AddAssignees:    &addAssignees,
+				RemoveAssignees: &removeAssignees,
+			}
 			if cmd.Flags().Changed("title") {
 				body.Title = &title
 			}
@@ -243,28 +236,23 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 			if set {
 				body.Body = &text
 			}
-			labels := len(body.AddLabels) + len(body.RemoveLabels)
-			assignees := len(body.AddAssignees) + len(body.RemoveAssignees)
+			labels := len(addLabels) + len(removeLabels)
+			assignees := len(addAssignees) + len(removeAssignees)
 			if body.Title == nil && body.Body == nil && labels+assignees == 0 {
 				help := "lyra " + kind.use + " edit --help"
 				return UsageError{errors.New(kind.use + " edit needs at least one change; see " + help)}
 			}
-			return app.call(cmd, http.MethodPatch, kind.itemPath(args[0], args[1]), body)
+			return app.editItem(cmd, kind, args, body)
 		},
 	}
 	flags := edit.Flags()
 	flags.StringVar(&title, "title", "", "new title")
 	addTextFlags(edit, "body", "body text in Markdown")
-	flags.StringArrayVar(&body.AddLabels, "add-label", nil, "add a label (repeatable)")
-	flags.StringArrayVar(&body.RemoveLabels, "remove-label", nil, "remove a label (repeatable)")
+	flags.StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
+	flags.StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")
+	flags.StringArrayVar(&addAssignees, "add-assignee", nil, "assign a login or agent name, or @me (repeatable)")
 	flags.StringArrayVar(
-		&body.AddAssignees,
-		"add-assignee",
-		nil,
-		"assign a login or agent name, or @me (repeatable)",
-	)
-	flags.StringArrayVar(
-		&body.RemoveAssignees,
+		&removeAssignees,
 		"remove-assignee",
 		nil,
 		"unassign a login or agent name, or @me (repeatable)",
@@ -272,14 +260,13 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 	return edit
 }
 
-func (app *app) itemStateCommand(kind itemKind, use, short, state string) *cobra.Command {
+func (app *app) itemStateCommand(kind itemKind, use, short string, state lyraapi.EditItemRequestState) *cobra.Command {
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := itemStateRequest{State: state}
-			return app.call(cmd, http.MethodPatch, kind.itemPath(args[0], args[1]), body)
+			return app.editItem(cmd, kind, args, lyraapi.EditItemRequest{State: &state})
 		},
 	}
 }
@@ -325,11 +312,15 @@ func (app *app) waitForItem(
 	chosen []string,
 	timeout time.Duration,
 ) error {
+	number, err := parseNumber(args[1])
+	if err != nil {
+		return err
+	}
 	actions := chosen
 	if len(actions) == 0 {
 		actions = kind.defaultActions
 	}
-	query := url.Values{"repo": {args[0]}, "item": {args[1]}, "exclude_self": {"true"}, "since": {"mine"}}
+	patterns := []string{}
 	for _, action := range actions {
 		if !slices.Contains(kind.actions, action) {
 			choices := strings.Join(kind.actions, ", ")
@@ -338,10 +329,10 @@ func (app *app) waitForItem(
 		if action == "push" {
 			action = "synchronized"
 		}
-		query.Add("action", kind.prefix+action)
+		patterns = append(patterns, kind.prefix+action)
 	}
 	if kind.isPull() && slices.Contains(chosen, "checks") {
-		event, err := app.missingChecks(cmd, args)
+		event, err := app.missingChecks(cmd, args[0], number)
 		if err != nil {
 			return err
 		}
@@ -349,5 +340,13 @@ func (app *app) waitForItem(
 			return app.emitIndented(cmd, event)
 		}
 	}
-	return app.waitAndEmit(cmd, query, timeout)
+	excludeSelf, since := true, "mine"
+	params := lyraapi.StreamEventsParams{
+		Repo:        &args[0],
+		Item:        &number,
+		Action:      &patterns,
+		ExcludeSelf: &excludeSelf,
+		Since:       &since,
+	}
+	return app.waitAndEmit(cmd, params, timeout)
 }

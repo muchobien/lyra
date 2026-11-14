@@ -372,7 +372,7 @@ func (s *Server) mergePull(
 }
 
 func (s *Server) handleMergePull(r *http.Request, input *mergeInput) (*body[pullWrite], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

@@ -158,8 +158,8 @@ func CheckPush(ctx context.Context, db *store.Store, git repos.Git, dir, repo st
 	return nil
 }
 
-func (s *Server) handleListRules(r *http.Request, _ *RepoPath) (*body[[]store.Rule], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+func (s *Server) handleListRules(r *http.Request, input *RepoPath) (*body[[]store.Rule], error) {
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (s *Server) handleListRules(r *http.Request, _ *RepoPath) (*body[[]store.Ru
 }
 
 func (s *Server) handleSetRule(r *http.Request, input *setRuleInput) (*body[ruleWrite], error) {
-	repo, err := s.lookupRepo(r, scopeAdmin)
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (s *Server) handleSetRule(r *http.Request, input *setRuleInput) (*body[rule
 }
 
 func (s *Server) handleDeleteRule(r *http.Request, input *deleteRuleInput) (*body[deletedWithEvent], error) {
-	repo, err := s.lookupRepo(r, scopeAdmin)
+	repo, err := s.lookupRepo(r, scopeAdmin, input.fullName())
 	if err != nil {
 		return nil, err
 	}

@@ -105,7 +105,7 @@ type dispatchWorkflowInput struct {
 
 func (s *Server) handleDispatch(r *http.Request, input *dispatchWorkflowInput) (*body[store.Run], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

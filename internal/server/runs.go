@@ -108,7 +108,7 @@ func runMissing(err error, number int64) error {
 }
 
 func (s *Server) handleListRuns(r *http.Request, input *listRunsInput) (*body[[]store.Run], error) {
-	repo, err := s.lookupRepo(r, scopeRead)
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -122,20 +122,20 @@ func (s *Server) handleListRuns(r *http.Request, input *listRunsInput) (*body[[]
 	return reply(runs)
 }
 
-func (s *Server) lookupRun(r *http.Request, scope string, number int64) (store.Run, error) {
-	repo, err := s.lookupRepo(r, scope)
+func (s *Server) lookupRun(r *http.Request, scope string, path RunPath) (store.Run, error) {
+	repo, err := s.lookupRepo(r, scope, path.fullName())
 	if err != nil {
 		return store.Run{}, err
 	}
-	run, err := s.store.Run(r.Context(), repo.Name, number)
+	run, err := s.store.Run(r.Context(), repo.Name, path.Number)
 	if err != nil {
-		return run, runMissing(err, number)
+		return run, runMissing(err, path.Number)
 	}
 	return withStepNames(run), nil
 }
 
 func (s *Server) handleGetRun(r *http.Request, input *RunPath) (*body[store.Run], error) {
-	run, err := s.lookupRun(r, scopeRead, input.Number)
+	run, err := s.lookupRun(r, scopeRead, *input)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (s *Server) jobLog(r *http.Request, job store.Job, offset int64) ([]store.L
 }
 
 func (s *Server) handleRunLogs(r *http.Request, input *runLogsInput) (*runLogsOutput, error) {
-	run, err := s.lookupRun(r, scopeRead, input.Number)
+	run, err := s.lookupRun(r, scopeRead, input.RunPath)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func (s *Server) handleRunLogs(r *http.Request, input *runLogsInput) (*runLogsOu
 }
 
 func (s *Server) handleCancelRun(r *http.Request, input *RunPath) (*body[runCancelled], error) {
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (s *Server) handleCancelRun(r *http.Request, input *RunPath) (*body[runCanc
 
 func (s *Server) handleRerunRun(r *http.Request, input *rerunInput) (*body[runWrite], error) {
 	ctx := r.Context()
-	repo, err := s.lookupRepo(r, scopeWrite)
+	repo, err := s.lookupRepo(r, scopeWrite, input.fullName())
 	if err != nil {
 		return nil, err
 	}

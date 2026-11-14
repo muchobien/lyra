@@ -4,36 +4,16 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
-type runInfo struct {
-	Number int64    `json:"number"`
-	Status string   `json:"status"`
-	Jobs   []runJob `json:"jobs"`
-}
-
-type runJob struct {
-	ID     int64  `json:"id"`
-	Key    string `json:"key"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
-
-type eventCursor struct {
-	ID int64 `json:"id"`
-}
-
 var runFinished = []string{"success", "failure", "cancelled", "skipped"}
-
-func runPath(repo, number string) string {
-	return repoAPI(repo) + "/runs/" + url.PathEscape(number)
-}
 
 func (app *app) runCommand() *cobra.Command {
 	run := &cobra.Command{Use: "run", Short: "Follow and control Actions runs"}
@@ -48,26 +28,24 @@ func (app *app) runCommand() *cobra.Command {
 	return run
 }
 
-func (app *app) fetchRun(cmd *cobra.Command, repo, number string) (runInfo, []byte, error) {
-	var info runInfo
-	output, err := app.client.request(cmd.Context(), http.MethodGet, runPath(repo, number), nil)
-	if err != nil {
-		return info, nil, err
-	}
-	return info, output, json.Unmarshal(output, &info)
+func (app *app) fetchRun(cmd *cobra.Command, repo string, number int64) (lyraapi.Run, []byte, error) {
+	owner, name := splitRepo(repo)
+	return decode[lyraapi.Run](app.client.api.GetRun(cmd.Context(), owner, name, number))
 }
 
 func (app *app) runListCommand() *cobra.Command {
-	var limit int
+	var limit int64
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List runs, newest first, with their jobs",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/runs?limit="+fmt.Sprint(limit), nil)
+			owner, repo := splitRepo(args[0])
+			params := lyraapi.ListRunsParams{Limit: &limit}
+			return app.show(cmd)(app.client.api.ListRuns(cmd.Context(), owner, repo, &params))
 		},
 	}
-	list.Flags().IntVar(&limit, "limit", 30, "how many runs, up to 100")
+	list.Flags().Int64Var(&limit, "limit", 30, "how many runs, up to 100")
 	return list
 }
 
@@ -77,7 +55,12 @@ func (app *app) runViewCommand() *cobra.Command {
 		Short: "Show a run with its jobs and steps",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, runPath(args[0], args[1]), nil)
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.GetRun(cmd.Context(), owner, repo, number))
 		},
 	}
 }
@@ -101,15 +84,23 @@ line. --job picks one job by key or id. --follow keeps printing until the jobs f
 }
 
 func (app *app) printRunLogs(cmd *cobra.Command, args []string, jobFilter string, follow bool) error {
-	info, _, err := app.fetchRun(cmd, args[0], args[1])
+	number, err := parseNumber(args[1])
 	if err != nil {
 		return err
 	}
-	jobs := info.Jobs
+	info, _, err := app.fetchRun(cmd, args[0], number)
+	if err != nil {
+		return err
+	}
+	all := []lyraapi.Job{}
+	if info.Jobs != nil {
+		all = *info.Jobs
+	}
+	jobs := all
 	if jobFilter != "" {
 		jobs = nil
-		for _, job := range info.Jobs {
-			if job.Key == jobFilter || fmt.Sprint(job.ID) == jobFilter {
+		for _, job := range all {
+			if job.Key == jobFilter || fmt.Sprint(job.Id) == jobFilter {
 				jobs = append(jobs, job)
 			}
 		}
@@ -118,25 +109,21 @@ func (app *app) printRunLogs(cmd *cobra.Command, args []string, jobFilter string
 		}
 	}
 	for _, job := range jobs {
-		if len(info.Jobs) > 1 && jobFilter == "" {
+		if len(all) > 1 && jobFilter == "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "== %s\n", job.Key)
 		}
-		path := runPath(args[0], args[1]) + "/jobs/" + fmt.Sprint(job.ID) + "/logs"
-		if err := app.copyJobLogs(cmd, path, follow); err != nil {
+		if err := app.copyJobLogs(cmd, args[0], number, job.Id, follow); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (app *app) copyJobLogs(cmd *cobra.Command, path string, follow bool) error {
-	offset := "0"
+func (app *app) copyJobLogs(cmd *cobra.Command, repo string, number, job int64, follow bool) error {
+	owner, name := splitRepo(repo)
+	params := lyraapi.GetJobLogsParams{Offset: new(int64)}
 	for {
-		req, err := app.client.newRequest(cmd.Context(), http.MethodGet, path+"?offset="+offset, nil)
-		if err != nil {
-			return err
-		}
-		response, err := app.client.streaming.Do(req)
+		response, err := app.client.streaming.GetJobLogs(cmd.Context(), owner, name, number, job, &params)
 		if err != nil {
 			return err
 		}
@@ -149,7 +136,11 @@ func (app *app) copyJobLogs(cmd *cobra.Command, path string, follow bool) error 
 		if err != nil {
 			return err
 		}
-		offset = response.Header.Get("Lyra-Log-Next")
+		next, err := strconv.ParseInt(response.Header.Get("Lyra-Log-Next"), 10, 64)
+		if err != nil {
+			return fmt.Errorf("Lyra-Log-Next: %w", err)
+		}
+		params.Offset = &next
 		if !follow || response.Header.Get("Lyra-Log-Done") == "true" {
 			return nil
 		}
@@ -172,29 +163,30 @@ func (app *app) runWaitCommand() *cobra.Command {
 }
 
 func (app *app) latestEvent(cmd *cobra.Command, repo string) (string, error) {
-	path := "/api/events?limit=1&repo=" + url.QueryEscape(repo)
-	latest, err := app.client.request(cmd.Context(), http.MethodGet, path, nil)
+	limit := int64(1)
+	params := lyraapi.ListEventsParams{Limit: &limit, Repo: &repo}
+	events, _, err := decode[[]lyraapi.Event](app.client.api.ListEvents(cmd.Context(), &params))
 	if err != nil {
 		return "", err
 	}
-	var events []eventCursor
-	if err := json.Unmarshal(latest, &events); err != nil {
-		return "", err
-	}
 	if len(events) > 0 {
-		return fmt.Sprint(events[0].ID), nil
+		return fmt.Sprint(events[0].Id), nil
 	}
 	return "0", nil
 }
 
 func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Duration) error {
+	number, err := parseNumber(args[1])
+	if err != nil {
+		return err
+	}
 	cursor, err := app.latestEvent(cmd, args[0])
 	if err != nil {
 		return err
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		info, output, err := app.fetchRun(cmd, args[0], args[1])
+		info, output, err := app.fetchRun(cmd, args[0], number)
 		if err != nil {
 			return err
 		}
@@ -211,17 +203,17 @@ func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Durat
 		if timeout > 0 && remaining <= 0 {
 			return ErrTimeout
 		}
-		query := url.Values{"repo": {args[0]}, "action": {"run.completed"}, "since": {cursor}}
-		path := "/api/events/stream?" + query.Encode()
-		event, err := app.client.waitForEvent(cmd.Context(), path, max(remaining, 0))
+		actions := []string{"run.completed"}
+		params := lyraapi.StreamEventsParams{Repo: &args[0], Action: &actions, Since: &cursor}
+		event, err := app.client.waitForEvent(cmd.Context(), params, max(remaining, 0))
 		if err != nil {
 			return err
 		}
-		var completed eventCursor
+		var completed lyraapi.Event
 		if err := json.Unmarshal(event, &completed); err != nil {
 			return err
 		}
-		cursor = fmt.Sprint(completed.ID)
+		cursor = fmt.Sprint(completed.Id)
 	}
 }
 
@@ -231,7 +223,12 @@ func (app *app) runCancelCommand() *cobra.Command {
 		Short: "Cancel a run; running jobs are stopped by their runners",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodPost, runPath(args[0], args[1])+"/cancel", nil)
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.CancelRun(cmd.Context(), owner, repo, number))
 		},
 	}
 }
@@ -243,11 +240,13 @@ func (app *app) runRerunCommand() *cobra.Command {
 		Short: "Run a finished run's jobs again",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := runPath(args[0], args[1]) + "/rerun"
-			if failedOnly {
-				path += "?failed=true"
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
 			}
-			return app.call(cmd, http.MethodPost, path, nil)
+			owner, repo := splitRepo(args[0])
+			params := lyraapi.RerunRunParams{Failed: &failedOnly}
+			return app.show(cmd)(app.client.api.RerunRun(cmd.Context(), owner, repo, number, &params))
 		},
 	}
 	rerun.Flags().BoolVar(

@@ -2,24 +2,15 @@ package cli
 
 import (
 	"archive/tar"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type readOnlyRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
-type storageCheckResult struct {
-	Missing []jsontext.Value `json:"missing"`
-}
 
 func (app *app) adminCommand() *cobra.Command {
 	admin := &cobra.Command{Use: "admin", Short: "Backups, read-only mode and status (unrestricted admin)"}
@@ -56,12 +47,7 @@ passes as a backup.`,
 }
 
 func (app *app) writeBackup(cmd *cobra.Command, output string) error {
-	req, err := app.client.newRequest(cmd.Context(), http.MethodPost, "/api/admin/backup", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Del("Accept")
-	response, err := app.client.streaming.Do(req)
+	response, err := app.client.streaming.CreateBackup(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -121,10 +107,10 @@ func (app *app) adminReadOnlyCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch args[0] {
 			case "on", "off":
-				body := readOnlyRequest{Enabled: args[0] == "on"}
-				return app.call(cmd, http.MethodPost, "/api/admin/readonly", body)
+				body := lyraapi.ReadOnlyRequest{Enabled: args[0] == "on"}
+				return app.show(cmd)(app.client.api.SetReadOnly(cmd.Context(), body))
 			case "status":
-				return app.call(cmd, http.MethodGet, "/api/admin/status", nil)
+				return app.show(cmd)(app.client.api.GetStatus(cmd.Context()))
 			}
 			return UsageError{fmt.Errorf("readonly takes on, off or status, not %q", args[0])}
 		},
@@ -137,7 +123,7 @@ func (app *app) adminStatusCommand() *cobra.Command {
 		Short: "Show read-only mode and the last backup",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/admin/status", nil)
+			return app.show(cmd)(app.client.api.GetStatus(cmd.Context()))
 		},
 	}
 }
@@ -154,12 +140,8 @@ func (app *app) adminStorageCheckCommand() *cobra.Command {
 }
 
 func (app *app) checkStorage(cmd *cobra.Command) error {
-	output, err := app.client.request(cmd.Context(), http.MethodGet, "/api/admin/storage-check", nil)
+	result, output, err := decode[lyraapi.StorageCheck](app.client.api.CheckStorage(cmd.Context()))
 	if err != nil {
-		return err
-	}
-	var result storageCheckResult
-	if err := json.Unmarshal(output, &result); err != nil {
 		return err
 	}
 	if _, err := cmd.OutOrStdout().Write(output); err != nil {
@@ -181,7 +163,7 @@ Lyra is read-only while it runs (pushes and other writes get 503), then returns 
 previous mode. Prints the blob count before and after, and the bytes freed.`,
 		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodPost, "/api/admin/registry-gc", nil)
+			return app.show(cmd)(app.client.api.CollectRegistry(cmd.Context()))
 		},
 	}
 }
