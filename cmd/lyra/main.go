@@ -206,6 +206,13 @@ func addActionsFlags(command *cobra.Command, config *server.Config) {
 		envOr("LYRA_DEFAULT_ACTIONS_URL", "https://data.forgejo.org"),
 		"where short action names like actions/checkout@v4 are fetched from (LYRA_DEFAULT_ACTIONS_URL)",
 	)
+	flags.StringSliceVar(
+		&config.ActionsOwners,
+		"actions-owners",
+		splitEnv("LYRA_ACTIONS_OWNERS"),
+		"owners whose repositories hold actions: cloned without authentication, and they run no workflows "+
+			"(LYRA_ACTIONS_OWNERS, comma-separated)",
+	)
 	flags.StringVar(
 		&config.SecretsKeyFile,
 		"secrets-key-file",
@@ -408,7 +415,8 @@ func runHook(ctx context.Context, name string) error {
 	if _, err := db.AddEvent(ctx, "push", repo, actor, server.PushEvent{Refs: updates}); err != nil {
 		return err
 	}
-	messages, err := server.ProcessPush(ctx, db, repos.Git{}, ".", repo, actor, updates)
+	queueRuns := os.Getenv("LYRA_ACTIONS_REPO") != "true"
+	messages, err := server.ProcessPush(ctx, db, repos.Git{}, ".", repo, actor, updates, queueRuns)
 	for _, message := range messages {
 		fmt.Println("lyra: " + message)
 	}

@@ -51,7 +51,8 @@ exist.
   key makes existing secrets unreadable, and jobs that use them fail with
   `lyra: the job couldn't start`.
 - **Short `uses:` names** resolve against `--default-actions-url`
-  (default `https://data.forgejo.org`).
+  (default `https://data.forgejo.org`). See [Hosting actions](#hosting-actions) to resolve
+  them against Lyra.
 - **Logs** are kept in the database while a job runs, then stored as one object per job
   attempt.
 - **Dead runners:** a running job whose runner hasn't reported for `--job-stale-after`
@@ -73,3 +74,20 @@ the pull request's head commit, with a `state` of `none`, `pending`, `success` o
 - When no workflow ran for the head at all, `lyra pr wait --for checks` returns at once with
   state `none`.
 - The branch rule `--require-checks` blocks merging until the state is `success`.
+
+## Hosting actions
+
+`--actions-owners` (`LYRA_ACTIONS_OWNERS`, comma-separated, default none) names owners
+whose repositories hold actions, such as `actions` for mirrors of upstream actions:
+
+- **Anonymous clones:** anyone can clone and fetch their repositories over Git HTTP,
+  because the runner clones actions without credentials. Pushes, the API and the web UI
+  still need [authentication](authentication.md).
+- **No workflows:** pushes, merges, pull requests, releases and schedules in their
+  repositories queue no runs, so a mirrored action's own `.github/workflows` don't run.
+  `lyra workflow run` is refused.
+
+To fetch short `uses:` names from Lyra, set `--default-actions-url` to the URL runners reach
+Lyra at, such as `http://lyra.lyra.svc.cluster.local:8080`, and keep each action at the
+same `owner/name` as upstream: `uses: actions/checkout@v4` then clones
+`actions/checkout` from Lyra at `v4`.

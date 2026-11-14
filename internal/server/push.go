@@ -19,12 +19,13 @@ type RefUpdate struct {
 }
 
 type push struct {
-	db      *store.Store
-	git     repos.Git
-	dir     string
-	repo    string
-	actor   store.Actor
-	updates []RefUpdate
+	db        *store.Store
+	git       repos.Git
+	dir       string
+	repo      string
+	actor     store.Actor
+	updates   []RefUpdate
+	queueRuns bool
 }
 
 type branchUpdate struct {
@@ -88,6 +89,9 @@ func (work push) syncPull(ctx context.Context, pull store.Pull, head string) ([]
 		return nil, err
 	}
 	messages := []string{fmt.Sprintf("updated pull request #%d", pull.Number)}
+	if !work.queueRuns {
+		return messages, nil
+	}
 	pull.HeadSHA, pull.BaseSHA = head, baseSHA
 	queued := QueuePullRuns(ctx, work.db, work.git, work.dir, work.repo, work.actor, pull, "synchronize")
 	return append(messages, queued...), nil
@@ -197,8 +201,9 @@ func ProcessPush(
 	dir, repo string,
 	actor store.Actor,
 	updates []RefUpdate,
+	queueRuns bool,
 ) ([]string, error) {
-	work := push{db: db, git: git, dir: dir, repo: repo, actor: actor, updates: updates}
+	work := push{db: db, git: git, dir: dir, repo: repo, actor: actor, updates: updates, queueRuns: queueRuns}
 	defaultBranch := git.DefaultBranch(ctx, dir)
 	messages, syncedHeads, err := work.syncPulls(ctx)
 	if err != nil {
@@ -214,7 +219,9 @@ func ProcessPush(
 	if err != nil {
 		return messages, err
 	}
-	messages = append(messages, QueueRuns(ctx, db, git, dir, repo, actor, updates)...)
+	if queueRuns {
+		messages = append(messages, QueueRuns(ctx, db, git, dir, repo, actor, updates)...)
+	}
 	for _, sha := range syncedHeads {
 		if err := db.AnnounceChecks(ctx, repo, sha); err != nil {
 			return messages, err

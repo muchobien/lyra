@@ -135,10 +135,26 @@ func (s *Server) identify(r *http.Request) (*identity, error) {
 		return &identity{actor: store.Actor{User: login, Via: "tailscale"}, scope: scopeAdmin}, nil
 	}
 	secret := requestSecret(r)
-	if secret == "" {
+	if secret != "" {
+		return s.secretIdentity(r.Context(), secret)
+	}
+	owner, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	repo, service, _ := strings.Cut(rest, "/")
+	upload := (service == "info/refs" && r.URL.Query().Get("service") == "git-upload-pack") ||
+		(service == "git-upload-pack" && r.Method == http.MethodPost)
+	if !upload || !slices.Contains(s.config.ActionsOwners, owner) {
 		return nil, nil
 	}
-	return s.secretIdentity(r.Context(), secret)
+	return &identity{
+		actor: store.Actor{User: "anonymous", Via: "anonymous"},
+		scope: scopeRead,
+		repos: []string{owner + "/" + strings.TrimSuffix(repo, ".git")},
+	}, nil
+}
+
+func (s *Server) actionsRepo(repo string) bool {
+	owner, _, _ := strings.Cut(repo, "/")
+	return slices.Contains(s.config.ActionsOwners, owner)
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {

@@ -109,6 +109,9 @@ func (s *Server) handleDispatch(r *http.Request, input *dispatchWorkflowInput) (
 	if err != nil {
 		return nil, err
 	}
+	if s.actionsRepo(repo.Name) {
+		return nil, badRequest("repositories of actions owners run no workflows")
+	}
 	request := input.Body
 	dir := s.repoDir(repo.Name)
 	if request.Ref == "" {
@@ -157,7 +160,7 @@ func matchesRelease(event *jobparser.Event, prerelease bool) bool {
 }
 
 func (s *Server) queueRelease(r *http.Request, release store.Release) []string {
-	if release.Draft || release.Commit == "" {
+	if release.Draft || release.Commit == "" || s.actionsRepo(release.Repo) {
 		return nil
 	}
 	_, messages := s.queue(release.Repo, identityFrom(r).actor).trigger(r.Context(), trigger{
@@ -267,6 +270,8 @@ func (s *Server) queueScheduled(ctx context.Context, minute time.Time) {
 		return
 	}
 	for _, repo := range repos {
-		s.queueRepoSchedules(ctx, repo.Name, minute)
+		if !s.actionsRepo(repo.Name) {
+			s.queueRepoSchedules(ctx, repo.Name, minute)
+		}
 	}
 }

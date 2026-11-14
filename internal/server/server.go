@@ -45,6 +45,7 @@ type Config struct {
 	RegistryHost      string
 	ActionsURL        string
 	DefaultActionsURL string
+	ActionsOwners     []string
 	SecretsKeyFile    string
 	JobStaleAfter     time.Duration
 	ActionsRetention  time.Duration
