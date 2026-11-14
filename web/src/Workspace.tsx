@@ -18,8 +18,8 @@ import { type Actor, type Checks, type Commit } from "./api";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
-type StatusProps = { value: string; children?: ReactNode };
-export function Status({ value, children }: StatusProps) {
+type StatusProps = { value: string; issue?: boolean; children?: ReactNode };
+export function Status({ value, issue, children }: StatusProps) {
   const icons = {
     success: CircleCheck,
     failure: CircleX,
@@ -36,7 +36,8 @@ export function Status({ value, children }: StatusProps) {
     pending: Clock3,
     skipped: Minus,
   };
-  const Icon = icons[value as keyof typeof icons] || CircleDot;
+  const Icon =
+    (issue && value === "open" ? CircleDot : icons[value as keyof typeof icons]) || CircleDot;
   return (
     <span className={styles.status} data-state={value}>
       <Icon size={14} />

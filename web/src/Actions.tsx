@@ -678,7 +678,8 @@ export function RunDetail({ number }: RunDetailProps) {
             <strong>{selected?.name || "Jobs"}</strong>
             {selected && (
               <span className={common.meta}>
-                Attempt {selected.attempt} · {selected.runs_on.join(", ")}
+                {selected.attempt > 0 && `Attempt ${selected.attempt} · `}
+                {selected.runs_on.join(", ")}
               </span>
             )}
             <span className={common.grow} />

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Copy, Check } from "lucide-react";
+import { APIError } from "./api";
 import styles from "./Controls.module.css";
 
 type ScrollNavigationProps = {
@@ -71,9 +72,11 @@ export function ErrorNotice({ error, retry, title = "Couldn’t load this view" 
     <section className={styles.notice} role="alert">
       <h2>{title}</h2>
       <p>{error.message}</p>
-      <button className={styles.button} type="button" onClick={retry}>
-        Retry
-      </button>
+      {!(error instanceof APIError && [401, 403, 404, 410].includes(error.status)) && (
+        <button className={styles.button} type="button" onClick={retry}>
+          Retry
+        </button>
+      )}
     </section>
   );
 }

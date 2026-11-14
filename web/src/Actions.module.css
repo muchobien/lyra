@@ -139,10 +139,7 @@
   background: light-dark(#fbfafc, #111117);
 }
 .logText {
-  font:
-    12px/1.9 ui-monospace,
-    SFMono-Regular,
-    monospace;
+  font: 12px/1.9 var(--mono);
   white-space: pre;
   padding: 1rem 1.2rem;
   margin: 0;
@@ -242,7 +239,8 @@
     display: none;
   }
   .mobileJobs {
-    display: block;
+    display: flex;
+    flex-shrink: 0;
     min-width: 6rem;
     max-width: 55%;
   }

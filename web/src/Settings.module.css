@@ -35,9 +35,7 @@
   background: var(--raised);
   border: 1px solid var(--soft-border);
   border-radius: 0.4rem;
-  font:
-    0.75rem/1.7 ui-monospace,
-    monospace;
+  font: 0.75rem/1.7 var(--mono);
 }
 .labelColor {
   width: 0.85rem;

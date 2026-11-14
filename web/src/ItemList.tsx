@@ -247,7 +247,7 @@ export function ItemList({ kind }: ItemListProps) {
                   )}
                 </div>
               </div>
-              <Status value={item.state} />
+              <Status value={item.state} issue={kind === "issues"} />
               {item.comment_count > 0 && (
                 <span className={styles.meta} aria-label={`${item.comment_count} comments`}>
                   <MessageSquare size={13} /> {item.comment_count}

@@ -118,9 +118,7 @@
   }
 }
 .sha {
-  font:
-    0.65rem ui-monospace,
-    monospace;
+  font: 0.65rem var(--mono);
   color: var(--muted);
 }
 .verified {
@@ -238,16 +236,13 @@
     border: 1px solid var(--border);
     padding: 0.5rem 0.75rem;
   }
-  & :global(.markdown) code {
+  & :global(.markdown) :not(pre) > code {
     font-size: 0.8em;
   }
   & :global(.chroma) {
     background: var(--surface) !important;
     margin: 0;
-    font:
-      12px/1.8 ui-monospace,
-      SFMono-Regular,
-      monospace;
+    font: 12px/1.8 var(--mono);
   }
   & :global(.lntable) {
     border: 0;
@@ -306,7 +301,7 @@
   font-size: 0.9rem;
   margin-bottom: 0.65rem;
   & strong {
-    font-family: ui-monospace, monospace;
+    font-family: var(--mono);
   }
   & span {
     background: color-mix(in oklch, var(--success) 12%, transparent);

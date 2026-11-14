@@ -15,7 +15,8 @@
   }
   button,
   input,
-  select {
+  select,
+  textarea {
     font: inherit;
     color: inherit;
   }
@@ -46,6 +47,7 @@
     --accent-surface: light-dark(#eee7fa, #30273f);
     --success: light-dark(#26744f, #83d2ac);
     --shadow: 0 12px 40px light-dark(#33234419, #0006);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   :root[data-theme="light"] {
     color-scheme: light;
@@ -78,7 +80,7 @@
   }
   code,
   kbd {
-    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-family: var(--mono);
   }
   button,
   a,

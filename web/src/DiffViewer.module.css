@@ -42,9 +42,7 @@
     align-items: center;
     padding: 0.55rem 0.6rem;
     border-radius: 0.4rem;
-    font:
-      0.7rem/1.7 ui-monospace,
-      monospace;
+    font: 0.7rem/1.7 var(--mono);
     color: var(--muted);
     & span {
       overflow-wrap: anywhere;
@@ -102,9 +100,7 @@
 .fileStats {
   display: flex;
   gap: 0.5rem;
-  font:
-    0.65rem ui-monospace,
-    monospace;
+  font: 0.65rem var(--mono);
   white-space: nowrap;
   & span:first-child {
     color: var(--success);
@@ -128,9 +124,7 @@
   padding: 0.4rem 1rem 0.4rem 5.5rem;
   color: var(--muted);
   background: var(--raised);
-  font:
-    11px/1.8 ui-monospace,
-    monospace;
+  font: 11px/1.8 var(--mono);
   white-space: pre;
   min-width: max-content;
 }
@@ -139,9 +133,7 @@
   grid-template-columns: 2.8rem 2.8rem minmax(max-content, 1fr);
   grid-template-areas: "oldnumber newnumber code";
   min-width: 100%;
-  font:
-    12px/1.85 ui-monospace,
-    monospace;
+  font: 12px/1.85 var(--mono);
   background: var(--surface);
   &[data-kind="add"] {
     background: light-dark(#e8f5ed, #183027);
