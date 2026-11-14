@@ -1,19 +1,10 @@
 package cli
 
 import (
-	"net/http"
-	"net/url"
-
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type variableSetRequest struct {
-	Value string `json:"value"`
-}
-
-func variablePath(repo, name string) string {
-	return repoAPI(repo) + "/variables/" + url.PathEscape(name)
-}
 
 func (app *app) variableCommand() *cobra.Command {
 	variable := &cobra.Command{Use: "variable", Short: "Manage Actions variables of a repository"}
@@ -27,8 +18,9 @@ func (app *app) variableSetCommand() *cobra.Command {
 		Short: "Set a variable; jobs read it as ${{ vars.NAME }}",
 		Args:  ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := variableSetRequest{Value: args[2]}
-			return app.call(cmd, http.MethodPut, variablePath(args[0], args[1]), body)
+			owner, repo := splitRepo(args[0])
+			body := lyraapi.ValueRequest{Value: args[2]}
+			return app.show(cmd)(app.client.api.SetVariable(cmd.Context(), owner, repo, args[1], body))
 		},
 	}
 }
@@ -39,7 +31,8 @@ func (app *app) variableListCommand() *cobra.Command {
 		Short: "List variables with their values",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/variables", nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListVariables(cmd.Context(), owner, repo))
 		},
 	}
 }
@@ -50,7 +43,8 @@ func (app *app) variableDeleteCommand() *cobra.Command {
 		Short: "Delete a variable",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, variablePath(args[0], args[1]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.DeleteVariable(cmd.Context(), owner, repo, args[1]))
 		},
 	}
 }

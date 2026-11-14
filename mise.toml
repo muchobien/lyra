@@ -4,6 +4,7 @@ go = "1.27.4"
 golangci-lint = "2.15.0"
 goreleaser = "2.20.2"
 jactionlint = "2.5.0"
+"go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" = "2.8.2"
 packslip = { version = "1.11.4", identity_prefix = "https://github.com/jdx/packslip/.github/workflows/release.yml@", issuer = "https://token.actions.githubusercontent.com", list_identity_prefix = "https://github.com/jdx/packslip/.github/workflows/packslip-releases.yml@" }
 sqlc = "1.31.1"
 
@@ -40,12 +41,27 @@ description = "Fail if the generated queries are out of date"
 run = "sqlc diff"
 
 [tasks.openapi]
-description = "Write the API's OpenAPI document to api/openapi.yaml"
-run = "go run ./cmd/lyra openapi > api/openapi.yaml"
+description = "Write api/openapi.yaml and generate the CLI's API client from it"
+run = """
+set -e
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT
+go run ./cmd/openapi > api/openapi.yaml
+go run ./cmd/openapi -3.0 > "$dir/openapi.yaml"
+oapi-codegen -config internal/cli/lyraapi/oapi-codegen.yaml -o internal/cli/lyraapi/client.gen.go "$dir/openapi.yaml"
+"""
 
 [tasks."openapi:check"]
-description = "Fail if api/openapi.yaml is out of date"
-run = "go run ./cmd/lyra openapi | diff -u api/openapi.yaml -"
+description = "Fail if api/openapi.yaml or the generated API client is out of date"
+run = """
+set -e
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT
+go run ./cmd/openapi | diff -u api/openapi.yaml -
+go run ./cmd/openapi -3.0 > "$dir/openapi.yaml"
+oapi-codegen -config internal/cli/lyraapi/oapi-codegen.yaml -o "$dir/client.gen.go" "$dir/openapi.yaml"
+diff -u internal/cli/lyraapi/client.gen.go "$dir/client.gen.go"
+"""
 
 [tasks.dist]
 description = "Build the release archives into dist/ without publishing; pass --snapshot when HEAD is not a tag"

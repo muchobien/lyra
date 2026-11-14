@@ -26,8 +26,11 @@ The tests build the binary at run time, so Go's test cache doesn't see server ch
   it's out of date.
 - **API:** routes are [huma](https://huma.rocks) operations in `internal/server/openapi.go`,
   and huma builds the OpenAPI document from them and the Go types of their inputs and
-  outputs. After changing the API, run `mise run openapi` and commit `api/openapi.yaml`.
-  `mise run openapi:check` fails when it's out of date.
+  outputs. The CLI calls the API through `internal/cli/lyraapi`, a client that
+  [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) generates from that document,
+  so a server change that breaks the CLI fails to compile. After changing the API, run
+  `mise run openapi` and commit `api/openapi.yaml` and `internal/cli/lyraapi/client.gen.go`.
+  `mise run openapi:check` fails when either is out of date.
 
 ## Image
 

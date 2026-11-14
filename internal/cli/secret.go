@@ -2,20 +2,12 @@ package cli
 
 import (
 	"io"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type secretSetRequest struct {
-	Value string `json:"value"`
-}
-
-func secretPath(repo, name string) string {
-	return repoAPI(repo) + "/secrets/" + url.PathEscape(name)
-}
 
 func (app *app) secretCommand() *cobra.Command {
 	secret := &cobra.Command{Use: "secret", Short: "Manage Actions secrets of a repository (admin)"}
@@ -36,8 +28,9 @@ upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
 			if err != nil {
 				return err
 			}
-			body := secretSetRequest{Value: strings.TrimSuffix(string(value), "\n")}
-			return app.call(cmd, http.MethodPut, secretPath(args[0], args[1]), body)
+			owner, repo := splitRepo(args[0])
+			body := lyraapi.ValueRequest{Value: strings.TrimSuffix(string(value), "\n")}
+			return app.show(cmd)(app.client.api.SetSecret(cmd.Context(), owner, repo, args[1], body))
 		},
 	}
 }
@@ -48,7 +41,8 @@ func (app *app) secretListCommand() *cobra.Command {
 		Short: "List secret names, never their values",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/secrets", nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListSecrets(cmd.Context(), owner, repo))
 		},
 	}
 }
@@ -59,7 +53,8 @@ func (app *app) secretDeleteCommand() *cobra.Command {
 		Short: "Delete a secret",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodDelete, secretPath(args[0], args[1]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.DeleteSecret(cmd.Context(), owner, repo, args[1]))
 		},
 	}
 }

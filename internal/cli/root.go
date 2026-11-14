@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"net/http"
-
 	"github.com/spf13/cobra"
 )
 
@@ -59,21 +57,13 @@ lyra owner create.`,
 	return root
 }
 
-func (app *app) call(cmd *cobra.Command, method, path string, body any) error {
-	output, err := app.client.request(cmd.Context(), method, path, body)
-	if err != nil {
-		return err
-	}
-	return app.emit(cmd, output)
-}
-
 func (app *app) meCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "me",
 		Short: "Show the authenticated actor and scope",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/me", nil)
+			return app.show(cmd)(app.client.api.GetMe(cmd.Context()))
 		},
 	}
 }
@@ -86,7 +76,7 @@ func (app *app) signingKeyCommand() *cobra.Command {
 			"and an allowed_signers line for git verify-commit.",
 		Args: ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/signing-key", nil)
+			return app.show(cmd)(app.client.api.GetSigningKey(cmd.Context()))
 		},
 	}
 }

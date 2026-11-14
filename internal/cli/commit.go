@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"fmt"
-	"net/http"
-	"net/url"
-
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
 func (app *app) commitCommand() *cobra.Command {
@@ -16,21 +14,22 @@ func (app *app) commitCommand() *cobra.Command {
 
 func (app *app) commitListCommand() *cobra.Command {
 	var ref string
-	var limit int
+	var limit int64
 	list := &cobra.Command{
 		Use:   "list <repo>",
 		Short: "List commits with signature status",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query := url.Values{"limit": {fmt.Sprint(limit)}}
+			params := lyraapi.ListCommitsParams{Limit: &limit}
 			if ref != "" {
-				query.Set("ref", ref)
+				params.Ref = &ref
 			}
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/commits?"+query.Encode(), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListCommits(cmd.Context(), owner, repo, &params))
 		},
 	}
 	list.Flags().StringVar(&ref, "ref", "", "branch, tag or commit (default: the default branch)")
-	list.Flags().IntVar(&limit, "limit", 30, "maximum number of commits")
+	list.Flags().Int64Var(&limit, "limit", 30, "maximum number of commits")
 	return list
 }
 
@@ -40,7 +39,8 @@ func (app *app) commitShowCommand() *cobra.Command {
 		Short: "Show one commit, verified with git verify-commit",
 		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/commits/"+url.PathEscape(args[1]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.GetCommit(cmd.Context(), owner, repo, args[1]))
 		},
 	}
 }

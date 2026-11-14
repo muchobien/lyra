@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,22 +11,22 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
 var ErrTimeout = errors.New("timeout")
 
 type client struct {
-	baseURL   string
-	token     string
-	agent     string
-	session   string
-	http      *http.Client
-	streaming *http.Client
+	api       *lyraapi.Client
+	streaming *lyraapi.Client
 }
 
 func newClient() *client {
@@ -35,51 +34,40 @@ func newClient() *client {
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	return &client{
-		baseURL:   baseURL,
-		token:     os.Getenv("LYRA_TOKEN"),
-		agent:     os.Getenv("LYRA_AGENT"),
-		session:   os.Getenv("LYRA_SESSION"),
-		http:      &http.Client{Timeout: 60 * time.Second},
-		streaming: http.DefaultClient,
-	}
-}
-
-func (client *client) newRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
-	var reader io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body, escaped)
-		if err != nil {
-			return nil, err
+	token := os.Getenv("LYRA_TOKEN")
+	agent := os.Getenv("LYRA_AGENT")
+	session := os.Getenv("LYRA_SESSION")
+	headers := lyraapi.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		reader = bytes.NewReader(encoded)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, client.baseURL+path, reader)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if client.token != "" {
-		req.Header.Set("Authorization", "Bearer "+client.token)
-	}
-	if client.agent != "" {
-		req.Header.Set("Lyra-Agent", client.agent)
-	}
-	if client.session != "" {
-		req.Header.Set("Lyra-Session", client.session)
-	}
-	return req, nil
+		if agent != "" {
+			req.Header.Set("Lyra-Agent", agent)
+		}
+		if session != "" {
+			req.Header.Set("Lyra-Session", session)
+		}
+		return nil
+	})
+	api, _ := lyraapi.NewClient(baseURL, lyraapi.WithHTTPClient(&http.Client{Timeout: 60 * time.Second}), headers)
+	streaming, _ := lyraapi.NewClient(baseURL, lyraapi.WithHTTPClient(http.DefaultClient), headers)
+	return &client{api: api, streaming: streaming}
 }
 
-func (client *client) request(ctx context.Context, method, path string, body any) ([]byte, error) {
-	req, err := client.newRequest(ctx, method, path, body)
-	if err != nil {
-		return nil, err
+func splitRepo(name string) (string, string) {
+	owner, repo, _ := strings.Cut(name, "/")
+	return owner, repo
+}
+
+func parseNumber(value string) (int64, error) {
+	number, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || number <= 0 {
+		return 0, UsageError{fmt.Errorf("%q isn't a number", value)}
 	}
-	response, err := client.http.Do(req)
+	return number, nil
+}
+
+func read(response *http.Response, err error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +76,25 @@ func (client *client) request(ctx context.Context, method, path string, body any
 		return nil, responseError(response)
 	}
 	return io.ReadAll(response.Body)
+}
+
+func decode[T any](response *http.Response, err error) (T, []byte, error) {
+	var value T
+	output, err := read(response, err)
+	if err != nil {
+		return value, nil, err
+	}
+	return value, output, json.Unmarshal(output, &value)
+}
+
+func (app *app) show(cmd *cobra.Command) func(*http.Response, error) error {
+	return func(response *http.Response, err error) error {
+		output, err := read(response, err)
+		if err != nil {
+			return err
+		}
+		return app.emit(cmd, output)
+	}
 }
 
 type apiError struct {
@@ -116,23 +123,26 @@ func responseError(response *http.Response) error {
 	return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
 }
 
-func (client *client) waitForEvent(ctx context.Context, path string, timeout time.Duration) ([]byte, error) {
+func (client *client) waitForEvent(
+	ctx context.Context,
+	params lyraapi.StreamEventsParams,
+	timeout time.Duration,
+) ([]byte, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+	accept := lyraapi.RequestEditorFn(func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Accept", "text/event-stream")
+		return nil
+	})
 	lastID := ""
 	for {
-		req, err := client.newRequest(ctx, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Accept", "text/event-stream")
 		if lastID != "" {
-			req.Header.Set("Last-Event-ID", lastID)
+			params.LastEventID = &lastID
 		}
-		response, err := client.streaming.Do(req)
+		response, err := client.streaming.StreamEvents(ctx, &params, accept)
 		if err == nil {
 			if response.StatusCode >= 400 && response.StatusCode < 500 {
 				defer response.Body.Close()
@@ -173,7 +183,13 @@ func readEvent(response *http.Response, lastID string) ([]byte, string) {
 	return nil, lastID
 }
 
-func (client *client) uploadAsset(ctx context.Context, path, file string, clobber bool) ([]byte, error) {
+func (client *client) uploadAsset(
+	ctx context.Context,
+	repo string,
+	id int64,
+	file string,
+	clobber bool,
+) ([]byte, error) {
 	handle, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -183,39 +199,28 @@ func (client *client) uploadAsset(ctx context.Context, path, file string, clobbe
 	if err != nil {
 		return nil, err
 	}
-	query := url.Values{"name": {filepath.Base(file)}}
-	if clobber {
-		query.Set("clobber", "true")
-	}
-	req, err := client.newRequest(ctx, http.MethodPost, path+"/assets?"+query.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Body = handle
-	req.ContentLength = info.Size()
 	contentType := mime.TypeByExtension(filepath.Ext(file))
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	req.Header.Set("Content-Type", contentType)
-	response, err := client.streaming.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode >= 400 {
-		return nil, responseError(response)
-	}
-	return io.ReadAll(response.Body)
+	length := lyraapi.RequestEditorFn(func(_ context.Context, req *http.Request) error {
+		req.ContentLength = info.Size()
+		return nil
+	})
+	owner, name := splitRepo(repo)
+	params := lyraapi.UploadAssetParams{Name: filepath.Base(file), Clobber: &clobber}
+	return read(client.streaming.UploadAssetWithBody(ctx, owner, name, id, &params, contentType, handle, length))
 }
 
-func (client *client) downloadAsset(ctx context.Context, path, file, sha string) error {
-	req, err := client.newRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Del("Accept")
-	response, err := client.streaming.Do(req)
+func (client *client) downloadAsset(
+	ctx context.Context,
+	repo string,
+	id int64,
+	asset lyraapi.Asset,
+	file string,
+) error {
+	owner, name := splitRepo(repo)
+	response, err := client.streaming.DownloadAsset(ctx, owner, name, id, asset.Name)
 	if err != nil {
 		return err
 	}
@@ -236,8 +241,8 @@ func (client *client) downloadAsset(ctx context.Context, path, file, sha string)
 	if err != nil {
 		return err
 	}
-	if got := hex.EncodeToString(hash.Sum(nil)); got != sha {
-		return fmt.Errorf("sha256 is %s, expected %s", got, sha)
+	if got := hex.EncodeToString(hash.Sum(nil)); got != asset.Sha256 {
+		return fmt.Errorf("sha256 is %s, expected %s", got, asset.Sha256)
 	}
 	return os.Rename(temporary.Name(), file)
 }

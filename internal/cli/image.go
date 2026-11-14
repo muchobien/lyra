@@ -23,7 +23,8 @@ func (app *app) imageListCommand() *cobra.Command {
 		Short: "List a repository's image tags with their digests and pull references",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/images", nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListImages(cmd.Context(), owner, repo))
 		},
 	}
 }
@@ -49,8 +50,18 @@ in storage until lyra admin registry-gc frees them.`,
 				}
 				name, reference = args[0][:colon], args[0][colon+1:]
 			}
-			path := "/v2/" + name + "/manifests/" + url.PathEscape(reference)
-			if _, err := app.client.request(cmd.Context(), http.MethodDelete, path, nil); err != nil {
+			api := app.client.api
+			path := api.Server + "v2/" + name + "/manifests/" + url.PathEscape(reference)
+			req, err := http.NewRequestWithContext(cmd.Context(), http.MethodDelete, path, nil)
+			if err != nil {
+				return err
+			}
+			for _, edit := range api.RequestEditors {
+				if err := edit(cmd.Context(), req); err != nil {
+					return err
+				}
+			}
+			if _, err := read(api.Client.Do(req)); err != nil {
 				return err
 			}
 			return app.emit(cmd, []byte(`{"deleted": `+strconv.Quote(args[0])+"}\n"))

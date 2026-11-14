@@ -2,22 +2,11 @@ package cli
 
 import (
 	"errors"
-	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
-
-type repoCreateRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-func repoAPI(name string) string {
-	owner, repo, _ := strings.Cut(name, "/")
-	return "/api/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo)
-}
 
 func (app *app) repoCommand() *cobra.Command {
 	repo := &cobra.Command{Use: "repo", Short: "Manage repositories"}
@@ -37,8 +26,8 @@ func (app *app) repoCreateCommand() *cobra.Command {
 		Short: "Create a repository under an existing owner",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := repoCreateRequest{Name: args[0], Description: description}
-			return app.call(cmd, http.MethodPost, "/api/repos", body)
+			body := lyraapi.CreateRepoRequest{Name: args[0], Description: &description}
+			return app.show(cmd)(app.client.api.CreateRepo(cmd.Context(), body))
 		},
 	}
 	create.Flags().StringVar(&description, "description", "", "repository description")
@@ -51,7 +40,7 @@ func (app *app) repoListCommand() *cobra.Command {
 		Short: "List repositories",
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, "/api/repos", nil)
+			return app.show(cmd)(app.client.api.ListRepos(cmd.Context()))
 		},
 	}
 }
@@ -62,7 +51,8 @@ func (app *app) repoGetCommand() *cobra.Command {
 		Short: "Show a repository with its branches and clone URL",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.GetRepo(cmd.Context(), owner, repo))
 		},
 	}
 }
@@ -78,7 +68,8 @@ func (app *app) repoDeleteCommand() *cobra.Command {
 				message := "repo delete removes the repository permanently; pass --yes"
 				return UsageError{errors.New(message)}
 			}
-			return app.call(cmd, http.MethodDelete, repoAPI(args[0]), nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.DeleteRepo(cmd.Context(), owner, repo))
 		},
 	}
 	remove.Flags().BoolVar(&yes, "yes", false, "confirm permanent deletion")

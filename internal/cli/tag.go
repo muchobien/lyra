@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"net/http"
-
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +16,8 @@ func (app *app) tagListCommand() *cobra.Command {
 		Short: "List tags, verified with git verify-tag",
 		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.call(cmd, http.MethodGet, repoAPI(args[0])+"/tags", nil)
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListTags(cmd.Context(), owner, repo))
 		},
 	}
 }
