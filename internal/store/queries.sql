@@ -347,6 +347,14 @@ SELECT * FROM tasks WHERE token_hash = ? AND status = 'running';
 -- name: ListJobTasks :many
 SELECT * FROM tasks WHERE job_id = ? ORDER BY attempt;
 
+-- name: ListRepoRunJobs :many
+SELECT jobs.* FROM jobs JOIN runs ON runs.id = jobs.run_id
+WHERE runs.repo = ? AND runs.number >= ? ORDER BY jobs.id;
+
+-- name: ListRepoRunTasks :many
+SELECT tasks.* FROM tasks JOIN jobs ON jobs.id = tasks.job_id JOIN runs ON runs.id = jobs.run_id
+WHERE runs.repo = ? AND runs.number >= ? ORDER BY tasks.job_id, tasks.attempt;
+
 -- name: UpdateTask :exec
 UPDATE tasks SET status = ?, steps = ?, stopped_at = ?, updated_at = ? WHERE id = ?;
 

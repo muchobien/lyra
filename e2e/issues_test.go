@@ -3,9 +3,8 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"maps"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -19,25 +18,12 @@ type issueResult struct {
 	Comments []store.Comment `json:"comments"`
 }
 
-func postForm(test *testing.T, target string, form url.Values, headers map[string]string) (int, string, string) {
+func browserCall(test *testing.T, method, target, body string, headers map[string]string) (int, string) {
 	test.Helper()
-	request, err := http.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
-	if err != nil {
-		test.Fatal(err)
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("Tailscale-User-Login", login)
-	for name, value := range headers {
-		request.Header.Set(name, value)
-	}
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	response, err := client.Do(request)
-	if err != nil {
-		test.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, _ := io.ReadAll(response.Body)
-	return response.StatusCode, response.Header.Get("Location"), string(body)
+	all := tailnet()
+	maps.Copy(all, headers)
+	status, data := call(test, method, target, all, body)
+	return status, string(data)
 }
 
 func TestIssues(test *testing.T) {
@@ -161,26 +147,27 @@ func TestIssues(test *testing.T) {
 	}
 
 	sameOrigin := map[string]string{"Sec-Fetch-Site": "same-origin"}
-	status, location, _ := postForm(test, srv.url+"/acme/demo/issues", url.Values{"title": {"From the browser"}, "body": {"**bold** <script>alert(1)</script> [x](javascript:alert(1))"}}, sameOrigin)
-	if status != http.StatusSeeOther || location != "/acme/demo/issues/3" {
-		test.Fatalf("UI create: HTTP %d location %q", status, location)
+	issues := srv.url + "/api/repos/acme/demo/issues"
+	status, created := browserCall(test, http.MethodPost, issues, `{"title":"From the browser","body":"**bold** <script>alert(1)</script> [x](javascript:alert(1))"}`, sameOrigin)
+	if status != http.StatusCreated || !strings.Contains(compactJSON(test, []byte(created)), `"number":3`) {
+		test.Fatalf("UI create: HTTP %d %s", status, created)
 	}
 	for _, headers := range []map[string]string{{"Sec-Fetch-Site": "cross-site"}, {"Origin": "http://evil.example"}} {
-		if status, _, _ := postForm(test, srv.url+"/acme/demo/issues", url.Values{"title": {"Forged"}}, headers); status != http.StatusForbidden {
-			test.Errorf("cross-origin form post with %v: HTTP %d, want 403", headers, status)
+		if status, _ := browserCall(test, http.MethodPost, issues, `{"title":"Forged"}`, headers); status != http.StatusForbidden {
+			test.Errorf("cross-origin post with %v: HTTP %d, want 403", headers, status)
 		}
 	}
-	if status, location, _ := postForm(test, srv.url+"/acme/demo/issues/3/comments", url.Values{"body": {"From the *browser*"}}, sameOrigin); status != http.StatusSeeOther || location != "/acme/demo/issues/3" {
-		test.Errorf("UI comment: HTTP %d location %q", status, location)
+	if status, body := browserCall(test, http.MethodPost, issues+"/3/comments", `{"body":"From the *browser*"}`, sameOrigin); status != http.StatusCreated {
+		test.Errorf("UI comment: HTTP %d %s", status, body)
 	}
 	lyraJSON(test, srv, token, &label, "label", "create", "acme/demo", "ui")
-	if status, _, body := postForm(test, srv.url+"/acme/demo/issues/3/edit", url.Values{"labels": {"ui"}, "assignees": {"@me, claude"}}, sameOrigin); status != http.StatusSeeOther {
+	if status, body := browserCall(test, http.MethodPatch, issues+"/3", `{"add_labels":["ui"],"add_assignees":["@me","claude"]}`, sameOrigin); status != http.StatusOK {
 		test.Errorf("UI edit: HTTP %d %s", status, body)
 	}
-	if status, _, _ := postForm(test, srv.url+"/acme/demo/issues/3/edit", url.Values{"labels": {"missing"}}, sameOrigin); status != http.StatusBadRequest {
+	if status, _ := browserCall(test, http.MethodPatch, issues+"/3", `{"add_labels":["missing"]}`, sameOrigin); status != http.StatusBadRequest {
 		test.Errorf("UI edit with unknown label: HTTP %d, want 400", status)
 	}
-	if status, _, _ := postForm(test, srv.url+"/acme/demo/issues/3/edit", url.Values{"state": {"closed"}}, sameOrigin); status != http.StatusSeeOther {
+	if status, _ := browserCall(test, http.MethodPatch, issues+"/3", `{"state":"closed"}`, sameOrigin); status != http.StatusOK {
 		test.Errorf("UI close: HTTP %d", status)
 	}
 	fromUI := issue("view", "acme/demo", "3")

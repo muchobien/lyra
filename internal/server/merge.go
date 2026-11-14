@@ -386,20 +386,3 @@ func (s *Server) handleMergePull(r *http.Request, input *mergeInput) (*body[pull
 	}
 	return reply(pullWrite{Pull: pull, EventID: eventID})
 }
-
-func (s *Server) uiMergePull(w http.ResponseWriter, r *http.Request) error {
-	repo, item, err := s.uiItem(r, kindPull, true)
-	if err != nil {
-		return err
-	}
-	request := mergeRequest{
-		Method:       r.FormValue("method"),
-		HeadSHA:      r.FormValue("head_sha"),
-		DeleteBranch: r.FormValue("delete_branch") != "",
-	}
-	if _, _, err := s.mergePull(r, repo.Name, item.Number, request); err != nil {
-		return missing(err, "Pull request not found.")
-	}
-	http.Redirect(w, r, fmt.Sprintf("/%s/pulls/%d", repo.Name, item.Number), http.StatusSeeOther)
-	return nil
-}

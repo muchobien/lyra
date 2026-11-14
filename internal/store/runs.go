@@ -317,10 +317,41 @@ func (s *Store) Runs(ctx context.Context, repo string, limit int64) ([]Run, erro
 		return nil, err
 	}
 	runs := []Run{}
+	if len(rows) == 0 {
+		return runs, nil
+	}
+	oldest := queries.ListRepoRunJobsParams{Repo: repo, Number: rows[len(rows)-1].Number}
+	jobRows, err := s.queries.ListRepoRunJobs(ctx, oldest)
+	if err != nil {
+		return nil, err
+	}
+	taskRows, err := s.queries.ListRepoRunTasks(ctx, queries.ListRepoRunTasksParams(oldest))
+	if err != nil {
+		return nil, err
+	}
+	latest := map[int64]queries.Task{}
+	for _, task := range taskRows {
+		latest[task.JobID] = task
+	}
+	jobs := map[int64][]Job{}
+	for _, row := range jobRows {
+		job, err := jobFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		if task, found := latest[row.ID]; found {
+			job.TaskID = task.ID
+			if err := json.Unmarshal([]byte(task.Steps), &job.Steps); err != nil {
+				return nil, err
+			}
+		}
+		jobs[row.RunID] = append(jobs[row.RunID], job)
+	}
 	for _, row := range rows {
 		run := runFromRow(row)
-		if run.Jobs, err = loadJobs(ctx, s.queries, run.ID); err != nil {
-			return nil, err
+		run.Jobs = jobs[run.ID]
+		if run.Jobs == nil {
+			run.Jobs = []Job{}
 		}
 		runs = append(runs, run)
 	}

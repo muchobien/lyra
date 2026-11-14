@@ -15,6 +15,8 @@ Lyra is a self-hosted Git forge for one person and their agents: one Go binary
 | `internal/store` | SQLite access; migrations in `migrations/`, sqlc queries in `queries.sql` |
 | `internal/repos` | Git operations (shells out to `git`) |
 | `internal/backup` | Backup and restore |
+| `internal/webui` | Embeds the built web UI from `dist/` (gitignored; `mise run ui:build` writes it) |
+| `web` | React web UI (Vite+); its API client in `src/api/generated` comes from `api/openapi.yaml` |
 | `e2e` | End-to-end tests: real servers driven with `git`, the CLI and HTTP |
 | `api/openapi.yaml` | Generated OpenAPI document; don't edit by hand |
 | `docs` | User documentation |
@@ -24,10 +26,12 @@ Lyra is a self-hosted Git forge for one person and their agents: one Go binary
 ```sh
 mise run fmt                 # gofmt + goimports
 mise run lint                # format check, go vet, golangci-lint (funlen 80, lll 120)
+mise run ui:build            # before building or testing Go: //go:embed needs internal/webui/dist
 mise run build
 go test -count=1 ./e2e/      # -count=1: the tests build the binary, so the cache misses server changes
 mise run sqlc:check          # after changing migrations or queries.sql: sqlc generate
-mise run openapi:check       # after changing the API: mise run openapi
+mise run openapi:check       # after changing the API: mise run openapi, then mise run ui:generate
+mise run ui:check            # after changing web/: formatting, lint, types, generated client
 ```
 
 Run lint and the e2e tests before committing. `mise tasks` lists everything CI runs.

@@ -568,6 +568,11 @@ export interface MergeRequest {
   title?: string;
 }
 
+export interface PullPatch {
+  files: DiffFile[];
+  head_sha: string;
+}
+
 export type ReviewRequestState = typeof ReviewRequestState[keyof typeof ReviewRequestState];
 
 

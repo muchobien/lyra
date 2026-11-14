@@ -2487,6 +2487,99 @@ func (q *Queries) ListRepoEvents(ctx context.Context, arg ListRepoEventsParams) 
 	return items, nil
 }
 
+const listRepoRunJobs = `-- name: ListRepoRunJobs :many
+SELECT jobs.id, jobs.run_id, jobs.job_key, jobs.name, jobs.needs, jobs.runs_on, jobs.conditional, jobs.payload, jobs.status, jobs.attempt, jobs.outputs, jobs.started_at, jobs.stopped_at FROM jobs JOIN runs ON runs.id = jobs.run_id
+WHERE runs.repo = ? AND runs.number >= ? ORDER BY jobs.id
+`
+
+type ListRepoRunJobsParams struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+func (q *Queries) ListRepoRunJobs(ctx context.Context, arg ListRepoRunJobsParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listRepoRunJobs, arg.Repo, arg.Number)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.JobKey,
+			&i.Name,
+			&i.Needs,
+			&i.RunsOn,
+			&i.Conditional,
+			&i.Payload,
+			&i.Status,
+			&i.Attempt,
+			&i.Outputs,
+			&i.StartedAt,
+			&i.StoppedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRepoRunTasks = `-- name: ListRepoRunTasks :many
+SELECT tasks.id, tasks.job_id, tasks.runner_id, tasks.attempt, tasks.token_hash, tasks.status, tasks.steps, tasks.log_length, tasks.log_object, tasks.started_at, tasks.stopped_at, tasks.updated_at FROM tasks JOIN jobs ON jobs.id = tasks.job_id JOIN runs ON runs.id = jobs.run_id
+WHERE runs.repo = ? AND runs.number >= ? ORDER BY tasks.job_id, tasks.attempt
+`
+
+type ListRepoRunTasksParams struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+func (q *Queries) ListRepoRunTasks(ctx context.Context, arg ListRepoRunTasksParams) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listRepoRunTasks, arg.Repo, arg.Number)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.JobID,
+			&i.RunnerID,
+			&i.Attempt,
+			&i.TokenHash,
+			&i.Status,
+			&i.Steps,
+			&i.LogLength,
+			&i.LogObject,
+			&i.StartedAt,
+			&i.StoppedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRepos = `-- name: ListRepos :many
 SELECT name, description, created_at, created_by FROM repos ORDER BY name
 `

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,10 +164,10 @@ func TestReviews(test *testing.T) {
 	}
 
 	sameOrigin := map[string]string{"Sec-Fetch-Site": "same-origin"}
-	if status, location, body := postForm(test, srv.url+"/acme/demo/pulls/1/comments", url.Values{"body": {"From the diff"}, "path": {"app.txt"}, "line": {"30"}, "side": {"new"}}, sameOrigin); status != http.StatusSeeOther || !strings.HasPrefix(location, "/acme/demo/pulls/1?tab=files#comment-") {
-		test.Errorf("UI line comment: HTTP %d location %q %s", status, location, body)
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/1/comments", `{"body":"From the diff","path":"app.txt","line":30,"side":"new"}`, sameOrigin); status != http.StatusCreated {
+		test.Errorf("UI line comment: HTTP %d %s", status, body)
 	}
-	if status, _, body := postForm(test, srv.url+"/acme/demo/pulls/1/reviews", url.Values{"state": {"approve"}, "body": {"Approved from the UI"}}, sameOrigin); status != http.StatusSeeOther {
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/1/reviews", `{"state":"approve","body":"Approved from the UI"}`, sameOrigin); status != http.StatusCreated {
 		test.Errorf("UI approve: HTTP %d %s", status, body)
 	}
 	if got := blocked(); got != "" {

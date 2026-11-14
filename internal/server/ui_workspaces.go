@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"code.forgejo.org/forgejo/runner/v13/act/model"
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
 	"github.com/danielgtaylor/huma/v2"
 
@@ -36,6 +38,11 @@ type itemWorkspace struct {
 	Checks     *store.Checks     `json:"checks"`
 	CanWrite   bool              `json:"can_write"`
 	IsAuthor   bool              `json:"is_author"`
+}
+
+type pullPatch struct {
+	HeadSHA string     `json:"head_sha"`
+	Files   []diffFile `json:"files"`
 }
 
 type commitWorkspace struct {
@@ -87,7 +94,7 @@ func (s *Server) handleMarkdown(_ *http.Request, input *bodyInput[markdownReques
 
 func (s *Server) handleItemWorkspace(kind string) func(*http.Request, *ItemPath) (*body[itemWorkspace], error) {
 	return func(r *http.Request, _ *ItemPath) (*body[itemWorkspace], error) {
-		repo, item, err := s.uiItem(r, kind, false)
+		repo, item, err := s.uiItem(r, kind)
 		if err != nil {
 			return nil, err
 		}
@@ -141,17 +148,66 @@ func highlightedDiff(files []*gitdiff.File, comments []store.Comment) []diffFile
 	for fileIndex := range view {
 		file := &view[fileIndex]
 		lexer := lexers.Match(file.Path)
+		if lexer == nil {
+			lexer = lexers.Fallback
+		}
+		var oldSide, newSide []*diffLine
 		for lineIndex := range file.Lines {
 			line := &file.Lines[lineIndex]
-			if line.Kind != "hunk" {
-				line.HTML = string(highlight(patchFormatter, lexer, line.Text))
+			if line.Kind != "hunk" && line.Kind != lineAdd {
+				oldSide = append(oldSide, line)
+			}
+			if line.Kind != "hunk" && line.Kind != lineDelete {
+				newSide = append(newSide, line)
+			}
+			if line.Kind == "hunk" || lineIndex == len(file.Lines)-1 {
+				highlightLines(lexer, oldSide)
+				highlightLines(lexer, newSide)
+				oldSide, newSide = nil, nil
 			}
 		}
 	}
 	return view
 }
 
-func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[[]diffFile], error) {
+func highlightLines(lexer chroma.Lexer, lines []*diffLine) {
+	if len(lines) == 0 {
+		return
+	}
+	texts := make([]string, len(lines))
+	for index, line := range lines {
+		texts[index] = line.Text
+	}
+	iterator, err := chroma.Coalesce(lexer).Tokenise(nil, strings.Join(texts, "\n")+"\n")
+	if err != nil {
+		for _, line := range lines {
+			line.HTML = string(preformatted(line.Text))
+		}
+		return
+	}
+	tokens := chroma.SplitTokensIntoLines(iterator.Tokens())
+	for index, line := range lines {
+		if index >= len(tokens) {
+			line.HTML = string(preformatted(line.Text))
+			continue
+		}
+		lineTokens := tokens[index]
+		if last := len(lineTokens) - 1; last >= 0 {
+			lineTokens[last].Value = strings.TrimSuffix(lineTokens[last].Value, "\n")
+			if lineTokens[last].Value == "" {
+				lineTokens = lineTokens[:last]
+			}
+		}
+		var output strings.Builder
+		if patchFormatter.Format(&output, styles.Get("github"), chroma.Literator(lineTokens...)) != nil {
+			line.HTML = string(preformatted(line.Text))
+			continue
+		}
+		line.HTML = output.String()
+	}
+}
+
+func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[pullPatch], error) {
 	repo, pull, err := s.lookupPull(r, input.Number)
 	if err != nil {
 		return nil, err
@@ -165,7 +221,7 @@ func (s *Server) handlePullPatch(r *http.Request, input *ItemPath) (*body[[]diff
 	if err != nil {
 		return nil, err
 	}
-	return reply(highlightedDiff(files, comments))
+	return reply(pullPatch{HeadSHA: pull.HeadSHA, Files: highlightedDiff(files, comments)})
 }
 
 func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*body[commitWorkspace], error) {

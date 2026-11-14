@@ -3,7 +3,6 @@ package e2e
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,7 +199,7 @@ func TestPulls(test *testing.T) {
 		"/api/repos/acme/demo/pulls?state=merged":  {"Add feature", `"state":"merged"`},
 		"/api/repos/acme/demo/pulls/2/view":        {`"state":"merged"`, "feature", "Fixes #1"},
 		"/api/repos/acme/demo/pulls/2/commits":     {"Extend feature", `"status":"unsigned"`},
-		"/api/repos/acme/demo/pulls/2/patch":       {`"old_path":"notes.txt"`, `"path":"docs/notes.txt"`, `"kind":"add"`},
+		"/api/repos/acme/demo/pulls/2/patch":       {`"head_sha":"`, `"old_path":"notes.txt"`, `"path":"docs/notes.txt"`, `"kind":"add"`},
 		"/api/repos/acme/demo/issues?state=closed": {"Feature request", "Crash"},
 	} {
 		status, page := call(test, http.MethodGet, srv.url+target, tailnet(), "")
@@ -210,8 +209,8 @@ func TestPulls(test *testing.T) {
 			}
 		}
 	}
-	if status, location, _ := postForm(test, srv.url+"/acme/demo/pulls/4/comments", url.Values{"body": {"From the UI"}}, map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusSeeOther || location != "/acme/demo/pulls/4" {
-		test.Errorf("UI pr comment: HTTP %d location %q", status, location)
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/4/comments", `{"body":"From the UI"}`, map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusCreated {
+		test.Errorf("UI pr comment: HTTP %d %s", status, body)
 	}
 	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/pulls/1", tailnet(), ""); status != http.StatusNotFound {
 		test.Errorf("UI pr page for an issue: HTTP %d, want 404", status)

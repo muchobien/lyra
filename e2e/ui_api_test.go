@@ -103,12 +103,32 @@ func TestEmbeddedUI(test *testing.T) {
 	if status != http.StatusOK || len(body) < 1000 || strings.Contains(string(body), `<div id="root">`) {
 		test.Fatalf("embedded script: HTTP %d, size %d", status, len(body))
 	}
-	if status, _ := call(test, http.MethodGet, srv.url+"/static/assets/missing.js", tailnet(), ""); status != http.StatusNotFound {
-		test.Fatalf("missing asset served shell: HTTP %d", status)
+	for _, target := range []string{"/static/assets/missing.js", "/static/assets/"} {
+		request, _ := http.NewRequest(http.MethodGet, srv.url+target, nil)
+		request.Header.Set("Tailscale-User-Login", login)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			test.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound || strings.Contains(response.Header.Get("Cache-Control"), "immutable") {
+			test.Fatalf("missing asset %s: HTTP %d, Cache-Control %q", target, response.StatusCode, response.Header.Get("Cache-Control"))
+		}
 	}
-	status, body = call(test, http.MethodGet, srv.url+"/api/code.css", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(body), ":root[data-theme=dark]") {
-		test.Fatalf("highlight theme styles: HTTP %d", status)
+	request, _ = http.NewRequest(http.MethodGet, srv.url+"/api/code.css", nil)
+	request.Header.Set("Tailscale-User-Login", login)
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		test.Fatal(err)
+	}
+	styles, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	tag := response.Header.Get("ETag")
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(styles), ":root[data-theme=dark]") || tag == "" {
+		test.Fatalf("highlight theme styles: HTTP %d, ETag %q", response.StatusCode, tag)
+	}
+	if status, _ := call(test, http.MethodGet, srv.url+"/api/code.css", map[string]string{"Tailscale-User-Login": login, "If-None-Match": tag}, ""); status != http.StatusNotModified {
+		test.Fatalf("revalidated theme styles: HTTP %d", status)
 	}
 	for _, target := range []string{"pulls", "issues", "runs", "releases", "images", "activity", "settings", "tags", "commits/main"} {
 		status, body := call(test, http.MethodGet, srv.url+"/acme/demo/"+target, tailnet(), "")
@@ -116,7 +136,7 @@ func TestEmbeddedUI(test *testing.T) {
 			test.Fatalf("workspace shell %s: HTTP %d", target, status)
 		}
 	}
-	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/releases/tag/missing"} {
+	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/commits/missing", "/acme/demo/releases/tag/missing"} {
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			status, body := call(test, method, srv.url+target, tailnet(), "")
 			if status != http.StatusNotFound || (method == http.MethodHead && len(body) != 0) {

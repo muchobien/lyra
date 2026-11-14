@@ -3,7 +3,6 @@ package e2e
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,8 +192,8 @@ func TestMerge(test *testing.T) {
 	if status != http.StatusOK || !strings.Contains(compactJSON(test, page), `"head_sha":"`+uiHead+`"`) {
 		test.Errorf("mergeable pr page: HTTP %d", status)
 	}
-	if status, location, body := postForm(test, srv.url+"/acme/demo/pulls/5/merge", url.Values{"method": {"squash"}, "head_sha": {uiHead}}, map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusSeeOther || location != "/acme/demo/pulls/5" {
-		test.Errorf("UI merge: HTTP %d location %q %s", status, location, body)
+	if status, body := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/pulls/5/merge", `{"method":"squash","head_sha":"`+uiHead+`"}`, map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusOK {
+		test.Errorf("UI merge: HTTP %d %s", status, body)
 	}
 	if uiMerged := view("5"); uiMerged.State != "merged" || uiMerged.MergeSHA != remoteSHA("refs/heads/main") {
 		test.Errorf("pr merged from the UI = %+v", uiMerged)

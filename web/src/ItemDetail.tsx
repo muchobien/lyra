@@ -325,13 +325,13 @@ export function ItemDetail({ kind, number }: DetailProps) {
     } else if (patch.data) {
       detailContent = (
         <DiffViewer
-          key={pull.head_sha}
-          files={patch.data}
+          key={patch.data.head_sha}
+          files={patch.data.files}
           owner={owner}
           repo={repo}
           section={kind}
           target={number}
-          head={pull.head_sha}
+          head={patch.data.head_sha}
           canComment={canWrite && item.state === "open"}
           onComment={openLineComment}
           comments={workspace.data.comments}
@@ -492,8 +492,8 @@ export function ItemDetail({ kind, number }: DetailProps) {
             <span>#{item.number}</span>
           </h1>
           <p className={styles.meta}>
-            <Status value={item.state} /> · <ActorName actor={item.author} /> opened{" "}
-            <DateTime value={item.created_at} />
+            <Status value={item.state} issue={kind === "issues"} /> ·{" "}
+            <ActorName actor={item.author} /> opened <DateTime value={item.created_at} />
           </p>
           {pull && (
             <p className={styles.meta}>

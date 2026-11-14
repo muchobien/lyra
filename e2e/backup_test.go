@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -273,8 +272,8 @@ func TestReadOnly(test *testing.T) {
 	if result := runLyra(test, srv, token, "issue", "create", "acme/demo", "--title", "x"); result.code != 1 || !strings.Contains(result.stderr, "read-only for maintenance") {
 		test.Fatalf("API write while read-only: %+v", result)
 	}
-	if status, _, _ := postForm(test, srv.url+"/acme/demo/issues", url.Values{"title": {"x"}}, nil); status != http.StatusServiceUnavailable {
-		test.Fatalf("UI form while read-only: HTTP %d", status)
+	if status, _ := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/issues", `{"title":"x"}`, nil); status != http.StatusServiceUnavailable {
+		test.Fatalf("UI write while read-only: HTTP %d", status)
 	}
 	image, _ := random.Image(256, 1)
 	if err := crane.Push(image, srv.address+"/acme/demo:x", crane.Insecure, crane.WithAuth(&authn.Basic{Username: "lyra", Password: token})); err == nil || !strings.Contains(err.Error(), "UNAVAILABLE") && !strings.Contains(err.Error(), "503") {

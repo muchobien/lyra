@@ -6,6 +6,8 @@ import (
 	"html"
 	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -19,6 +21,11 @@ func Assets() http.Handler {
 	}
 	files := http.FileServerFS(assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		info, err := fs.Stat(assets, strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/"))
+		if err != nil || info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		files.ServeHTTP(w, r)

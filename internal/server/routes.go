@@ -63,20 +63,14 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/releases", s.page(s.uiApplication))
 	repo.Get("/runs", s.page(s.uiApplication))
 	repo.Get("/runs/{number}", s.page(s.uiApplication))
-	repo.Post("/runs/{number}/{action}", s.page(s.uiRunAction))
 	repo.Get("/images", s.page(s.uiApplication))
 	repo.Get("/settings", s.page(s.uiApplication))
 	repo.Get("/activity", s.page(s.uiApplication))
 	repo.Get("/releases/tag/*", s.page(s.uiApplication))
 	repo.Get("/releases/download/*", api(s.handleStableDownload))
 	repo.Get("/releases/latest/download/{name}", api(s.handleLatestDownload))
-	repo.Post("/issues", s.page(s.uiCreateIssue))
-	repo.Post("/pulls/{number}/merge", s.page(s.uiMergePull))
-	repo.Post("/pulls/{number}/reviews", s.page(s.uiReviewPull))
-	for kind, path := range itemPaths {
+	for _, path := range itemPaths {
 		repo.Get("/"+path, s.page(s.uiApplication))
 		repo.Get("/"+path+"/{number}", s.page(s.uiApplication))
-		repo.Post("/"+path+"/{number}/comments", s.page(s.uiCommentItem(kind)))
-		repo.Post("/"+path+"/{number}/edit", s.page(s.uiEditItem(kind)))
 	}
 }

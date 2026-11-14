@@ -273,16 +273,3 @@ func (s *Server) reviewPull(
 		request.Comments,
 	)
 }
-
-func (s *Server) uiReviewPull(w http.ResponseWriter, r *http.Request) error {
-	repo, item, err := s.uiItem(r, kindPull, true)
-	if err != nil {
-		return err
-	}
-	request := reviewRequest{State: r.FormValue("state"), Body: r.FormValue("body")}
-	if _, _, err := s.reviewPull(r, repo.Name, item.Number, request); err != nil {
-		return missing(err, "Pull request not found.")
-	}
-	http.Redirect(w, r, fmt.Sprintf("/%s/pulls/%d", repo.Name, item.Number), http.StatusSeeOther)
-	return nil
-}

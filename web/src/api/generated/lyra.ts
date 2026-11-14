@@ -38,7 +38,6 @@ import type {
   DeletedIDWithEvent,
   DeletedName,
   DeletedWithEvent,
-  DiffFile,
   DispatchRequest,
   EditItemRequest,
   EditReleaseRequest,
@@ -72,6 +71,7 @@ import type {
   OwnerWrite,
   PreviewReleaseNotesParams,
   Pull,
+  PullPatch,
   PullView,
   PullWrite,
   ReadOnlyRequest,
@@ -4919,9 +4919,9 @@ export const getGetPullPatchUrl = (owner: string,
  */
 export const getPullPatch = async (owner: string,
     repo: string,
-    number: number, options?: Parameters<typeof orvalFetch>[1]): Promise<DiffFile[]> => {
+    number: number, options?: Parameters<typeof orvalFetch>[1]): Promise<PullPatch> => {
 
-  return orvalFetch<DiffFile[]>(getGetPullPatchUrl(owner,repo,number),
+  return orvalFetch<PullPatch>(getGetPullPatchUrl(owner,repo,number),
   {
     ...options,
     method: 'GET'

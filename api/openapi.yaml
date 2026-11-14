@@ -1318,6 +1318,19 @@ components:
         - updated_at
         - closed_at
       type: object
+    PullPatch:
+      additionalProperties: false
+      properties:
+        files:
+          items:
+            $ref: "#/components/schemas/DiffFile"
+          type: array
+        head_sha:
+          type: string
+      required:
+        - head_sha
+        - files
+      type: object
     PullView:
       additionalProperties: false
       properties:
@@ -4259,9 +4272,7 @@ paths:
           content:
             application/json:
               schema:
-                items:
-                  $ref: "#/components/schemas/DiffFile"
-                type: array
+                $ref: "#/components/schemas/PullPatch"
           description: OK
         default:
           content:

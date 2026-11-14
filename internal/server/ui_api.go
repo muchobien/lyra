@@ -1,10 +1,13 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -60,7 +63,7 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 					if parts[2] == "pulls" {
 						kind = kindPull
 					}
-					if _, _, err := s.uiItem(r, kind, false); err != nil {
+					if _, _, err := s.uiItem(r, kind); err != nil {
 						return err
 					}
 				}
@@ -73,6 +76,10 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 					if _, err := s.lookupRun(r, scopeRead, number); err != nil {
 						return err
 					}
+				}
+			case "commits":
+				if _, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), r.PathValue("ref")); err != nil {
+					return notFound("unknown ref " + r.PathValue("ref"))
 				}
 			case "commit":
 				if _, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), r.PathValue("sha")); err != nil {
@@ -171,11 +178,7 @@ func (s *Server) handleTree(r *http.Request, input *sourceInput) (*body[treeResp
 		return nil, err
 	}
 	view.Readme = string(s.readme(ctx, dir, view.SHA, path, view.Entries))
-	commits, err := s.commits(ctx, repo.Name, view.SHA, 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(commits) != 0 {
+	if commits, err := s.commits(ctx, repo.Name, view.SHA, 1); err == nil && len(commits) != 0 {
 		view.Last = &commits[0]
 	}
 	return reply(view)
@@ -242,22 +245,30 @@ func (s *Server) handleFiles(r *http.Request, input *sourceInput) (*body[[]strin
 	return reply(files)
 }
 
-func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
+var codeCSS, codeCSSTag string
+
+func init() {
 	var light, dark strings.Builder
 	if err := codeFormatter.WriteCSS(&light, styles.Get("github")); err != nil {
-		return err
+		panic(err)
 	}
 	if err := codeFormatter.WriteCSS(&dark, styles.Get("github-dark")); err != nil {
-		return err
+		panic(err)
 	}
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	css := ":root[data-theme=light] {\n" + light.String() +
+	codeCSS = ":root[data-theme=light] {\n" + light.String() +
 		"}\n:root[data-theme=dark] {\n" + dark.String() +
 		"}\n@media (prefers-color-scheme: light) {\n:root:not([data-theme=dark]) {\n" + light.String() +
 		"}\n}\n@media (prefers-color-scheme: dark) {\n:root:not([data-theme=light]) {\n" + dark.String() + "}\n}\n"
-	_, err := w.Write([]byte(css))
-	return err
+	sum := sha256.Sum256([]byte(codeCSS))
+	codeCSSTag = `"` + hex.EncodeToString(sum[:8]) + `"`
+}
+
+func (s *Server) handleCodeCSS(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("ETag", codeCSSTag)
+	http.ServeContent(w, r, "code.css", time.Time{}, strings.NewReader(codeCSS))
+	return nil
 }
 
 func (s *Server) handleRawBlob(w http.ResponseWriter, r *http.Request) error {

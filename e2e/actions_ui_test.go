@@ -2,8 +2,8 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,12 +85,13 @@ func TestActionsUI(test *testing.T) {
 			test.Fatalf("%s lacks the embedded application", target)
 		}
 	}
-	if status, _, _ := postForm(test, srv.url+"/acme/demo/runs/1/cancel", url.Values{}, map[string]string{"Sec-Fetch-Site": "cross-site"}); status != http.StatusForbidden {
+	runURL := srv.url + "/api/repos/acme/demo/runs/1"
+	if status, _ := browserCall(test, http.MethodPost, runURL+"/cancel", "", map[string]string{"Sec-Fetch-Site": "cross-site"}); status != http.StatusForbidden {
 		test.Fatalf("cross-site cancel: HTTP %d", status)
 	}
-	status, location, response := postForm(test, srv.url+"/acme/demo/runs/1/cancel", url.Values{}, nil)
-	if status != http.StatusSeeOther || location != "/acme/demo/runs/1" || run().Status != "cancelled" {
-		test.Fatalf("cancel form: HTTP %d %s: %s", status, location, response)
+	status, response := browserCall(test, http.MethodPost, runURL+"/cancel", "", nil)
+	if status != http.StatusOK || run().Status != "cancelled" {
+		test.Fatalf("cancel: HTTP %d: %s", status, response)
 	}
 	if err := json.Unmarshal(read("/api/repos/acme/demo/commits/"+sha+"/view"), &commit); err != nil || commit.Checks.State != "failure" {
 		test.Fatalf("cancelled checks: %+v, %v", commit.Checks, err)
@@ -105,12 +106,23 @@ func TestActionsUI(test *testing.T) {
 	if err := json.Unmarshal(read("/api/repos/acme/demo/pulls/1/view"), &pull); err != nil || len(pull.Checks.Jobs) != 2 || pull.Checks.Jobs[0].Run != 2 {
 		test.Fatalf("pull workspace checks: %+v, %v", pull.Checks, err)
 	}
-	status, location, _ = postForm(test, srv.url+"/acme/demo/runs/1/rerun", url.Values{"failed": {"true"}}, nil)
-	if status != http.StatusSeeOther || location != "/acme/demo/runs/1" || run().Status == "cancelled" || run().Jobs[0].Status != "success" || run().Jobs[1].Status != "waiting" {
-		test.Fatalf("rerun failed jobs: HTTP %d %s, %+v", status, location, run())
+	status, response = browserCall(test, http.MethodPost, runURL+"/rerun?failed=true", "", nil)
+	if status != http.StatusOK || run().Status == "cancelled" || run().Jobs[0].Status != "success" || run().Jobs[1].Status != "waiting" {
+		test.Fatalf("rerun failed jobs: HTTP %d %s, %+v", status, response, run())
+	}
+	var listed []store.Run
+	if err := json.Unmarshal(read("/api/repos/acme/demo/runs"), &listed); err != nil || len(listed) != 2 || listed[1].Number != 1 {
+		test.Fatalf("run list: %+v, %v", listed, err)
+	}
+	single := run()
+	if len(listed[1].Jobs) != 2 || listed[1].Jobs[0].TaskID != single.Jobs[0].TaskID || listed[1].Jobs[0].TaskID == 0 || fmt.Sprint(listed[1].Jobs[0].Steps) != fmt.Sprint(single.Jobs[0].Steps) || len(single.Jobs[0].Steps) == 0 {
+		test.Fatalf("listed jobs %+v, want %+v", listed[1].Jobs, single.Jobs)
+	}
+	if err := json.Unmarshal(read("/api/repos/acme/demo/runs?limit=1"), &listed); err != nil || len(listed) != 1 || listed[0].Number != 2 || len(listed[0].Jobs) != 2 {
+		test.Fatalf("latest run: %+v, %v", listed, err)
 	}
 	reader := createToken(test, srv, `{"name":"reader","scope":"read"}`)
-	if status, _ := call(test, http.MethodPost, srv.url+"/acme/demo/runs/1/cancel", bearer(reader), ""); status != http.StatusForbidden {
+	if status, _ := call(test, http.MethodPost, runURL+"/cancel", bearer(reader), ""); status != http.StatusForbidden {
 		test.Fatalf("cancel with a read token: HTTP %d", status)
 	}
 	identityStatus, identity := call(test, http.MethodGet, srv.url+"/api/me", bearer(reader), "")
