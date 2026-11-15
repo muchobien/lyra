@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
+import { Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
 import { IdentityContext, type Release } from "./api";
 import type { ReleaseWrite } from "./api/generated/models";
 import {
@@ -26,6 +26,7 @@ import {
   RichText,
 } from "./Workspace";
 import { CodeNavigation } from "./CodeScreens";
+import { FileIcon } from "./FileIcon";
 import { useDraft } from "./drafts";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
@@ -321,7 +322,7 @@ export function Releases({ tag }: ReleasesProps) {
               </h2>
               {release.assets.map((asset) => (
                 <div className={styles.row} key={asset.id}>
-                  <Download size={16} />
+                  <FileIcon name={asset.name} />
                   <div className={styles.grow}>
                     <a href={asset.download_url} className={styles.link}>
                       {asset.name}

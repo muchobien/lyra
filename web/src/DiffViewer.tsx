@@ -5,6 +5,7 @@ import { FileCode2, Check } from "lucide-react";
 import type { DiffFile, DiffLine, DiscussionComment } from "./api";
 import type { Comment, CommentRequest } from "./api/generated/models";
 import { ActorName, Markdown, RichText } from "./Workspace";
+import { FileIcon } from "./FileIcon";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./DiffViewer.module.css";
@@ -192,6 +193,7 @@ export function DiffViewer({
           {displayedFiles.map(({ file, rows }) => (
             <details className={styles.file} key={file.path} open>
               <summary className={styles.fileHeading}>
+                <FileIcon name={file.path.split("/").at(-1) ?? file.path} />
                 <code>
                   {file.old_path && <span>{file.old_path} renamed to </span>}
                   {file.path}

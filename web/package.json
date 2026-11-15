@@ -16,6 +16,7 @@
     "@tanstack/react-query": "5.107.1",
     "@tanstack/react-router": "1.170.46",
     "lucide-react": "1.72.0",
+    "material-icon-theme": "5.40.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

@@ -2,17 +2,7 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent, ToggleEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import {
-  Search,
-  Terminal,
-  Folder,
-  File,
-  Tags,
-  Package,
-  X,
-  ShieldCheck,
-  GitBranch,
-} from "lucide-react";
+import { Search, Terminal, Tags, Package, X, ShieldCheck, GitBranch } from "lucide-react";
 import { APIError } from "./api";
 import {
   useGetRepo,
@@ -26,6 +16,7 @@ import {
 } from "./api/generated/lyra";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { CodeNavigation } from "./CodeScreens";
+import { FileIcon } from "./FileIcon";
 import controls from "./Controls.module.css";
 import styles from "./RepositoryPage.module.css";
 
@@ -267,7 +258,7 @@ export function RepositoryPage() {
                   })
                   .map((entry) => (
                     <div className={styles.entry} key={entry.name}>
-                      {entry.type === "tree" ? <Folder size={16} /> : <File size={16} />}
+                      <FileIcon name={entry.name} folder={entry.type === "tree"} />
                       <Link
                         to="/$owner/$repo"
                         params={{ owner, repo }}
@@ -301,7 +292,7 @@ export function RepositoryPage() {
               {tree.data.readme && (
                 <section className={styles.readme}>
                   <div className={styles.fileHeading}>
-                    <File size={15} />
+                    <FileIcon name="README.md" />
                     README
                   </div>
                   <div
@@ -318,7 +309,7 @@ export function RepositoryPage() {
           {search.file && blob.data && (
             <section className={styles.blob}>
               <div className={styles.fileHeading}>
-                <File size={15} />
+                <FileIcon name={parts.at(-1) ?? ""} />
                 <strong>{parts.at(-1)}</strong>
                 <span>
                   {new Intl.NumberFormat(undefined, {
@@ -482,7 +473,7 @@ export function RepositoryPage() {
               search={{ ref: search.ref, file: path }}
               onClick={closeFinder}
             >
-              <File size={15} />
+              <FileIcon name={path.split("/").at(-1) ?? path} />
               {path}
             </Link>
           ))}
