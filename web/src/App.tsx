@@ -286,21 +286,23 @@ export function App() {
       </header>
       <div id="repository-picker" popover="auto" className={styles.repositoryPicker}>
         <span className={styles.pickerLabel}>Repositories</span>
-        {repositories.data?.map((entry) => {
-          const [entryOwner, entryRepo] = entry.name.split("/");
-          return (
-            <Link
-              key={entry.name}
-              to="/$owner/$repo"
-              params={{ owner: entryOwner, repo: entryRepo }}
-              search={{}}
-              onClick={closePicker}
-            >
-              <span>{entry.name}</span>
-              {entryOwner === owner && entryRepo === repo && <Check size={15} />}
-            </Link>
-          );
-        })}
+        {repositories.data
+          ?.filter((entry) => entry.name.startsWith(`${owner}/`))
+          .map((entry) => {
+            const [entryOwner, entryRepo] = entry.name.split("/");
+            return (
+              <Link
+                key={entry.name}
+                to="/$owner/$repo"
+                params={{ owner: entryOwner, repo: entryRepo }}
+                search={{}}
+                onClick={closePicker}
+              >
+                <span>{entryRepo}</span>
+                {entryRepo === repo && <Check size={15} />}
+              </Link>
+            );
+          })}
         <Link to="/" onClick={closePicker}>
           All repositories
         </Link>
