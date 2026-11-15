@@ -155,10 +155,15 @@ export function App() {
         <div className={styles.bar}>
           <Link to="/" className={styles.brand} aria-label="Lyra repositories">
             <svg viewBox="0 0 32 32" aria-hidden="true">
-              <path d="m7 7 4 19h10l4-19M7 7l9 8 9-8M11 26l5-11 5 11" />
-              <circle cx="7" cy="7" r="2" />
-              <circle cx="25" cy="7" r="2" />
-              <circle cx="16" cy="15" r="2" />
+              <path d="M21 6l6 4-6.5 3.5L21 6m-.5 7.5L10 15 7.5 27 18 25.5l2.5-12" />
+              <g className={styles.stars}>
+                <circle cx="21" cy="6" r="3.2" />
+                <circle cx="27" cy="10" r="1.6" />
+                <circle cx="20.5" cy="13.5" r="1.9" />
+                <circle cx="10" cy="15" r="1.9" />
+                <circle cx="7.5" cy="27" r="2.2" />
+                <circle cx="18" cy="25.5" r="2.1" />
+              </g>
             </svg>
           </Link>
           {owner && (

@@ -18,7 +18,13 @@
     height: 1.8rem;
     fill: none;
     stroke: var(--brand);
-    stroke-width: 1.4;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  & .stars {
+    fill: var(--brand);
+    stroke: none;
   }
 }
 .context {
