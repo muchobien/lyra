@@ -427,6 +427,58 @@ func TestCLI(test *testing.T) {
 	if result := runLyra(test, srv, token, "me", "--jq", ".actor.via"); result.stdout != "token:admin\n" {
 		test.Errorf("me via %q", result.stdout)
 	}
+	configDir := test.TempDir()
+	if err := os.MkdirAll(filepath.Join(configDir, "lyra"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	configFile := filepath.Join(configDir, "lyra", "config.json")
+	if err := os.WriteFile(configFile, []byte(`{"url": "`+srv.url+`/", "token": "`+token+`"}`), 0o600); err != nil {
+		test.Fatal(err)
+	}
+	configEnv := []string{"LYRA_URL=", "LYRA_TOKEN=", "XDG_CONFIG_HOME=" + configDir}
+	if result := startLyraWith(test, srv, "", configEnv, "me", "--jq", ".actor.via")(); result.stdout != "token:admin\n" {
+		test.Errorf("me with the URL and token from config.json: %+v", result)
+	}
+	if err := os.Chmod(configFile, 0o644); err != nil {
+		test.Fatal(err)
+	}
+	if result := startLyraWith(test, srv, "", configEnv, "me")(); result.code != 1 || !strings.Contains(result.stderr, "chmod 600") {
+		test.Errorf("me with a token in a readable config.json: %+v", result)
+	}
+	if err := os.Chmod(configFile, 0o600); err != nil {
+		test.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"url": "http://127.0.0.1:1", "token": "wrong"}`), 0o600); err != nil {
+		test.Fatal(err)
+	}
+	if result := startLyraWith(test, srv, token, []string{"XDG_CONFIG_HOME=" + configDir}, "me")(); result.code != 0 {
+		test.Errorf("LYRA_URL and LYRA_TOKEN override config.json: %+v", result)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"url": `), 0o600); err != nil {
+		test.Fatal(err)
+	}
+	if result := startLyraWith(test, srv, token, configEnv, "me")(); result.code != 1 || !strings.Contains(result.stderr, "config.json") {
+		test.Errorf("me with an invalid config.json: %+v", result)
+	}
+	agentEnvs := map[string][]string{
+		"claude claude-1":       {"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=claude-1", "CODEX_SESSION_ID="},
+		"codex codex-1":         {"CLAUDECODE=", "CLAUDE_CODE_SESSION_ID=", "CODEX_SESSION_ID=codex-1"},
+		"e2e-agent session-123": {"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=claude-1", "LYRA_AGENT=e2e-agent", "LYRA_SESSION=session-123"},
+	}
+	for want, env := range agentEnvs {
+		env = append([]string{"LYRA_AGENT=", "LYRA_SESSION="}, env...)
+		result := startLyraWith(test, srv, token, env, "me", "--jq", `.actor.agent + " " + .actor.session`)()
+		if result.stdout != want+"\n" {
+			test.Errorf("agent and session with %v: %+v", env, result)
+		}
+	}
+	noConfig := []string{"LYRA_URL=", "XDG_CONFIG_HOME=" + test.TempDir()}
+	if result := startLyraWith(test, srv, token, noConfig, "me")(); result.code != 1 || !strings.Contains(result.stderr, "LYRA_URL isn't set") {
+		test.Errorf("me without a URL: %+v", result)
+	}
+	if result := startLyraWith(test, srv, token, noConfig, "version")(); result.code != 0 {
+		test.Errorf("version without a URL: %+v", result)
+	}
 
 	if result := runLyra(test, srv, token, "repo", "delete", "acme/demo"); result.code != 2 {
 		test.Errorf("delete without --yes: exit %d, want 2", result.code)

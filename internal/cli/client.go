@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -30,14 +32,45 @@ type client struct {
 }
 
 func newClient() *client {
-	baseURL := strings.TrimRight(os.Getenv("LYRA_URL"), "/")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		home, _ := os.UserHomeDir()
+		configDir = filepath.Join(home, ".config")
 	}
-	token := os.Getenv("LYRA_TOKEN")
+	configFile := filepath.Join(configDir, "lyra", "config.json")
+	var config struct {
+		URL   string `json:"url"`
+		Token string `json:"token"`
+	}
+	data, err := os.ReadFile(configFile)
+	if err == nil {
+		err = json.Unmarshal(data, &config)
+	}
+	if err == nil && config.Token != "" {
+		if info, statErr := os.Stat(configFile); statErr == nil && info.Mode().Perm()&0o077 != 0 {
+			err = errors.New("holds a token, so only its owner may read it (chmod 600)")
+		}
+	}
+	var configErr error
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		configErr = fmt.Errorf("%s: %w", configFile, err)
+	}
+	baseURL := strings.TrimRight(cmp.Or(os.Getenv("LYRA_URL"), config.URL), "/")
+	if baseURL == "" && configErr == nil {
+		configErr = errors.New("LYRA_URL isn't set; set it or add \"url\" to ~/.config/lyra/config.json")
+	}
+	token := cmp.Or(os.Getenv("LYRA_TOKEN"), config.Token)
 	agent := os.Getenv("LYRA_AGENT")
-	session := os.Getenv("LYRA_SESSION")
+	if agent == "" && os.Getenv("CLAUDECODE") != "" {
+		agent = "claude"
+	} else if agent == "" && os.Getenv("CODEX_SESSION_ID") != "" {
+		agent = "codex"
+	}
+	session := cmp.Or(os.Getenv("LYRA_SESSION"), os.Getenv("CLAUDE_CODE_SESSION_ID"), os.Getenv("CODEX_SESSION_ID"))
 	headers := lyraapi.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+		if configErr != nil {
+			return configErr
+		}
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}

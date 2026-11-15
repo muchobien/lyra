@@ -17,10 +17,17 @@ func Root() *cobra.Command {
 		Long: `Client for the Lyra forge. Output is JSON on stdout; errors are {"error": "..."} on stderr.
 
 Environment:
-  LYRA_URL      server URL (default http://localhost:8080)
+  LYRA_URL      server URL (required)
   LYRA_TOKEN    API token; not needed on the tailnet behind tailscale-auth
-  LYRA_AGENT    agent name recorded on writes (Lyra-Agent header)
-  LYRA_SESSION  session id recorded on writes (Lyra-Session header)
+  LYRA_AGENT    agent name recorded on writes (Lyra-Agent header); defaults to claude
+                in Claude Code and codex in Codex
+  LYRA_SESSION  session id recorded on writes (Lyra-Session header); defaults to the
+                Claude Code or Codex session id
+
+Config file: $XDG_CONFIG_HOME/lyra/config.json (~/.config/lyra/config.json) sets
+"url" and "token" when LYRA_URL and LYRA_TOKEN are unset, such as
+{"url": "https://lyra.example.com", "token": "..."}. A file with a token must be
+readable only by its owner (chmod 600).
 
 Repositories are named <owner>/<name>, such as krosf/lyra; create the owner first with
 lyra owner create.`,
