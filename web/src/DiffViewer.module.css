@@ -116,6 +116,9 @@
   border-bottom: 1px solid var(--soft-border);
 }
 .codeScroll {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
+  container-type: inline-size;
   overflow-x: auto;
   padding-block: 0.5rem;
   scrollbar-width: thin;
@@ -224,7 +227,7 @@
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   background: var(--surface);
-  max-width: 50rem;
+  max-width: min(50rem, calc(100cqw - 6.6rem));
   overflow-wrap: anywhere;
 }
 @media (width <= 800px) {
@@ -246,6 +249,7 @@
   }
   .lineComment {
     margin-left: 0.75rem;
+    max-width: calc(100cqw - 1.75rem);
   }
   .fileHeading {
     padding: 0.85rem;
