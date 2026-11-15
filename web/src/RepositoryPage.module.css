@@ -257,7 +257,10 @@
     vertical-align: top;
   }
   & :global(.lntable) pre {
-    padding-inline: 1rem;
+    padding-inline: 0.5rem 1rem;
+  }
+  & :global(.lntd:first-child) pre {
+    padding-inline: 1rem 0;
   }
 }
 .sidebar {
