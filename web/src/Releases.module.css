@@ -13,18 +13,6 @@
     overflow-wrap: anywhere;
     font-size: 0.65rem;
   }
-  & input[type="file"] {
-    max-width: 100%;
-    &::file-selector-button {
-      background: var(--raised);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 0.35rem;
-      padding: 0.3rem 0.6rem;
-      cursor: pointer;
-      margin-right: 0.8rem;
-    }
-  }
 }
 .pullCommand {
   display: block;
@@ -32,4 +20,16 @@
   font-size: 0.7rem;
   color: var(--muted);
   padding-top: 0.8rem;
+}
+@media (width <= 600px) {
+  .releaseHeading {
+    flex-wrap: wrap;
+    & > div:first-child {
+      min-width: 0;
+      width: 100%;
+    }
+    & > div:last-child {
+      flex-wrap: wrap;
+    }
+  }
 }

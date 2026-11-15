@@ -187,8 +187,10 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
               {commit.author.name} committed <DateTime value={commit.committer.date} />
             </p>
           </div>
-          <Status value={commit.signature.status} />
-          <CopyButton value={commit.sha} label="Copy commit SHA" compact />
+          <div className={styles.headingActions}>
+            <Status value={commit.signature.status} />
+            <CopyButton value={commit.sha} label="Copy commit SHA" compact />
+          </div>
         </div>
         <div className={styles.panel}>
           <div className={styles.panelHeading}>

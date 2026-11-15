@@ -240,9 +240,12 @@
   }
   .mobileJobs {
     display: flex;
-    flex-shrink: 0;
-    min-width: 6rem;
-    max-width: 55%;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .logFilters {
+    flex-direction: column;
   }
   .logToolbar {
     gap: 0.5rem;

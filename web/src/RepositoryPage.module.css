@@ -229,6 +229,7 @@
     border-collapse: collapse;
     display: block;
     overflow-x: auto;
+    overflow-wrap: normal;
     font-size: 0.8rem;
   }
   & :global(.markdown) td,

@@ -94,6 +94,10 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
   background: var(--raised);
+  & > code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   & h2 {
     font-size: 0.85rem;
     font-weight: 600;
@@ -312,6 +316,7 @@
     border-collapse: collapse;
     display: block;
     overflow-x: auto;
+    overflow-wrap: normal;
   }
   & th,
   & td {
@@ -438,6 +443,7 @@
     letter-spacing: -0.02em;
     margin-bottom: 1.2rem;
     padding-right: 2rem;
+    overflow-wrap: anywhere;
   }
   & fieldset {
     border: 0;

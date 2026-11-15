@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
 import { IdentityContext, type Release } from "./api";
 import type { ReleaseWrite } from "./api/generated/models";
@@ -14,10 +14,8 @@ import {
   useEditRelease,
   usePreviewReleaseNotes,
   useDeleteRelease,
-  useDeleteAsset,
-  uploadAsset as uploadReleaseAsset,
 } from "./api/generated/lyra";
-import { CopyButton, ErrorNotice, formValue } from "./Controls";
+import { CopyButton, ErrorNotice } from "./Controls";
 import {
   ActorName,
   ConfirmDialog,
@@ -33,7 +31,6 @@ import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 import delivery from "./Releases.module.css";
 
-type AssetDeletion = { release: number; name: string };
 type ReleasesProps = { tag: string };
 export function Releases({ tag }: ReleasesProps) {
   const { owner = "", repo = "" } = useParams({ strict: false });
@@ -50,7 +47,6 @@ export function Releases({ tag }: ReleasesProps) {
   const [prerelease, setPrerelease] = useState(false);
   const [deleting, setDeleting] = useState<Release | null>(null);
   const [cleanupTag, setCleanupTag] = useState(false);
-  const [assetDeletion, setAssetDeletion] = useState<AssetDeletion | null>(null);
   const draftKey = `${identity?.actor.user}/${name}/release/${editing?.id || "new"}`;
   const title = useDraft(`${draftKey}/title`, editing?.title);
   const notes = useDraft(`${draftKey}/notes`, editing?.notes);
@@ -95,34 +91,6 @@ export function Releases({ tag }: ReleasesProps) {
           });
         }
       },
-    },
-  });
-  const removeAsset = useDeleteAsset({
-    mutation: {
-      onSuccess: async () => {
-        document.querySelector<HTMLDialogElement>("#delete-asset")?.close();
-        await refresh();
-      },
-    },
-  });
-  const upload = useMutation({
-    mutationFn: async (form: FormData) => {
-      const file = form.get("asset");
-      if (!(file instanceof File) || !file.name) {
-        throw new Error("Choose a file to upload.");
-      }
-      return uploadReleaseAsset(
-        owner,
-        repo,
-        Number(formValue(form, "release")),
-        file,
-        { name: file.name, clobber: form.has("clobber") },
-        { headers: { "Content-Type": file.type || "application/octet-stream" } },
-      );
-    },
-    onSuccess: async () => {
-      document.querySelector<HTMLFormElement>("#asset-upload")?.reset();
-      await refresh();
     },
   });
   useEffect(() => {
@@ -204,22 +172,6 @@ export function Releases({ tag }: ReleasesProps) {
     if (deleting) {
       removing.mutate({ owner, repo, id: deleting.id, params: { cleanup_tag: cleanupTag } });
     }
-  }
-  function prepareAssetDelete(event: MouseEvent<HTMLButtonElement>) {
-    setAssetDeletion({
-      release: Number(event.currentTarget.dataset.release),
-      name: event.currentTarget.dataset.name || "",
-    });
-    removeAsset.reset();
-  }
-  function deleteAsset() {
-    if (assetDeletion) {
-      removeAsset.mutate({ owner, repo, id: assetDeletion.release, name: assetDeletion.name });
-    }
-  }
-  function uploadAsset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    upload.mutate(new FormData(event.currentTarget));
   }
   function filtersChanged(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     void navigate({
@@ -310,7 +262,7 @@ export function Releases({ tag }: ReleasesProps) {
       )}
       {shown.map((release) => (
         <article className={styles.panel} key={release.id}>
-          <div className={styles.panelHeading}>
+          <div className={`${styles.panelHeading} ${delivery.releaseHeading}`}>
             <div>
               <Link
                 className={styles.rowTitle}
@@ -391,40 +343,9 @@ export function Releases({ tag }: ReleasesProps) {
                     label={`Copy checksum for ${asset.name}`}
                     compact
                   />
-                  {canWrite && (
-                    <button
-                      className={controls.button}
-                      type="button"
-                      data-name={asset.name}
-                      data-release={release.id}
-                      onClick={prepareAssetDelete}
-                      commandfor="delete-asset"
-                      command="show-modal"
-                      aria-label={`Delete asset ${asset.name}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
                 </div>
               ))}
               {release.assets.length === 0 && <p className={styles.meta}>No uploaded assets.</p>}
-              {tag && canWrite && (
-                <form id="asset-upload" onSubmit={uploadAsset}>
-                  <input type="hidden" name="release" value={release.id} />
-                  <label className={styles.field}>
-                    <span>Upload asset</span>
-                    <input type="file" name="asset" required disabled={upload.isPending} />
-                  </label>
-                  <label className={styles.checkbox}>
-                    <input type="checkbox" name="clobber" />
-                    Replace an asset with the same name
-                  </label>
-                  <FormError error={upload.error} />
-                  <button type="submit" className={controls.button} disabled={upload.isPending}>
-                    {upload.isPending ? "Uploading…" : "Upload asset"}
-                  </button>
-                </form>
-              )}
             </section>
           )}
           {!!release.images?.length && (
@@ -572,17 +493,6 @@ export function Releases({ tag }: ReleasesProps) {
           <input type="checkbox" checked={cleanupTag} onChange={cleanupChanged} />
           Also delete Git tag {deleting?.tag}
         </label>
-      </ConfirmDialog>
-      <ConfirmDialog
-        id="delete-asset"
-        title="Delete release asset?"
-        confirm="Delete asset"
-        onConfirm={deleteAsset}
-        pending={removeAsset.isPending}
-        error={removeAsset.error}
-        danger
-      >
-        <p>{assetDeletion?.name} will be removed from the release.</p>
       </ConfirmDialog>
     </>
   );
