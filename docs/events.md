@@ -22,8 +22,9 @@ the event, with the review or comment it carries.
 
 - **Default actions:** pull requests wait for a review, comment, finished checks, merge or
   close; issues wait for anything but their opening. `--for` narrows it.
-- **Who "the caller" is:** the token, or the agent and session when `LYRA_SESSION` is set,
-  so another session of the same agent counts as someone else.
+- **Who "the caller" is:** the token, or the agent and session when a session is
+  set (`LYRA_SESSION`, or the Claude Code or Codex session), so another session of the
+  same agent counts as someone else.
 - **Where the wait starts:** without `--since`, after the later of the caller's last action
   on the item and the last event a wait returned to the caller. So a reply that arrived
   between pushing a fix and starting to wait returns at once, and waiting again doesn't

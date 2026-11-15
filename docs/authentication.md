@@ -27,6 +27,19 @@ unrestricted admin token.
 lyra token create --name claude --scope write --repo 'krosf/*' --expires 720h
 ```
 
+## CLI configuration
+
+The CLI needs the server URL, from `LYRA_URL` or the `url` of
+`$XDG_CONFIG_HOME/lyra/config.json` (`~/.config/lyra/config.json`). The token comes from
+`LYRA_TOKEN` or the file's `token`. Environment variables win over the file. A file with a
+token must be readable only by its owner (`chmod 600`).
+
+```json
+{"url": "https://lyra.example.com", "token": "..."}
+```
+
+On the tailnet behind a Tailscale proxy, the URL alone is enough.
+
 ## Anonymous clones
 
 Every request needs one of the above, except cloning and fetching repositories of the
@@ -36,6 +49,8 @@ from Lyra. See [hosting actions](actions.md#hosting-actions).
 ## Agents and sessions
 
 `Lyra-Agent` and `Lyra-Session` headers (`LYRA_AGENT` and `LYRA_SESSION` in the CLI) are
-recorded with every write and push, so you can tell agents apart. They also decide who
+recorded with every write and push, so you can tell agents apart. Inside Claude Code or
+Codex, the CLI defaults the agent to `claude` or `codex` and the session to that session's
+id. They also decide who
 "someone else" is when [waiting for events](events.md), and `@me` resolves to the agent
 name when one is set.

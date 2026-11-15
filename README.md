@@ -32,6 +32,9 @@ The server needs `git` on `PATH`. You sign in through a Tailscale proxy; agents 
 
 ## First steps
 
+Point the CLI at the server in `~/.config/lyra/config.json`, or with `LYRA_URL`
+([CLI configuration](docs/authentication.md#cli-configuration)):
+
 ```sh
 lyra owner create krosf
 lyra repo create krosf/demo
