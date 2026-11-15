@@ -2,8 +2,8 @@
   max-width: 1000px;
   margin: auto;
   & h1 {
-    font-size: 1.6rem;
-    font-weight: 550;
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
     letter-spacing: -0.04em;
     margin-bottom: 1.8rem;
   }
@@ -11,15 +11,15 @@
 .group {
   margin-bottom: 2.25rem;
   & h2 {
-    font-size: 0.85rem;
-    font-weight: 550;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     margin-bottom: 0.8rem;
     color: var(--accent);
   }
   & > p {
     color: var(--muted);
     margin-bottom: 1rem;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 }
 .repositories {
@@ -33,18 +33,18 @@
   background: var(--surface);
   padding: 1.3rem;
   border: 1px solid var(--border);
-  border-radius: 0.7rem;
+  border-radius: var(--radius-md);
   & > svg {
-    color: var(--accent);
+    color: var(--muted);
     margin-top: 0.2rem;
   }
   & strong {
-    font-weight: 550;
-    font-size: 0.95rem;
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-md);
   }
   & p {
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     margin-top: 0.35rem;
   }
   &:hover {
@@ -54,6 +54,6 @@
 }
 .loading {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding-block: 2rem;
 }

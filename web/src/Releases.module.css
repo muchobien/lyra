@@ -2,8 +2,8 @@
   padding: 1.1rem 1.25rem;
   border-top: 1px solid var(--border);
   & h2 {
-    font-size: 0.85rem;
-    font-weight: 550;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     margin-bottom: 0.75rem;
   }
   & > div {
@@ -11,13 +11,13 @@
   }
   & p code {
     overflow-wrap: anywhere;
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
   }
 }
 .pullCommand {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   padding-top: 0.8rem;
 }

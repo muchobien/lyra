@@ -12,16 +12,16 @@
     align-items: center;
     gap: 0.6rem;
     padding: 0.7rem 0.8rem;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     &:hover {
       background: var(--hover);
     }
     &[aria-current="page"] {
       color: var(--text);
       background: var(--accent-surface);
-      font-weight: 550;
+      font-weight: var(--weight-semibold);
     }
   }
 }
@@ -34,19 +34,19 @@
   padding: 0.6rem 0.8rem;
   background: var(--raised);
   border: 1px solid var(--soft-border);
-  border-radius: 0.4rem;
-  font: 0.75rem/1.7 var(--mono);
+  border-radius: var(--radius-md);
+  font: var(--text-xs) / 1.7 var(--mono);
 }
 .labelColor {
   width: 0.85rem;
   height: 0.85rem;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
 .fingerprint {
   padding: 1rem 1.25rem;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   overflow-wrap: anywhere;
 }

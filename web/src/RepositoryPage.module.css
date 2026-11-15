@@ -9,13 +9,13 @@
     gap: 0.5rem;
     padding: 0.5rem 0.8rem 1rem;
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     border-bottom: 2px solid transparent;
   }
   & [aria-current] {
     color: var(--text);
     border-color: var(--accent);
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
   }
 }
 .workspace {
@@ -40,11 +40,11 @@
   align-items: center;
   gap: 0.6rem;
   & kbd {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     padding: 0 0.3rem;
     color: var(--muted);
     border: 1px solid var(--border);
-    border-radius: 0.2rem;
+    border-radius: var(--radius-sm);
   }
 }
 .cloneTrigger {
@@ -56,7 +56,7 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   & > span {
     display: flex;
     gap: 0.5rem;
@@ -70,7 +70,7 @@
     }
   }
   & strong {
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
   }
   & span > span {
     color: var(--muted);
@@ -80,7 +80,7 @@
 .readme,
 .blob {
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   overflow: hidden;
 }
@@ -91,7 +91,7 @@
   padding: 1rem 1.15rem;
   background: var(--raised);
   border-bottom: 1px solid var(--border);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   & > span:first-child {
     display: flex;
     gap: 0.6rem;
@@ -101,7 +101,7 @@
   }
   & strong {
     flex-shrink: 0;
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
     max-width: 40%;
     overflow: hidden;
     white-space: nowrap;
@@ -118,7 +118,7 @@
   }
 }
 .sha {
-  font: 0.65rem var(--mono);
+  font: var(--text-xs) var(--mono);
   color: var(--muted);
 }
 .verified {
@@ -135,7 +135,7 @@
   align-items: center;
   padding: 0.75rem 1.15rem;
   border-bottom: 1px solid var(--soft-border);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   &:last-child {
     border-bottom: 0;
   }
@@ -156,7 +156,7 @@
     }
   }
   & > span {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
@@ -171,16 +171,16 @@
   padding: 0.85rem 1.15rem;
   background: var(--raised);
   border-bottom: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   & strong {
     min-width: 0;
     overflow-wrap: anywhere;
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
   }
   & span {
     margin-left: auto;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
   }
   & a {
     color: var(--accent);
@@ -188,23 +188,23 @@
 }
 .rendered {
   overflow-x: auto;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   & :global(.markdown) {
     padding: 1.5rem;
     line-height: 1.8;
     overflow-wrap: anywhere;
   }
   & :global(.markdown) h1 {
-    font-size: 1.5rem;
+    font-size: var(--text-xl);
     letter-spacing: -0.03em;
     margin: 0 0 1rem;
   }
   & :global(.markdown) h2 {
-    font-size: 1.2rem;
+    font-size: var(--text-lg);
     margin: 1.5rem 0 0.7rem;
   }
   & :global(.markdown) h3 {
-    font-size: 1rem;
+    font-size: var(--text-md);
     margin: 1.25rem 0 0.5rem;
   }
   & :global(.markdown) p {
@@ -222,7 +222,7 @@
     overflow-x: auto;
     padding: 1rem;
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     background: var(--raised);
   }
   & :global(.markdown) table {
@@ -230,7 +230,7 @@
     display: block;
     overflow-x: auto;
     overflow-wrap: normal;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
   & :global(.markdown) td,
   & :global(.markdown) th {
@@ -243,7 +243,7 @@
   & :global(.chroma) {
     background: var(--surface) !important;
     margin: 0;
-    font: 12px/1.8 var(--mono);
+    font: var(--text-xs) / 1.8 var(--mono);
   }
   & :global(.lntable) {
     border: 0;
@@ -265,8 +265,8 @@
   gap: 1.75rem;
   padding-top: 0.15rem;
   & h2 {
-    font-size: 0.8rem;
-    font-weight: 550;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
   }
 }
 .about {
@@ -274,7 +274,7 @@
   border-bottom: 1px solid var(--border);
   & p {
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     line-height: 1.8;
     margin-top: 0.8rem;
     overflow-wrap: anywhere;
@@ -287,7 +287,7 @@
   gap: 1rem;
   margin-bottom: 1rem;
   & a {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     color: var(--muted);
     &:hover {
       color: var(--accent);
@@ -299,7 +299,7 @@
   align-items: center;
   gap: 0.6rem;
   color: var(--success);
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   margin-bottom: 0.65rem;
   & strong {
     font-family: var(--mono);
@@ -307,13 +307,13 @@
   & span {
     background: color-mix(in oklch, var(--success) 12%, transparent);
     padding: 0.1rem 0.4rem;
-    border-radius: 0.3rem;
-    font-size: 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
   }
 }
 .releaseTitle {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   margin-bottom: 0.45rem;
   &:hover {
     color: var(--accent);
@@ -322,7 +322,7 @@
 .secondary {
   display: block;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 .containers {
   border-top: 1px solid var(--border);
@@ -338,7 +338,7 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     min-width: 0;
     flex: 1;
   }
@@ -347,7 +347,7 @@
   }
   & strong {
     color: var(--accent);
-    font-weight: 500;
+    font-weight: var(--weight-medium);
   }
   & button {
     border-color: transparent;
@@ -363,13 +363,13 @@
   width: min(30rem, calc(100vw - 2rem));
   padding: 1.2rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   color: var(--text);
-  background: var(--surface);
+  background: var(--overlay);
   box-shadow: var(--shadow);
   & h2 {
-    font-size: 0.9rem;
-    font-weight: 550;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
     margin-bottom: 1rem;
   }
 }
@@ -380,9 +380,9 @@
   padding: 0.4rem 0.5rem 0.4rem 0.75rem;
   border: 1px solid var(--border);
   background: var(--raised);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-md);
   & code {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     min-width: 0;
     overflow-x: auto;
     white-space: nowrap;
@@ -399,8 +399,8 @@
   padding: 1.5rem;
   margin: auto;
   border: 1px solid var(--border);
-  border-radius: 0.9rem;
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
   color: var(--text);
   box-shadow: var(--shadow);
   overscroll-behavior: contain;
@@ -422,17 +422,17 @@
     }
   }
   &::backdrop {
-    background: #08071080;
+    background: var(--backdrop);
     backdrop-filter: blur(4px);
   }
   & input {
     width: 100%;
-    min-height: 2.75rem;
+    min-height: var(--control-height-touch);
     padding: 0.6rem 0.85rem;
     background: var(--raised);
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-md);
   }
 }
 .dialogHeading {
@@ -442,9 +442,9 @@
   gap: 1rem;
   margin-bottom: 1.2rem;
   & h2 {
-    font-size: 1.2rem;
+    font-size: var(--text-lg);
     letter-spacing: -0.02em;
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
   }
   & button {
     background: transparent;
@@ -467,8 +467,8 @@
     align-items: center;
     gap: 0.7rem;
     padding: 0.7rem 0.5rem;
-    border-radius: 0.4rem;
-    font-size: 0.8rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
     overflow-wrap: anywhere;
     &:hover {
       background: var(--hover);
@@ -477,13 +477,13 @@
   & p {
     padding: 1.5rem 0.5rem;
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 }
 .finderHint {
   display: flex;
   justify-content: space-between;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   padding-top: 1rem;
   margin-top: 1rem;
@@ -493,31 +493,31 @@
   padding: 3rem 1.5rem;
   text-align: center;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   & > svg {
     color: var(--accent);
   }
   & h1 {
-    font-size: 1.3rem;
+    font-size: var(--text-lg);
     margin-top: 0.75rem;
-    font-weight: 550;
+    font-weight: var(--weight-semibold);
   }
   & p {
     color: var(--muted);
     margin: 0.75rem 0 1.5rem;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 }
 .loading {
   display: block;
   padding: 2rem 1.2rem;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .skeleton {
   min-height: 20rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: linear-gradient(100deg, var(--raised) 20%, var(--hover) 45%, var(--raised) 70%);
   background-size: 200% 100%;
   animation: loading 1.6s ease infinite;
@@ -578,7 +578,7 @@
     display: none;
   }
   .toolbarActions button {
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     padding-inline: 0.6rem;
   }
   .toolbar select {
