@@ -177,7 +177,7 @@
     overflow-wrap: anywhere;
     font-weight: var(--weight-semibold);
   }
-  & span {
+  & strong + span {
     margin-left: auto;
     color: var(--muted);
     font-size: var(--text-xs);
