@@ -35,7 +35,7 @@ import {
   MarkdownEditor,
   RichText,
 } from "./Workspace";
-import { CodeNavigation } from "./CodeScreens";
+import { CodeBreadcrumb } from "./CodeScreens";
 import { FileIcon } from "./FileIcon";
 import { useDraft } from "./drafts";
 import controls from "./Controls.module.css";
@@ -224,66 +224,16 @@ export function Releases({ tag }: ReleasesProps) {
   }
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active="releases"
-      />
-      <div className={styles.toolbar}>
-        {tag ? (
-          <nav className={delivery.breadcrumb} aria-label="Breadcrumb">
-            <Link
-              to="/$owner/$repo/$section"
-              params={{ owner, repo, section: "releases" }}
-              search={{}}
-            >
-              Releases
-            </Link>
-            <span>/</span>
-            <strong>{tag}</strong>
-          </nav>
-        ) : (
-          <>
-            <input
-              type="search"
-              className={styles.search}
-              name="q"
-              aria-label="Search releases"
-              placeholder="Search releases…"
-              value={search.q || ""}
-              onChange={filtersChanged}
-            />
-            <select
-              className={controls.select}
-              name="state"
-              aria-label="Release status"
-              value={search.state || ""}
-              onChange={filtersChanged}
-            >
-              <option value="">All releases</option>
-              <option value="stable">Stable</option>
-              <option value="prerelease">Prereleases</option>
-              {canWrite && <option value="draft">Drafts</option>}
-            </select>
-          </>
-        )}
-        <span className={styles.grow} />
-        {canWrite && !tag && (
-          <button
-            className={styles.primary}
-            type="button"
-            commandfor="release-editor"
-            command="show-modal"
-            onClick={prepareEditor}
-            disabled={!metadata.data?.branches.length}
-          >
-            <PlusIcon size={16} />
-            New release
-          </button>
-        )}
+        section="releases"
+        label="Releases"
+        current={tag || undefined}
+      >
         {canWrite && tag && single.data && (
-          <>
+          <div className={styles.headingActions}>
             <button
               className={controls.button}
               type="button"
@@ -306,9 +256,48 @@ export function Releases({ tag }: ReleasesProps) {
               <TrashIcon size={16} />
               Delete
             </button>
-          </>
+          </div>
         )}
-      </div>
+      </CodeBreadcrumb>
+      {!tag && (
+        <div className={styles.toolbar}>
+          <input
+            type="search"
+            className={styles.search}
+            name="q"
+            aria-label="Search releases"
+            placeholder="Search releases…"
+            value={search.q || ""}
+            onChange={filtersChanged}
+          />
+          <select
+            className={controls.select}
+            name="state"
+            aria-label="Release status"
+            value={search.state || ""}
+            onChange={filtersChanged}
+          >
+            <option value="">All releases</option>
+            <option value="stable">Stable</option>
+            <option value="prerelease">Prereleases</option>
+            {canWrite && <option value="draft">Drafts</option>}
+          </select>
+          <span className={styles.grow} />
+          {canWrite && (
+            <button
+              className={styles.primary}
+              type="button"
+              commandfor="release-editor"
+              command="show-modal"
+              onClick={prepareEditor}
+              disabled={!metadata.data?.branches.length}
+            >
+              <PlusIcon size={16} />
+              New release
+            </button>
+          )}
+        </div>
+      )}
       {error && <ErrorNotice error={error} retry={retry} />}
       {(tag ? single.isPending : list.isPending) && (
         <output className={styles.empty}>Loading releases…</output>
@@ -588,11 +577,12 @@ export function Containers() {
     [];
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active="images"
+        section="images"
+        label="Containers"
       />
       <div className={styles.toolbar}>
         <input

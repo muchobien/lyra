@@ -9,6 +9,35 @@
   flex: 1;
   min-width: 0;
 }
+.crumbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  min-height: var(--control-height);
+  margin-bottom: 1.2rem;
+  & nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    font-size: var(--text-md);
+  }
+  & a {
+    color: var(--accent);
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+  & nav > span {
+    color: var(--muted);
+  }
+  & strong {
+    font-weight: var(--weight-semibold);
+    overflow-wrap: anywhere;
+  }
+}
 .muted,
 .meta {
   color: var(--muted);
@@ -197,9 +226,6 @@
   border-bottom: 1px solid var(--border);
   margin: 1.5rem 0;
   overflow-x: auto;
-  &:first-child {
-    margin-top: 0;
-  }
   & a,
   & button {
     display: flex;

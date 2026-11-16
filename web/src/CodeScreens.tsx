@@ -5,70 +5,65 @@ import {
   useGetCommitWorkspace,
 } from "./api/generated/lyra";
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import {
-  CodeIcon,
-  GitCommitIcon,
-  PackageIcon,
-  TagIcon,
-  VersionsIcon,
-} from "@primer/octicons-react";
-import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
+import { TagIcon } from "@primer/octicons-react";
+import { CopyButton, ErrorNotice } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
-type CodeNavigationProps = { owner: string; repo: string; reference: string; active: string };
-export function CodeNavigation({ owner, repo, reference, active }: CodeNavigationProps) {
+type CodeBreadcrumbProps = {
+  owner: string;
+  repo: string;
+  reference: string;
+  section: string;
+  label: string;
+  current?: string;
+  children?: ReactNode;
+};
+export function CodeBreadcrumb({
+  owner,
+  repo,
+  reference,
+  section,
+  label,
+  current,
+  children,
+}: CodeBreadcrumbProps) {
   return (
-    <ScrollNavigation className={styles.tabs} label="Code sections" active={active}>
-      <Link
-        to="/$owner/$repo"
-        params={{ owner, repo }}
-        search={{ ref: reference }}
-        aria-current={active === "files" ? "page" : undefined}
-      >
-        <CodeIcon size={16} />
-        Files
-      </Link>
-      <Link
-        to="/$owner/$repo/$section/$"
-        params={{ owner, repo, section: "commits", _splat: reference }}
-        search={{}}
-        aria-current={active === "commits" ? "page" : undefined}
-      >
-        <GitCommitIcon size={16} />
-        Commits
-      </Link>
-      <Link
-        to="/$owner/$repo/$section"
-        params={{ owner, repo, section: "tags" }}
-        search={{}}
-        aria-current={active === "tags" ? "page" : undefined}
-      >
-        <TagIcon size={16} />
-        Tags
-      </Link>
-      <Link
-        to="/$owner/$repo/$section"
-        params={{ owner, repo, section: "releases" }}
-        search={{}}
-        aria-current={active === "releases" ? "page" : undefined}
-      >
-        <VersionsIcon size={16} />
-        Releases
-      </Link>
-      <Link
-        to="/$owner/$repo/$section"
-        params={{ owner, repo, section: "images" }}
-        search={{}}
-        aria-current={active === "images" ? "page" : undefined}
-      >
-        <PackageIcon size={16} />
-        Containers
-      </Link>
-    </ScrollNavigation>
+    <header className={styles.crumbs}>
+      <nav aria-label="Breadcrumb">
+        <Link to="/$owner/$repo" params={{ owner, repo }} search={{}}>
+          {repo}
+        </Link>
+        <span>/</span>
+        {current && section === "commits" && (
+          <Link
+            to="/$owner/$repo/$section/$"
+            params={{ owner, repo, section, _splat: reference }}
+            search={{}}
+          >
+            {label}
+          </Link>
+        )}
+        {current && section !== "commits" && (
+          <Link to="/$owner/$repo/$section" params={{ owner, repo, section }} search={{}}>
+            {label}
+          </Link>
+        )}
+        {current ? (
+          <>
+            <span>/</span>
+            <strong>{current}</strong>
+          </>
+        ) : (
+          <strong>{label}</strong>
+        )}
+      </nav>
+      {children}
+    </header>
   );
 }
 
@@ -263,11 +258,13 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   }
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active={section === "tags" ? "tags" : "commits"}
+        section={section === "tags" ? "tags" : "commits"}
+        label={section === "tags" ? "Tags" : "Commits"}
+        current={section === "commit" ? target.slice(0, 7) : undefined}
       />
       {content}
     </>

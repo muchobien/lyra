@@ -27,7 +27,6 @@ import {
   getGetRepositoryRawFileUrl,
 } from "./api/generated/lyra";
 import { CopyButton, ErrorNotice } from "./Controls";
-import { CodeNavigation } from "./CodeScreens";
 import { FileIcon } from "./FileIcon";
 import { DateTime } from "./Workspace";
 import controls from "./Controls.module.css";
@@ -149,7 +148,6 @@ export function RepositoryPage() {
 
   return (
     <>
-      <CodeNavigation owner={owner} repo={repo} reference={ref} active="files" />
       <div className={styles.workspace}>
         <section className={styles.files}>
           <div className={styles.toolbar}>
