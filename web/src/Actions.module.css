@@ -187,8 +187,12 @@
     gap: 0.7rem;
     align-items: center;
     &::before {
-      content: "▸";
-      color: var(--muted);
+      content: "";
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+      background: var(--muted);
+      mask: var(--chevron) center / contain no-repeat;
     }
     & > .stepDuration {
       margin-left: auto;

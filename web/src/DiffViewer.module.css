@@ -21,8 +21,12 @@
     font-size: var(--text-sm);
     font-weight: var(--weight-semibold);
     &::before {
-      content: "▸";
-      color: var(--muted);
+      content: "";
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+      background: var(--muted);
+      mask: var(--chevron) center / contain no-repeat;
     }
     & span {
       margin-left: auto;
@@ -100,9 +104,12 @@
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   font-size: var(--text-xs);
   &::before {
-    content: "▸";
-    color: var(--muted);
+    content: "";
+    width: 1rem;
+    height: 1rem;
     flex-shrink: 0;
+    background: var(--muted);
+    mask: var(--chevron) center / contain no-repeat;
   }
   & code {
     margin-right: auto;
