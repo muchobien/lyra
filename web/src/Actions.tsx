@@ -2,7 +2,21 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { DownloadIcon, GitBranchIcon, PauseIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
+import {
+  BlockedIcon,
+  CalendarIcon,
+  CheckCircleFillIcon,
+  ClockIcon,
+  DownloadIcon,
+  GitBranchIcon,
+  PauseIcon,
+  PlayIcon,
+  SkipIcon,
+  StopIcon,
+  StopwatchIcon,
+  SyncIcon,
+  XCircleFillIcon,
+} from "@primer/octicons-react";
 import { IdentityContext, request } from "./api";
 import {
   useGetRepo,
@@ -28,6 +42,15 @@ import {
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./Actions.module.css";
+
+const runIcons = {
+  success: CheckCircleFillIcon,
+  failure: XCircleFillIcon,
+  waiting: ClockIcon,
+  blocked: BlockedIcon,
+  cancelled: StopIcon,
+  skipped: SkipIcon,
+};
 
 export function ActionsList() {
   const { owner = "", repo = "" } = useParams({ strict: false });
@@ -229,34 +252,63 @@ export function ActionsList() {
         {workflows.error && <ErrorNotice error={workflows.error} retry={retry} />}
         {runs.isPending && <output className={common.empty}>Loading runs…</output>}
         {runs.data && (
-          <div className={common.panel}>
-            {visible.map((run) => (
-              <Link
-                className={common.row}
-                key={run.id}
-                to="/$owner/$repo/$section/$"
-                params={{ owner, repo, section: "runs", _splat: String(run.number) }}
-                search={{}}
-              >
-                <Status value={run.status} />
-                <div className={common.grow}>
-                  <strong className={common.rowTitle}>{run.title || run.name}</strong>
-                  <p className={common.meta}>
-                    {run.name} #{run.number} · {triggerLabels[run.event] || run.event} ·{" "}
-                    <ActorName actor={run.author} />
-                  </p>
-                  <p className={common.meta}>
-                    <GitBranchIcon size={16} />{" "}
-                    {run.head_ref || run.ref.replace(/^refs\/(heads|tags)\//, "")} ·{" "}
-                    <code>{run.sha.slice(0, 7)}</code>
-                  </p>
-                </div>
-                <div className={styles.runTimes}>
-                  <DateTime value={run.created_at} />
-                  <span>{duration(run.started_at, run.stopped_at)}</span>
-                </div>
-              </Link>
-            ))}
+          <div className={`${common.panel} ${styles.runs}`}>
+            {visible.map((run) => {
+              const RunIcon = runIcons[run.status as keyof typeof runIcons] || ClockIcon;
+              return (
+                <Link
+                  className={common.row}
+                  key={run.id}
+                  to="/$owner/$repo/$section/$"
+                  params={{ owner, repo, section: "runs", _splat: String(run.number) }}
+                  search={{}}
+                >
+                  <span
+                    className={`${common.status} ${styles.runState}`}
+                    data-state={run.status}
+                    title={run.status}
+                  >
+                    {run.status === "running" ? (
+                      <svg className={styles.spinner} viewBox="0 0 16 16" width="16" height="16">
+                        <circle cx="8" cy="8" r="6.25" />
+                        <path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25" />
+                      </svg>
+                    ) : (
+                      <RunIcon size={16} />
+                    )}
+                    <span className={controls.srOnly}>{run.status}</span>
+                  </span>
+                  <div className={common.grow}>
+                    <strong className={common.rowTitle}>{run.title || run.name}</strong>
+                    <p className={common.meta}>
+                      {run.name} #{run.number} · {triggerLabels[run.event] || run.event} ·{" "}
+                      <ActorName actor={run.author} />{" "}
+                      <span className={styles.ref}>
+                        <GitBranchIcon size={16} />
+                        {run.head_ref || run.ref.replace(/^refs\/(heads|tags)\//, "")}
+                      </span>{" "}
+                      <code>{run.sha.slice(0, 7)}</code>
+                    </p>
+                  </div>
+                  <div className={styles.runTimes}>
+                    <span>
+                      <CalendarIcon size={16} />
+                      <DateTime value={run.created_at} />
+                    </span>
+                    {run.started_at ? (
+                      <span>
+                        <StopwatchIcon size={16} />
+                        {duration(run.started_at, run.stopped_at)}
+                      </span>
+                    ) : (
+                      <span className={common.status} data-state={run.status}>
+                        {run.status}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
             {visible.length === 0 && <p className={common.empty}>No matching runs.</p>}
           </div>
         )}

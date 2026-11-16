@@ -31,10 +31,48 @@
 }
 .runTimes {
   display: grid;
-  gap: 0.4rem;
+  justify-items: end;
+  gap: 0.25rem;
   color: var(--muted);
   font-size: var(--text-xs);
-  text-align: right;
+  white-space: nowrap;
+  & > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+.runs > a {
+  align-items: flex-start;
+}
+.runState {
+  margin-top: 0.25rem;
+}
+.spinner {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  animation: spin 1s linear infinite;
+  & circle {
+    stroke-opacity: 0.3;
+  }
+}
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font: var(--text-xs) var(--mono);
+  vertical-align: middle;
 }
 .metadata {
   color: var(--muted);
@@ -261,6 +299,6 @@
     padding: 0.8rem;
   }
   .runTimes {
-    text-align: left;
+    justify-items: start;
   }
 }
