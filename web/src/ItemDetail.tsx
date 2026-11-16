@@ -356,6 +356,58 @@ export function ItemDetail({ kind, number }: DetailProps) {
     detailContent = (
       <div className={styles.columns}>
         <div>
+          {pull && item.state === "open" && (
+            <section className={styles.panel} aria-label="Merge status">
+              <div className={styles.panelHeading}>
+                <div>
+                  <strong>{canMerge ? "Ready to merge" : "Merge requirements"}</strong>
+                  <p className={styles.meta}>
+                    {reasons.length > 0
+                      ? reasons[0]
+                      : "The current head meets the repository’s merge rules."}
+                  </p>
+                </div>
+                {canWrite && (
+                  <button
+                    className={canMerge ? styles.primary : controls.button}
+                    type="button"
+                    disabled={!canMerge}
+                    commandfor="merge-pull"
+                    command="show-modal"
+                    onClick={openMerge}
+                  >
+                    Merge
+                  </button>
+                )}
+              </div>
+              <details className={styles.disclosure}>
+                <summary>Merge details</summary>
+                {reasons.length > 0 ? (
+                  <ul>
+                    {reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={styles.meta}>
+                    Available methods:{" "}
+                    {availableMethods
+                      .map((method) => (method === "ff" ? "Fast-forward" : "Squash"))
+                      .join(", ")}
+                  </p>
+                )}
+                <p className={styles.meta}>
+                  Head <code>{pull.head_sha.slice(0, 7)}</code>
+                  {checks && (
+                    <>
+                      {" "}
+                      · Checks: <Status value={checks.state} />
+                    </>
+                  )}
+                </p>
+              </details>
+            </section>
+          )}
           <article className={styles.panel}>
             <div className={styles.panelHeading}>
               <ActorName actor={item.author} />
@@ -594,60 +646,6 @@ export function ItemDetail({ kind, number }: DetailProps) {
             Files changed
           </Link>
         </ScrollNavigation>
-      )}
-      {pull && item.state === "open" && (
-        <section className={styles.panel} aria-label="Merge status">
-          <div className={styles.panelHeading}>
-            <div>
-              <strong>{canMerge ? "Ready to merge" : "Merge requirements"}</strong>
-              <p className={styles.meta}>
-                {reasons.length > 0
-                  ? reasons[0]
-                  : "The current head meets the repository’s merge rules."}
-              </p>
-            </div>
-            {canWrite && (
-              <button
-                className={canMerge ? styles.primary : controls.button}
-                type="button"
-                disabled={!canMerge}
-                commandfor="merge-pull"
-                command="show-modal"
-                onClick={openMerge}
-              >
-                Merge
-              </button>
-            )}
-          </div>
-          {tab === "overview" && (
-            <details className={styles.disclosure}>
-              <summary>Merge details</summary>
-              {reasons.length > 0 ? (
-                <ul>
-                  {reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.meta}>
-                  Available methods:{" "}
-                  {availableMethods
-                    .map((method) => (method === "ff" ? "Fast-forward" : "Squash"))
-                    .join(", ")}
-                </p>
-              )}
-              <p className={styles.meta}>
-                Head <code>{pull.head_sha.slice(0, 7)}</code>
-                {checks && (
-                  <>
-                    {" "}
-                    · Checks: <Status value={checks.state} />
-                  </>
-                )}
-              </p>
-            </details>
-          )}
-        </section>
       )}
       {detailContent}
       {canWrite && (
