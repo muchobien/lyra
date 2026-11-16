@@ -15,12 +15,12 @@ import (
 const (
 	ownerAdminOnly   = "owner management needs an unrestricted admin token"
 	ownerNameProblem = "owner names are 1 to 100 letters, digits, ., _ or -, starting with a letter or digit, " +
-		"and not api, static, healthz or v2"
+		"and not api, static, healthz, settings or v2"
 )
 
 var repoNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 
-var reservedNames = []string{"api", "static", "healthz", "v2"}
+var reservedNames = []string{"api", "static", "healthz", "settings", "v2"}
 
 type ownerGroup struct {
 	store.Owner

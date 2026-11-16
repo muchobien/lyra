@@ -33,7 +33,7 @@ export function RepositoryScreen() {
     return <Activity key={key} />;
   }
   if (section === "settings") {
-    return <Settings key={key} />;
+    return <Settings key={key} scope="repository" />;
   }
   return (
     <div className={styles.panel}>

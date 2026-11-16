@@ -43,6 +43,7 @@ func (s *Server) Handler() http.Handler {
 	}))
 	router.Handle("/static/assets/*", http.StripPrefix("/static/", webui.Assets()))
 	router.Get("/", s.page(s.uiApplication))
+	router.Get("/settings", s.page(s.uiApplication))
 	router.Get("/{owner}", s.page(s.uiApplication))
 	router.Route("/{owner}/{repo}", s.uiRoutes)
 	return router

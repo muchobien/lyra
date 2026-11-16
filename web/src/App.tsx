@@ -5,6 +5,7 @@ import {
   getRenderMarkdownQueryKey,
 } from "./api/generated/lyra";
 import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
 import { Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +15,7 @@ import {
   GitPullRequestIcon,
   IssueOpenedIcon,
   LockIcon,
+  DeviceDesktopIcon,
   MoonIcon,
   PlayIcon,
   PulseIcon,
@@ -26,6 +28,12 @@ import styles from "./App.module.css";
 const initialPath = location.pathname;
 const serverError = document.getElementById("root")?.dataset.errorMessage;
 const serverErrorTitle = document.getElementById("root")?.dataset.errorTitle;
+
+const themes = [
+  { id: "system", name: "System", icon: DeviceDesktopIcon },
+  { id: "light", name: "Light", icon: SunIcon },
+  { id: "dark", name: "Dark", icon: MoonIcon },
+];
 
 export function App() {
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -118,13 +126,13 @@ export function App() {
     localStorage.setItem("lyra-theme", theme);
   }, [theme]);
 
-  function changeTheme() {
-    const dark =
-      theme === "dark" ||
-      (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-    setTheme(dark ? "light" : "dark");
+  function changeTheme(event: ChangeEvent<HTMLInputElement>) {
+    setTheme(event.target.value);
   }
 
+  function closeAccount() {
+    document.getElementById("account-menu")?.hidePopover();
+  }
   function closePicker() {
     document.getElementById("repository-picker")?.hidePopover();
   }
@@ -134,6 +142,7 @@ export function App() {
   function retryPage() {
     location.reload();
   }
+  const instanceAdmin = identity.data?.scope === "admin" && !identity.data.repos.length;
   let content = <Outlet />;
   if (identity.error) {
     content = <ErrorNotice error={identity.error} retry={retryIdentity} />;
@@ -187,30 +196,14 @@ export function App() {
               )}
             </div>
           )}
-          <div className={styles.appearance}>
-            {owner && repo && (
-              <Link
-                to="/$owner/$repo/$section"
-                params={{ owner, repo, section: "settings" }}
-                search={{}}
-                className={styles.theme}
-                aria-label="Repository settings"
-              >
-                <GearIcon size={16} />
-              </Link>
-            )}
-            <button
-              className={styles.theme}
-              type="button"
-              onClick={changeTheme}
-              aria-label="Switch appearance"
-            >
-              {theme === "light" ? <MoonIcon size={16} /> : <SunIcon size={16} />}
-            </button>
-            <span className={styles.avatar} title={identity.data?.actor.user}>
-              {identity.data?.actor.user.slice(0, 1).toUpperCase() || "?"}
-            </span>
-          </div>
+          <button
+            className={styles.avatar}
+            popoverTarget="account-menu"
+            type="button"
+            aria-label="Account and appearance"
+          >
+            {identity.data?.actor.user.slice(0, 1).toUpperCase() || "?"}
+          </button>
         </div>
         {owner && repo && (
           <ScrollNavigation
@@ -281,9 +274,48 @@ export function App() {
               <PulseIcon size={16} />
               Activity
             </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "settings" }}
+              search={{}}
+              className={section === "settings" ? styles.selected : undefined}
+              aria-current={section === "settings" ? "page" : undefined}
+            >
+              <GearIcon size={16} />
+              Settings
+            </Link>
           </ScrollNavigation>
         )}
       </header>
+      <div id="account-menu" popover="auto" className={styles.accountMenu}>
+        <span className={styles.pickerLabel}>Signed in as</span>
+        <strong className={styles.account}>{identity.data?.actor.user}</strong>
+        <fieldset className={styles.themes}>
+          <legend className={styles.pickerLabel}>Theme</legend>
+          {themes.map((entry) => {
+            const Icon = entry.icon;
+            return (
+              <label key={entry.id}>
+                <input
+                  type="radio"
+                  name="theme"
+                  value={entry.id}
+                  checked={theme === entry.id}
+                  onChange={changeTheme}
+                />
+                <Icon size={16} />
+                {entry.name}
+              </label>
+            );
+          })}
+        </fieldset>
+        {instanceAdmin && (
+          <Link to="/settings" search={{}} onClick={closeAccount}>
+            <GearIcon size={16} />
+            Instance settings
+          </Link>
+        )}
+      </div>
       <div id="repository-picker" popover="auto" className={styles.repositoryPicker}>
         <span className={styles.pickerLabel}>Repositories</span>
         {repositories.data

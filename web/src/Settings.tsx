@@ -48,7 +48,8 @@ import styles from "./Settings.module.css";
 type ConfigChange = { save: () => Promise<unknown>; dialog: string };
 type Deletion = { remove: () => Promise<unknown>; title: string; description: string };
 type MintedSecret = { secret: string; title: string; url?: string };
-export function Settings() {
+type SettingsProps = { scope: "instance" | "repository" };
+export function Settings({ scope }: SettingsProps) {
   const { owner = "", repo = "" } = useParams({ strict: false });
   const search = useSearch({ strict: false });
   const identity = useContext(IdentityContext);
@@ -57,7 +58,12 @@ export function Settings() {
   const canWrite = identity?.scope !== "read";
   const admin = identity?.scope === "admin";
   const instanceAdmin = admin && !identity?.repos.length;
-  const area = search.section || (admin ? "secrets" : "variables");
+  const instance = scope === "instance";
+  let fallbackArea = admin ? "secrets" : "variables";
+  if (instance) {
+    fallbackArea = "access";
+  }
+  const area = search.section || fallbackArea;
   const [editingName, setEditingName] = useState("");
   const [editingValue, setEditingValue] = useState("");
   const [editorVersion, setEditorVersion] = useState(0);
@@ -314,12 +320,12 @@ export function Settings() {
     void queryClient.invalidateQueries();
   }
   const areas = [
-    { id: "secrets", name: "Secrets", icon: LockIcon, visible: admin },
-    { id: "variables", name: "Variables", icon: SlidersIcon, visible: true },
-    { id: "rules", name: "Branch rules", icon: GitBranchIcon, visible: true },
-    { id: "labels", name: "Labels", icon: PaintbrushIcon, visible: true },
-    { id: "access", name: "Access", icon: KeyIcon, visible: instanceAdmin },
-    { id: "runners", name: "Runners", icon: ServerIcon, visible: instanceAdmin },
+    { id: "secrets", name: "Secrets", icon: LockIcon, visible: !instance && admin },
+    { id: "variables", name: "Variables", icon: SlidersIcon, visible: !instance },
+    { id: "rules", name: "Branch rules", icon: GitBranchIcon, visible: !instance },
+    { id: "labels", name: "Labels", icon: PaintbrushIcon, visible: !instance },
+    { id: "access", name: "Access", icon: KeyIcon, visible: instance && instanceAdmin },
+    { id: "runners", name: "Runners", icon: ServerIcon, visible: instance && instanceAdmin },
   ];
   const selectedArea = areas.find((entry) => entry.id === area && entry.visible);
   const loadError = {
@@ -1077,13 +1083,24 @@ export function Settings() {
           .filter((entry) => entry.visible)
           .map((entry) => {
             const Icon = entry.icon;
-            return (
+            const current = area === entry.id ? "page" : undefined;
+            return instance ? (
+              <Link
+                key={entry.id}
+                to="/settings"
+                search={{ section: entry.id }}
+                aria-current={current}
+              >
+                <Icon size={16} />
+                {entry.name}
+              </Link>
+            ) : (
               <Link
                 key={entry.id}
                 to="/$owner/$repo/$section"
                 params={{ owner, repo, section: "settings" }}
                 search={{ section: entry.id }}
-                aria-current={area === entry.id ? "page" : undefined}
+                aria-current={current}
               >
                 <Icon size={16} />
                 {entry.name}

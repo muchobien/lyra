@@ -11,7 +11,7 @@ Every repository belongs to an owner, a namespace such as `krosf`, and is named
 - Owners have no members: access comes from the tailnet login or a token, and a token can
   cover a whole owner with `owner/*`.
 - Names are 1 to 100 letters, digits, `.`, `_` or `-`, starting with a letter or digit.
-  Owners can't be `api`, `static`, `healthz` or `v2`, and repositories can't end in `.git`.
+  Owners can't be `api`, `static`, `healthz`, `settings` or `v2`, and repositories can't end in `.git`.
 
 ## Git
 
