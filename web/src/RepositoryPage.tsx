@@ -379,10 +379,6 @@ export function RepositoryPage() {
           <section className={styles.about}>
             <h2>About</h2>
             {metadata.data.description && <p>{metadata.data.description}</p>}
-            <div className={styles.command}>
-              <code>{metadata.data.clone_url}</code>
-              <CopyButton value={metadata.data.clone_url} label="Copy clone URL" compact />
-            </div>
             <ul className={styles.stats}>
               <li>
                 <Link

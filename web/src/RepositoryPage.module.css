@@ -315,9 +315,6 @@
     margin-top: 0.8rem;
     overflow-wrap: anywhere;
   }
-  & > div {
-    margin-top: 1rem;
-  }
 }
 .stats {
   display: grid;
