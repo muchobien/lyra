@@ -3,15 +3,15 @@ import type { ChangeEvent, FormEvent, MouseEvent, ToggleEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  GitBranch,
-  KeyRound,
-  LockKeyhole,
-  Palette,
-  Plus,
-  Server,
-  Trash2,
-  Variable as VariableIcon,
-} from "lucide-react";
+  GitBranchIcon,
+  KeyIcon,
+  LockIcon,
+  PaintbrushIcon,
+  PlusIcon,
+  ServerIcon,
+  SlidersIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
 import { IdentityContext, type Rule } from "./api";
 import {
   useListVariables,
@@ -314,12 +314,12 @@ export function Settings() {
     void queryClient.invalidateQueries();
   }
   const areas = [
-    { id: "secrets", name: "Secrets", icon: LockKeyhole, visible: admin },
-    { id: "variables", name: "Variables", icon: VariableIcon, visible: true },
-    { id: "rules", name: "Branch rules", icon: GitBranch, visible: true },
-    { id: "labels", name: "Labels", icon: Palette, visible: true },
-    { id: "access", name: "Access", icon: KeyRound, visible: instanceAdmin },
-    { id: "runners", name: "Runners", icon: Server, visible: instanceAdmin },
+    { id: "secrets", name: "Secrets", icon: LockIcon, visible: admin },
+    { id: "variables", name: "Variables", icon: SlidersIcon, visible: true },
+    { id: "rules", name: "Branch rules", icon: GitBranchIcon, visible: true },
+    { id: "labels", name: "Labels", icon: PaintbrushIcon, visible: true },
+    { id: "access", name: "Access", icon: KeyIcon, visible: instanceAdmin },
+    { id: "runners", name: "Runners", icon: ServerIcon, visible: instanceAdmin },
   ];
   const selectedArea = areas.find((entry) => entry.id === area && entry.visible);
   const loadError = {
@@ -361,7 +361,7 @@ export function Settings() {
               command="show-modal"
               onClick={prepareValue}
             >
-              <Plus size={15} />
+              <PlusIcon size={16} />
               {isSecret ? "New secret" : "New variable"}
             </button>
           )}
@@ -369,7 +369,7 @@ export function Settings() {
         <div className={common.panel}>
           {records?.map((record) => (
             <article className={common.row} key={record.name}>
-              {isSecret ? <LockKeyhole size={17} /> : <VariableIcon size={17} />}
+              {isSecret ? <LockIcon size={16} /> : <SlidersIcon size={16} />}
               <div className={common.grow}>
                 <strong>{record.name}</strong>
                 <p className={common.meta}>
@@ -403,7 +403,7 @@ export function Settings() {
                     command="show-modal"
                     aria-label={`Delete ${record.name}`}
                   >
-                    <Trash2 size={14} />
+                    <TrashIcon size={16} />
                   </button>
                 </>
               )}
@@ -486,7 +486,7 @@ export function Settings() {
               command="show-modal"
               onClick={prepareRule}
             >
-              <Plus size={15} />
+              <PlusIcon size={16} />
               New rule
             </button>
           )}
@@ -494,7 +494,7 @@ export function Settings() {
         <div className={common.panel}>
           {rules.data?.map((rule) => (
             <article className={common.row} key={rule.id}>
-              <GitBranch size={18} />
+              <GitBranchIcon size={16} />
               <div className={common.grow}>
                 <strong>
                   <code>{rule.pattern}</code>
@@ -534,7 +534,7 @@ export function Settings() {
                     command="show-modal"
                     aria-label={`Delete rule ${rule.pattern}`}
                   >
-                    <Trash2 size={14} />
+                    <TrashIcon size={16} />
                   </button>
                 </>
               )}
@@ -656,7 +656,7 @@ export function Settings() {
               command="show-modal"
               onClick={resetChange}
             >
-              <Plus size={15} />
+              <PlusIcon size={16} />
               New label
             </button>
           )}
@@ -682,7 +682,7 @@ export function Settings() {
                   command="show-modal"
                   aria-label={`Delete label ${label.name}`}
                 >
-                  <Trash2 size={14} />
+                  <TrashIcon size={16} />
                 </button>
               )}
             </article>
@@ -748,7 +748,7 @@ export function Settings() {
             command="show-modal"
             onClick={resetToken}
           >
-            <Plus size={15} />
+            <PlusIcon size={16} />
             New token
           </button>
         </div>
@@ -758,7 +758,7 @@ export function Settings() {
           </div>
           {tokens.data?.map((token) => (
             <article className={common.row} key={token.id}>
-              <KeyRound size={18} />
+              <KeyIcon size={16} />
               <div className={common.grow}>
                 <strong>{token.name}</strong>
                 <p className={common.meta}>
@@ -802,7 +802,7 @@ export function Settings() {
           </div>
           {keys.data?.map((key) => (
             <article className={common.row} key={key.id}>
-              <KeyRound size={18} />
+              <KeyIcon size={16} />
               <div className={common.grow}>
                 <strong>{key.title || "Signing key"}</strong>
                 <p className={common.meta}>
@@ -821,7 +821,7 @@ export function Settings() {
                 command="show-modal"
                 aria-label={`Remove signing key ${key.title}`}
               >
-                <Trash2 size={14} />
+                <TrashIcon size={16} />
               </button>
             </article>
           ))}
@@ -960,14 +960,14 @@ export function Settings() {
             command="show-modal"
             onClick={resetRunnerToken}
           >
-            <Plus size={15} />
+            <PlusIcon size={16} />
             Registration token
           </button>
         </div>
         <section className={common.panel}>
           {runners.data?.map((runner) => (
             <article className={common.row} key={runner.id}>
-              <Server size={18} />
+              <ServerIcon size={16} />
               <div className={common.grow}>
                 <strong>{runner.name}</strong>
                 <p className={common.meta}>
@@ -997,7 +997,7 @@ export function Settings() {
                 command="show-modal"
                 aria-label={`Remove runner ${runner.name}`}
               >
-                <Trash2 size={14} />
+                <TrashIcon size={16} />
               </button>
             </article>
           ))}

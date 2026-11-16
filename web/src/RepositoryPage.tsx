@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent, ToggleEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Search, Terminal, Tags, Package, X, ShieldCheck, GitBranch } from "lucide-react";
+import {
+  GitBranchIcon,
+  PackageIcon,
+  SearchIcon,
+  TagIcon,
+  TerminalIcon,
+  VerifiedIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { APIError } from "./api";
 import {
   useGetRepo,
@@ -164,7 +172,7 @@ export function RepositoryPage() {
                 command="show-modal"
                 disabled={!hasBranches}
               >
-                <Search size={15} />
+                <SearchIcon size={16} />
                 Go to file <kbd>T</kbd>
               </button>
               <button
@@ -172,7 +180,7 @@ export function RepositoryPage() {
                 type="button"
                 popoverTarget="clone-options"
               >
-                <Terminal size={15} />
+                <TerminalIcon size={16} />
                 Clone
               </button>
             </div>
@@ -205,7 +213,7 @@ export function RepositoryPage() {
           )}
           {!search.file && tree.data?.empty && (
             <div className={styles.empty}>
-              <GitBranch size={28} />
+              <GitBranchIcon size={24} />
               <h1>Your repository is ready</h1>
               <p>Push your first commit to start browsing files.</p>
               <div className={styles.command}>
@@ -235,7 +243,7 @@ export function RepositoryPage() {
                     </span>
                     {tree.data.last.signature.status === "verified" && (
                       <span className={styles.verified}>
-                        <ShieldCheck size={14} />
+                        <VerifiedIcon size={16} />
                         Verified
                       </span>
                     )}
@@ -363,7 +371,7 @@ export function RepositoryPage() {
                   params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
                   search={{}}
                 >
-                  <Tags size={17} />
+                  <TagIcon size={16} />
                   <strong>{latest.data.tag}</strong>
                   <span>Latest</span>
                 </Link>
@@ -407,7 +415,7 @@ export function RepositoryPage() {
                       params={{ owner, repo, section: "images" }}
                       search={{}}
                     >
-                      <Package size={16} />
+                      <PackageIcon size={16} />
                       <span>
                         {image.name}
                         <strong>:{image.tag}</strong>
@@ -460,7 +468,7 @@ export function RepositoryPage() {
           command="close"
           aria-label="Close file finder"
         >
-          <X size={17} />
+          <XIcon size={16} />
         </button>
         <div className={styles.finderResults}>
           {files.isPending && <output>Loading files…</output>}

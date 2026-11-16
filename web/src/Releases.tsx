@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
+import { PackageIcon, PencilIcon, PlusIcon, TagIcon, TrashIcon } from "@primer/octicons-react";
 import { IdentityContext, type Release } from "./api";
 import type { ReleaseWrite } from "./api/generated/models";
 import {
@@ -252,7 +252,7 @@ export function Releases({ tag }: ReleasesProps) {
             onClick={prepareEditor}
             disabled={!metadata.data?.branches.length}
           >
-            <Plus size={15} />
+            <PlusIcon size={16} />
             New release
           </button>
         )}
@@ -271,7 +271,7 @@ export function Releases({ tag }: ReleasesProps) {
                 params={{ owner, repo, section: "releases", _splat: `tag/${release.tag}` }}
                 search={{}}
               >
-                <Tags size={16} /> {release.tag} · {release.title}
+                <TagIcon size={16} /> {release.tag} · {release.title}
               </Link>
               <p className={styles.meta}>
                 <ActorName actor={release.author} /> ·{" "}
@@ -293,7 +293,7 @@ export function Releases({ tag }: ReleasesProps) {
                     command="show-modal"
                     aria-label={`Edit ${release.tag}`}
                   >
-                    <Pencil size={14} />
+                    <PencilIcon size={16} />
                   </button>
                   <button
                     className={controls.button}
@@ -304,7 +304,7 @@ export function Releases({ tag }: ReleasesProps) {
                     command="show-modal"
                     aria-label={`Delete ${release.tag}`}
                   >
-                    <Trash2 size={14} />
+                    <TrashIcon size={16} />
                   </button>
                 </>
               )}
@@ -354,7 +354,7 @@ export function Releases({ tag }: ReleasesProps) {
               <h2>Containers linked to {release.tag}</h2>
               {release.images.map((image) => (
                 <div className={styles.row} key={`${image.name}:${image.tag}`}>
-                  <Package size={16} />
+                  <PackageIcon size={16} />
                   <div className={styles.grow}>
                     <Link
                       className={styles.link}
@@ -536,7 +536,7 @@ export function Containers() {
         active=""
       />
       <div className={styles.toolbar}>
-        <Package size={18} />
+        <PackageIcon size={16} />
         <strong>Containers</strong>
         <input
           className={styles.search}
@@ -553,7 +553,7 @@ export function Containers() {
         <div className={styles.panel}>
           {visible.map((image) => (
             <article className={styles.row} key={`${image.name}:${image.tag}`}>
-              <Package size={20} />
+              <PackageIcon size={16} />
               <div className={styles.grow}>
                 <strong className={styles.rowTitle}>
                   {image.name}:<span className={styles.link}>{image.tag}</span>

@@ -3,13 +3,13 @@ import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  GitBranch,
-  GitCommitHorizontal,
-  MessageSquare,
-  Files,
-  ListChecks,
-  Pencil,
-} from "lucide-react";
+  ChecklistIcon,
+  CommentIcon,
+  FileDiffIcon,
+  GitBranchIcon,
+  GitCommitIcon,
+  PencilIcon,
+} from "@primer/octicons-react";
 import { IdentityContext, type DiscussionComment, type Review } from "./api";
 import type { EditItemRequest, ReviewRequest, MergeRequest } from "./api/generated/models";
 import {
@@ -497,7 +497,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </p>
           {pull && (
             <p className={styles.meta}>
-              <GitBranch size={13} /> <code>{pull.head}</code> into <code>{pull.base}</code> ·{" "}
+              <GitBranchIcon size={16} /> <code>{pull.head}</code> into <code>{pull.base}</code> ·{" "}
               <code>{pull.head_sha.slice(0, 7)}</code>
               {pull.merge_sha && (
                 <>
@@ -529,7 +529,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
               commandfor="edit-item"
               command="show-modal"
             >
-              <Pencil size={14} />
+              <PencilIcon size={16} />
               Edit
             </button>
           )}
@@ -554,7 +554,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "overview" }}
             aria-current={tab === "overview" ? "page" : undefined}
           >
-            <MessageSquare size={15} />
+            <CommentIcon size={16} />
             Overview
           </Link>
           <Link
@@ -563,7 +563,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "commits" }}
             aria-current={tab === "commits" ? "page" : undefined}
           >
-            <GitCommitHorizontal size={15} />
+            <GitCommitIcon size={16} />
             Commits
           </Link>
           <Link
@@ -572,7 +572,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "checks" }}
             aria-current={tab === "checks" ? "page" : undefined}
           >
-            <ListChecks size={15} />
+            <ChecklistIcon size={16} />
             Checks <span className={styles.count}>{checks?.jobs.length || 0}</span>
           </Link>
           <Link
@@ -581,7 +581,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "files" }}
             aria-current={tab === "files" ? "page" : undefined}
           >
-            <Files size={15} />
+            <FileDiffIcon size={16} />
             Files changed
           </Link>
         </ScrollNavigation>

@@ -2,7 +2,7 @@ import { useListEvents } from "./api/generated/lyra";
 import { useContext, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Activity as ActivityIcon, GitCommitHorizontal } from "lucide-react";
+import { GitCommitIcon, PulseIcon } from "@primer/octicons-react";
 import { ConnectionContext } from "./api";
 import { ErrorNotice } from "./Controls";
 import { ActorName, DateTime } from "./Workspace";
@@ -42,7 +42,7 @@ export function Activity() {
   return (
     <>
       <div className={styles.toolbar}>
-        <ActivityIcon size={18} />
+        <PulseIcon size={16} />
         <span className={styles.live} data-connected={connection === "live"}>
           {connection}
         </span>
@@ -82,7 +82,7 @@ export function Activity() {
             const data = event.data && typeof event.data === "object" ? event.data : {};
             return (
               <article className={styles.row} key={event.id}>
-                <GitCommitHorizontal size={17} />
+                <GitCommitIcon size={16} />
                 <div className={styles.grow}>
                   <p>
                     <ActorName actor={event.actor} />{" "}

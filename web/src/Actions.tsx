@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CirclePlay, Download, GitBranch, Pause, Play, RotateCw } from "lucide-react";
+import { DownloadIcon, GitBranchIcon, PauseIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
 import { IdentityContext, request } from "./api";
 import {
   useGetRepo,
@@ -129,7 +129,7 @@ export function ActionsList() {
           search={{ ref: search.ref }}
           aria-current={!search.workflow ? "page" : undefined}
         >
-          <CirclePlay size={16} />
+          <PlayIcon size={16} />
           All workflows
         </Link>
         {workflows.data?.map((workflow) => (
@@ -206,7 +206,7 @@ export function ActionsList() {
               command="show-modal"
               onClick={resetDispatch}
             >
-              <Play size={15} />
+              <PlayIcon size={16} />
               Run workflow
             </button>
           )}
@@ -246,7 +246,7 @@ export function ActionsList() {
                     <ActorName actor={run.author} />
                   </p>
                   <p className={common.meta}>
-                    <GitBranch size={12} />{" "}
+                    <GitBranchIcon size={16} />{" "}
                     {run.head_ref || run.ref.replace(/^refs\/(heads|tags)\//, "")} ·{" "}
                     <code>{run.sha.slice(0, 7)}</code>
                   </p>
@@ -613,7 +613,7 @@ export function RunDetail({ number }: RunDetailProps) {
               type="button"
               popoverTarget="rerun-options"
             >
-              <RotateCw size={15} />
+              <SyncIcon size={16} />
               Re-run
             </button>
           )}
@@ -623,7 +623,8 @@ export function RunDetail({ number }: RunDetailProps) {
         <summary>Run details</summary>
         <div>
           <span>
-            <GitBranch size={13} /> {data.head_ref || data.ref.replace(/^refs\/(heads|tags)\//, "")}
+            <GitBranchIcon size={16} />{" "}
+            {data.head_ref || data.ref.replace(/^refs\/(heads|tags)\//, "")}
           </span>
           <Link
             to="/$owner/$repo/$section/$"
@@ -685,7 +686,7 @@ export function RunDetail({ number }: RunDetailProps) {
             <span className={common.grow} />
             {active && (
               <button type="button" className={controls.button} onClick={toggleFollow}>
-                {following ? <Pause size={14} /> : <Play size={14} />}
+                {following ? <PauseIcon size={16} /> : <PlayIcon size={16} />}
                 {following ? "Pause following" : "Resume following"}
               </button>
             )}
@@ -695,7 +696,7 @@ export function RunDetail({ number }: RunDetailProps) {
                 download={`run-${number}-${selected.key}.log`}
                 className={controls.button}
               >
-                <Download size={14} />
+                <DownloadIcon size={16} />
                 Download log
               </a>
             )}

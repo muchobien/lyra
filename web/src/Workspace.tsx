@@ -3,17 +3,17 @@ import { useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
-  Check,
-  CircleCheck,
-  CircleDot,
-  CircleX,
-  Clock3,
-  GitMerge,
-  GitPullRequest,
-  MessageSquare,
-  Minus,
-  X,
-} from "lucide-react";
+  CheckCircleIcon,
+  CheckIcon,
+  ClockIcon,
+  CommentIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  SkipIcon,
+  XCircleIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { type Actor, type Checks, type Commit } from "./api";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
@@ -21,26 +21,27 @@ import styles from "./Workspace.module.css";
 type StatusProps = { value: string; issue?: boolean; children?: ReactNode };
 export function Status({ value, issue, children }: StatusProps) {
   const icons = {
-    success: CircleCheck,
-    failure: CircleX,
-    cancelled: CircleX,
-    merged: GitMerge,
-    approved: Check,
-    changes_requested: CircleX,
-    commented: MessageSquare,
-    open: GitPullRequest,
-    closed: CircleX,
-    waiting: Clock3,
-    blocked: Clock3,
-    running: Clock3,
-    pending: Clock3,
-    skipped: Minus,
+    success: CheckCircleIcon,
+    failure: XCircleIcon,
+    cancelled: XCircleIcon,
+    merged: GitMergeIcon,
+    approved: CheckIcon,
+    changes_requested: XCircleIcon,
+    commented: CommentIcon,
+    open: GitPullRequestIcon,
+    closed: XCircleIcon,
+    waiting: ClockIcon,
+    blocked: ClockIcon,
+    running: ClockIcon,
+    pending: ClockIcon,
+    skipped: SkipIcon,
   };
   const Icon =
-    (issue && value === "open" ? CircleDot : icons[value as keyof typeof icons]) || CircleDot;
+    (issue && value === "open" ? IssueOpenedIcon : icons[value as keyof typeof icons]) ||
+    IssueOpenedIcon;
   return (
     <span className={styles.status} data-state={value}>
-      <Icon size={14} />
+      <Icon size={16} />
       {children || value.replaceAll("_", " ")}
     </span>
   );
@@ -242,7 +243,7 @@ export function DialogClose({ target }: DialogCloseProps) {
       command="close"
       aria-label="Close dialog"
     >
-      <X size={18} />
+      <XIcon size={16} />
     </button>
   );
 }

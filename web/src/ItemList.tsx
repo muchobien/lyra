@@ -2,7 +2,7 @@ import { useContext, useEffect } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { GitPullRequest, CircleDot, MessageSquare, Plus } from "lucide-react";
+import { CommentIcon, GitPullRequestIcon, IssueOpenedIcon, PlusIcon } from "@primer/octicons-react";
 import { IdentityContext } from "./api";
 import type { CreateIssueRequest, ItemWrite, PullWrite, Item, Pull } from "./api/generated/models";
 import {
@@ -164,7 +164,7 @@ export function ItemList({ kind }: ItemListProps) {
                   : undefined
               }
             >
-              <Plus size={15} />
+              <PlusIcon size={16} />
               {kind === "pulls" ? "New pull request" : "New issue"}
             </button>
           )}
@@ -216,7 +216,7 @@ export function ItemList({ kind }: ItemListProps) {
         <div className={styles.panel}>
           {listedItems.map((item) => (
             <article className={styles.row} key={item.number}>
-              {kind === "pulls" ? <GitPullRequest size={18} /> : <CircleDot size={18} />}
+              {kind === "pulls" ? <GitPullRequestIcon size={16} /> : <IssueOpenedIcon size={16} />}
               <div className={styles.grow}>
                 <Link
                   className={styles.rowTitle}
@@ -250,7 +250,7 @@ export function ItemList({ kind }: ItemListProps) {
               <Status value={item.state} issue={kind === "issues"} />
               {item.comment_count > 0 && (
                 <span className={styles.meta} aria-label={`${item.comment_count} comments`}>
-                  <MessageSquare size={13} /> {item.comment_count}
+                  <CommentIcon size={16} /> {item.comment_count}
                 </span>
               )}
             </article>

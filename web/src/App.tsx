@@ -8,17 +8,17 @@ import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Code,
-  GitPullRequest,
-  CircleDot,
-  CirclePlay,
-  LockKeyhole,
-  Moon,
-  Sun,
-  Check,
-  Activity,
-  Settings,
-} from "lucide-react";
+  CheckIcon,
+  CodeIcon,
+  GearIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  LockIcon,
+  MoonIcon,
+  PlayIcon,
+  PulseIcon,
+  SunIcon,
+} from "@primer/octicons-react";
 import { ConnectionContext, IdentityContext } from "./api";
 import { ErrorNotice, ScrollNavigation } from "./Controls";
 import styles from "./App.module.css";
@@ -180,7 +180,7 @@ export function App() {
                     type="button"
                     aria-label={`Switch repository: ${repo}`}
                   >
-                    <LockKeyhole size={13} />
+                    <LockIcon size={16} />
                     <strong>{repo}</strong>
                   </button>
                 </>
@@ -196,7 +196,7 @@ export function App() {
                 className={styles.theme}
                 aria-label="Repository settings"
               >
-                <Settings size={18} />
+                <GearIcon size={16} />
               </Link>
             )}
             <button
@@ -205,7 +205,7 @@ export function App() {
               onClick={changeTheme}
               aria-label="Switch appearance"
             >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+              {theme === "light" ? <MoonIcon size={16} /> : <SunIcon size={16} />}
             </button>
             <span className={styles.avatar} title={identity.data?.actor.user}>
               {identity.data?.actor.user.slice(0, 1).toUpperCase() || "?"}
@@ -238,7 +238,7 @@ export function App() {
                   : undefined
               }
             >
-              <Code size={16} />
+              <CodeIcon size={16} />
               Code
             </Link>
             <Link
@@ -248,7 +248,7 @@ export function App() {
               className={section === "pulls" ? styles.selected : undefined}
               aria-current={section === "pulls" ? "page" : undefined}
             >
-              <GitPullRequest size={16} />
+              <GitPullRequestIcon size={16} />
               Pull requests
             </Link>
             <Link
@@ -258,7 +258,7 @@ export function App() {
               className={section === "issues" ? styles.selected : undefined}
               aria-current={section === "issues" ? "page" : undefined}
             >
-              <CircleDot size={16} />
+              <IssueOpenedIcon size={16} />
               Issues
             </Link>
             <Link
@@ -268,7 +268,7 @@ export function App() {
               className={section === "runs" ? styles.selected : undefined}
               aria-current={section === "runs" ? "page" : undefined}
             >
-              <CirclePlay size={16} />
+              <PlayIcon size={16} />
               Actions
             </Link>
             <Link
@@ -278,7 +278,7 @@ export function App() {
               className={section === "activity" ? styles.selected : undefined}
               aria-current={section === "activity" ? "page" : undefined}
             >
-              <Activity size={16} />
+              <PulseIcon size={16} />
               Activity
             </Link>
           </ScrollNavigation>
@@ -299,7 +299,7 @@ export function App() {
                 onClick={closePicker}
               >
                 <span>{entryRepo}</span>
-                {entryRepo === repo && <Check size={15} />}
+                {entryRepo === repo && <CheckIcon size={16} />}
               </Link>
             );
           })}

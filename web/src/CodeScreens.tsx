@@ -6,7 +6,7 @@ import {
 } from "./api/generated/lyra";
 import { useEffect } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { Code, GitCommitHorizontal, Tags } from "lucide-react";
+import { CodeIcon, GitCommitIcon, TagIcon } from "@primer/octicons-react";
 import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
@@ -23,7 +23,7 @@ export function CodeNavigation({ owner, repo, reference, active }: CodeNavigatio
         search={{ ref: reference }}
         aria-current={active === "files" ? "page" : undefined}
       >
-        <Code size={15} />
+        <CodeIcon size={16} />
         Files
       </Link>
       <Link
@@ -32,7 +32,7 @@ export function CodeNavigation({ owner, repo, reference, active }: CodeNavigatio
         search={{}}
         aria-current={active === "commits" ? "page" : undefined}
       >
-        <GitCommitHorizontal size={15} />
+        <GitCommitIcon size={16} />
         Commits
       </Link>
       <Link
@@ -41,7 +41,7 @@ export function CodeNavigation({ owner, repo, reference, active }: CodeNavigatio
         search={{}}
         aria-current={active === "tags" ? "page" : undefined}
       >
-        <Tags size={15} />
+        <TagIcon size={16} />
         Tags
       </Link>
     </ScrollNavigation>
@@ -91,7 +91,7 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       <div className={styles.panel}>
         {tags.data.map((tag) => (
           <article className={styles.row} key={tag.name}>
-            <Tags size={18} />
+            <TagIcon size={16} />
             <div className={styles.grow}>
               <Link
                 className={styles.rowTitle}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { FileCode2, Check } from "lucide-react";
+import { CheckIcon, FileCodeIcon } from "@primer/octicons-react";
 import type { DiffFile, DiffLine, DiscussionComment } from "./api";
 import type { Comment, CommentRequest } from "./api/generated/models";
 import { ActorName, Markdown, RichText } from "./Workspace";
@@ -171,7 +171,7 @@ export function DiffViewer({
       <div className={styles.workspace}>
         <details className={styles.navigation} open={navigationOpen}>
           <summary>
-            <FileCode2 size={15} />
+            <FileCodeIcon size={16} />
             Files <span>{files.length}</span>
           </summary>
           <nav aria-label="Changed files">
@@ -184,7 +184,7 @@ export function DiffViewer({
                 aria-current={selected?.path === file.path ? "page" : undefined}
               >
                 <span>{file.path}</span>
-                {viewed.has(file.path) && <Check size={13} />}
+                {viewed.has(file.path) && <CheckIcon size={16} />}
               </Link>
             ))}
           </nav>
