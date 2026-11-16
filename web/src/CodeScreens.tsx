@@ -7,7 +7,7 @@ import {
 import { useEffect } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { FileDirectoryIcon, TagIcon } from "@primer/octicons-react";
+import { FileDirectoryIcon, TagIcon, VerifiedIcon } from "@primer/octicons-react";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
@@ -115,7 +115,7 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   let content;
   if (section === "tags") {
     content = tags.data ? (
-      <div className={styles.panel}>
+      <div className={`${styles.panel} ${styles.commits}`}>
         {tags.data.map((tag) => (
           <article className={styles.row} key={tag.name}>
             <TagIcon size={16} />
@@ -129,24 +129,44 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
                 {tag.name}
               </Link>
               <p className={styles.meta}>
-                {tag.annotated ? "Annotated tag" : "Lightweight tag"}
-                {tag.tagger && (
+                {tag.tagger ? (
                   <>
-                    {" "}
-                    · {tag.tagger.name} · <DateTime value={tag.tagger.date} />
+                    <strong>{tag.tagger.name}</strong> tagged <DateTime value={tag.tagger.date} />
                   </>
+                ) : (
+                  "Lightweight tag"
+                )}
+                {tag.message && tag.message.split("\n")[0] !== tag.name && (
+                  <> · {tag.message.split("\n")[0]}</>
                 )}
               </p>
-              {tag.message && <p className={styles.meta}>{tag.message.split("\n")[0]}</p>}
             </div>
-            <Status value={tag.signature.status} />
+            {tag.signature.status === "verified" && (
+              <span className={styles.verified} title="Verified">
+                <VerifiedIcon size={16} />
+                <span className={controls.srOnly}>Verified</span>
+              </span>
+            )}
+            {!["verified", "unverified"].includes(tag.signature.status) && (
+              <Status value={tag.signature.status} />
+            )}
             <Link
-              className={styles.link}
+              className={styles.sha}
               to="/$owner/$repo/$section/$"
               params={{ owner, repo, section: "commit", _splat: tag.target }}
               search={{}}
             >
-              <code>{tag.target.slice(0, 7)}</code>
+              {tag.target.slice(0, 7)}
+            </Link>
+            <Link
+              className={styles.browse}
+              to="/$owner/$repo"
+              params={{ owner, repo }}
+              search={{ ref: `refs/tags/${tag.name}` }}
+              aria-label={`Browse files at ${tag.name}`}
+              title="Browse files"
+            >
+              <FileDirectoryIcon size={16} />
             </Link>
           </article>
         ))}

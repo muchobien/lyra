@@ -24,32 +24,39 @@
 }
 .repositories {
   display: grid;
-  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: clip;
 }
 .repository {
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  background: var(--surface);
-  padding: 1.3rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  gap: 0.75rem;
+  padding: 0.75rem 1.2rem;
+  border-bottom: 1px solid var(--soft-border);
+  &:last-child {
+    border-bottom: 0;
+  }
   & > svg {
     color: var(--muted);
     margin-top: 0.2rem;
   }
   & strong {
+    color: var(--accent);
     font-weight: var(--weight-semibold);
     font-size: var(--text-md);
   }
   & p {
     color: var(--muted);
     font-size: var(--text-sm);
-    margin-top: 0.35rem;
+    margin-top: 0.15rem;
   }
   &:hover {
-    border-color: var(--accent);
-    background: var(--raised);
+    background: var(--hover);
+    & strong {
+      text-decoration: underline;
+    }
   }
 }
 .loading {

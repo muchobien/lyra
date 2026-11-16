@@ -692,7 +692,7 @@ export function RunDetail({ number }: RunDetailProps) {
               search={{ job: String(job.id) }}
               aria-current={selected?.id === job.id ? "page" : undefined}
             >
-              <Status value={job.status} />
+              <RunState status={job.status} />
               <span>{job.name}</span>
             </Link>
           ))}

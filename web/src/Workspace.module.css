@@ -258,10 +258,13 @@
   color: var(--muted);
 }
 .label {
-  color: var(--accent);
-  background: var(--accent-surface);
+  --label: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--label) 45%, transparent);
+  background: color-mix(in srgb, var(--label) 15%, transparent);
+  color: color-mix(in srgb, var(--label) 45%, var(--text));
   font-weight: var(--weight-medium);
-  padding: 0.1rem 0.55rem;
+  padding: 0 0.5rem;
+  line-height: 1.5;
 }
 .labels {
   display: flex;

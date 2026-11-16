@@ -94,9 +94,10 @@
   align-content: start;
   gap: 0.4rem;
   & a {
-    display: grid;
-    gap: 0.3rem;
-    padding: 0.8rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
     border-radius: var(--radius-md);
     color: var(--muted);
     font-size: var(--text-sm);

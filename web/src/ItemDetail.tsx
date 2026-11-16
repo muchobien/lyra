@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, FormEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,6 +24,7 @@ import {
   useReviewPull,
   useMergePull,
   useCommentPull,
+  useListLabels,
 } from "./api/generated/lyra";
 import { ErrorNotice, CopyButton, ScrollNavigation, formValue } from "./Controls";
 import {
@@ -64,6 +65,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     query: { enabled: kind === "pulls" },
   });
   const workspace = kind === "pulls" ? pullWorkspace : issueWorkspace;
+  const labels = useListLabels(owner, repo);
   const tab = search.tab || "overview";
   const commits = useListPullCommits(owner, repo, Number(number), {
     query: { enabled: kind === "pulls" && tab === "commits" },
@@ -457,11 +459,18 @@ export function ItemDetail({ kind, number }: DetailProps) {
           <section>
             <h2>Labels</h2>
             <div className={styles.labels}>
-              {item.labels.map((label) => (
-                <span className={styles.label} key={label}>
-                  {label}
-                </span>
-              ))}
+              {item.labels.map((label) => {
+                const color = labels.data?.find((entry) => entry.name === label)?.color;
+                return (
+                  <span
+                    className={styles.label}
+                    key={label}
+                    style={color ? ({ "--label": `#${color}` } as CSSProperties) : undefined}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
               {item.labels.length === 0 && <span className={styles.muted}>None</span>}
             </div>
           </section>

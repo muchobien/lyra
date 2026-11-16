@@ -258,7 +258,7 @@ export function ItemList({ kind }: ItemListProps) {
                       const color = labels.data?.find((entry) => entry.name === label)?.color;
                       return (
                         <span
-                          className={list.label}
+                          className={styles.label}
                           key={label}
                           style={color ? ({ "--label": `#${color}` } as CSSProperties) : undefined}
                         >
