@@ -1,8 +1,17 @@
 import { useContext, useEffect } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { CommentIcon, GitPullRequestIcon, IssueOpenedIcon, PlusIcon } from "@primer/octicons-react";
+import {
+  CommentIcon,
+  GitMergeIcon,
+  GitPullRequestClosedIcon,
+  GitPullRequestIcon,
+  IssueClosedIcon,
+  IssueOpenedIcon,
+  PersonIcon,
+  PlusIcon,
+} from "@primer/octicons-react";
 import { IdentityContext } from "./api";
 import type { CreateIssueRequest, ItemWrite, PullWrite, Item, Pull } from "./api/generated/models";
 import {
@@ -14,10 +23,16 @@ import {
   useCreatePull,
 } from "./api/generated/lyra";
 import { ErrorNotice, formValue } from "./Controls";
-import { ActorName, DateTime, DialogClose, FormError, MarkdownEditor, Status } from "./Workspace";
+import { ActorName, DateTime, DialogClose, FormError, MarkdownEditor } from "./Workspace";
 import { useDraft } from "./drafts";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
+import list from "./ItemList.module.css";
+
+const stateIcons = {
+  issues: { open: IssueOpenedIcon, closed: IssueClosedIcon, merged: IssueClosedIcon },
+  pulls: { open: GitPullRequestIcon, closed: GitPullRequestClosedIcon, merged: GitMergeIcon },
+};
 
 type ItemListProps = { kind: "pulls" | "issues" };
 export function ItemList({ kind }: ItemListProps) {
@@ -170,42 +185,6 @@ export function ItemList({ kind }: ItemListProps) {
           )}
         </form>
       </search>
-      <nav className={styles.tabs} aria-label="State filter">
-        <Link
-          to="/$owner/$repo/$section"
-          params={{ owner, repo, section: kind }}
-          search={{ ...search, state: "open" }}
-          aria-current={state === "open" ? "page" : undefined}
-        >
-          Open
-        </Link>
-        <Link
-          to="/$owner/$repo/$section"
-          params={{ owner, repo, section: kind }}
-          search={{ ...search, state: "closed" }}
-          aria-current={state === "closed" ? "page" : undefined}
-        >
-          Closed
-        </Link>
-        {kind === "pulls" && (
-          <Link
-            to="/$owner/$repo/$section"
-            params={{ owner, repo, section: kind }}
-            search={{ ...search, state: "merged" }}
-            aria-current={state === "merged" ? "page" : undefined}
-          >
-            Merged
-          </Link>
-        )}
-        <Link
-          to="/$owner/$repo/$section"
-          params={{ owner, repo, section: kind }}
-          search={{ ...search, state: "all" }}
-          aria-current={state === "all" ? "page" : undefined}
-        >
-          All
-        </Link>
-      </nav>
       {items.error && <ErrorNotice error={items.error} retry={retry} />}
       {items.isPending && (
         <output className={styles.empty}>
@@ -214,47 +193,106 @@ export function ItemList({ kind }: ItemListProps) {
       )}
       {items.data && (
         <div className={styles.panel}>
-          {listedItems.map((item) => (
-            <article className={styles.row} key={item.number}>
-              {kind === "pulls" ? <GitPullRequestIcon size={16} /> : <IssueOpenedIcon size={16} />}
-              <div className={styles.grow}>
-                <Link
-                  className={styles.rowTitle}
-                  to="/$owner/$repo/$section/$"
-                  params={{ owner, repo, section: kind, _splat: String(item.number) }}
-                  search={{}}
+          <nav className={`${styles.panelHeading} ${list.states}`} aria-label="State filter">
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: kind }}
+              search={{ ...search, state: "open" }}
+              aria-current={state === "open" ? "page" : undefined}
+            >
+              Open
+            </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: kind }}
+              search={{ ...search, state: "closed" }}
+              aria-current={state === "closed" ? "page" : undefined}
+            >
+              Closed
+            </Link>
+            {kind === "pulls" && (
+              <Link
+                to="/$owner/$repo/$section"
+                params={{ owner, repo, section: kind }}
+                search={{ ...search, state: "merged" }}
+                aria-current={state === "merged" ? "page" : undefined}
+              >
+                Merged
+              </Link>
+            )}
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: kind }}
+              search={{ ...search, state: "all" }}
+              aria-current={state === "all" ? "page" : undefined}
+            >
+              All
+            </Link>
+          </nav>
+          {listedItems.map((item) => {
+            const StateIcon =
+              stateIcons[kind][item.state as keyof (typeof stateIcons)["issues"]] ||
+              stateIcons[kind].open;
+            return (
+              <article className={`${styles.row} ${list.item}`} key={item.number}>
+                <span
+                  className={list.state}
+                  data-kind={kind}
+                  data-state={item.state}
+                  title={item.state}
                 >
-                  {item.title}
-                </Link>
-                <p className={styles.meta}>
-                  #{item.number} · <ActorName actor={item.author} /> ·{" "}
-                  <DateTime value={item.created_at} />
-                  {"head" in item && (
-                    <>
-                      {" "}
-                      · <code>{item.head}</code> into <code>{item.base}</code>
-                    </>
-                  )}
-                </p>
-                <div className={styles.labels}>
-                  {item.labels.map((label) => (
-                    <span className={styles.label} key={label}>
-                      {label}
-                    </span>
-                  ))}
-                  {item.assignees.length > 0 && (
-                    <span className={styles.meta}>{item.assignees.join(", ")}</span>
-                  )}
-                </div>
-              </div>
-              <Status value={item.state} issue={kind === "issues"} />
-              {item.comment_count > 0 && (
-                <span className={styles.meta} aria-label={`${item.comment_count} comments`}>
-                  <CommentIcon size={16} /> {item.comment_count}
+                  <StateIcon size={16} />
+                  <span className={controls.srOnly}>{item.state}</span>
                 </span>
-              )}
-            </article>
-          ))}
+                <div className={styles.grow}>
+                  <div className={list.titleLine}>
+                    <Link
+                      className={styles.rowTitle}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: kind, _splat: String(item.number) }}
+                      search={{}}
+                    >
+                      {item.title}
+                    </Link>
+                    {item.labels.map((label) => {
+                      const color = labels.data?.find((entry) => entry.name === label)?.color;
+                      return (
+                        <span
+                          className={list.label}
+                          key={label}
+                          style={color ? ({ "--label": `#${color}` } as CSSProperties) : undefined}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <p className={styles.meta}>
+                    #{item.number} opened <DateTime value={item.created_at} /> by{" "}
+                    <ActorName actor={item.author} />
+                    {"head" in item && (
+                      <>
+                        {" "}
+                        · <code>{item.head}</code> → <code>{item.base}</code>
+                      </>
+                    )}
+                  </p>
+                </div>
+                {item.assignees.length > 0 && (
+                  <span className={list.side} title="Assignees">
+                    <PersonIcon size={16} />
+                    {item.assignees.join(", ")}
+                  </span>
+                )}
+                {item.comment_count > 0 && (
+                  <span className={list.side} aria-label={`${item.comment_count} comments`}>
+                    <CommentIcon size={16} />
+                    {item.comment_count}
+                  </span>
+                )}
+              </article>
+            );
+          })}
           {items.data.length === 0 && (
             <p className={styles.empty}>
               No matching {kind === "pulls" ? "pull requests" : "issues"}.
