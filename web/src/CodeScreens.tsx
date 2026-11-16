@@ -35,10 +35,6 @@ export function CodeBreadcrumb({
   return (
     <header className={styles.crumbs}>
       <nav aria-label="Breadcrumb">
-        <Link to="/$owner/$repo" params={{ owner, repo }} search={{}}>
-          {repo}
-        </Link>
-        <span>/</span>
         {current && section === "commits" && (
           <Link
             to="/$owner/$repo/$section/$"
