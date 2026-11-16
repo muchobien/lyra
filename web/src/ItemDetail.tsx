@@ -1,15 +1,15 @@
 import { useContext, useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, FormEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  GitBranch,
-  GitCommitHorizontal,
-  MessageSquare,
-  Files,
-  ListChecks,
-  Pencil,
-} from "lucide-react";
+  ChecklistIcon,
+  CommentIcon,
+  FileDiffIcon,
+  GitBranchIcon,
+  GitCommitIcon,
+  PencilIcon,
+} from "@primer/octicons-react";
 import { IdentityContext, type DiscussionComment, type Review } from "./api";
 import type { EditItemRequest, ReviewRequest, MergeRequest } from "./api/generated/models";
 import {
@@ -24,6 +24,7 @@ import {
   useReviewPull,
   useMergePull,
   useCommentPull,
+  useListLabels,
 } from "./api/generated/lyra";
 import { ErrorNotice, CopyButton, ScrollNavigation, formValue } from "./Controls";
 import {
@@ -64,6 +65,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     query: { enabled: kind === "pulls" },
   });
   const workspace = kind === "pulls" ? pullWorkspace : issueWorkspace;
+  const labels = useListLabels(owner, repo);
   const tab = search.tab || "overview";
   const commits = useListPullCommits(owner, repo, Number(number), {
     query: { enabled: kind === "pulls" && tab === "commits" },
@@ -354,6 +356,58 @@ export function ItemDetail({ kind, number }: DetailProps) {
     detailContent = (
       <div className={styles.columns}>
         <div>
+          {pull && item.state === "open" && (
+            <section className={styles.panel} aria-label="Merge status">
+              <div className={styles.panelHeading}>
+                <div>
+                  <strong>{canMerge ? "Ready to merge" : "Merge requirements"}</strong>
+                  <p className={styles.meta}>
+                    {reasons.length > 0
+                      ? reasons[0]
+                      : "The current head meets the repository’s merge rules."}
+                  </p>
+                </div>
+                {canWrite && (
+                  <button
+                    className={canMerge ? styles.primary : controls.button}
+                    type="button"
+                    disabled={!canMerge}
+                    commandfor="merge-pull"
+                    command="show-modal"
+                    onClick={openMerge}
+                  >
+                    Merge
+                  </button>
+                )}
+              </div>
+              <details className={styles.disclosure}>
+                <summary>Merge details</summary>
+                {reasons.length > 0 ? (
+                  <ul>
+                    {reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={styles.meta}>
+                    Available methods:{" "}
+                    {availableMethods
+                      .map((method) => (method === "ff" ? "Fast-forward" : "Squash"))
+                      .join(", ")}
+                  </p>
+                )}
+                <p className={styles.meta}>
+                  Head <code>{pull.head_sha.slice(0, 7)}</code>
+                  {checks && (
+                    <>
+                      {" "}
+                      · Checks: <Status value={checks.state} />
+                    </>
+                  )}
+                </p>
+              </details>
+            </section>
+          )}
           <article className={styles.panel}>
             <div className={styles.panelHeading}>
               <ActorName actor={item.author} />
@@ -457,11 +511,18 @@ export function ItemDetail({ kind, number }: DetailProps) {
           <section>
             <h2>Labels</h2>
             <div className={styles.labels}>
-              {item.labels.map((label) => (
-                <span className={styles.label} key={label}>
-                  {label}
-                </span>
-              ))}
+              {item.labels.map((label) => {
+                const color = labels.data?.find((entry) => entry.name === label)?.color;
+                return (
+                  <span
+                    className={styles.label}
+                    key={label}
+                    style={color ? ({ "--label": `#${color}` } as CSSProperties) : undefined}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
               {item.labels.length === 0 && <span className={styles.muted}>None</span>}
             </div>
           </section>
@@ -497,7 +558,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </p>
           {pull && (
             <p className={styles.meta}>
-              <GitBranch size={13} /> <code>{pull.head}</code> into <code>{pull.base}</code> ·{" "}
+              <GitBranchIcon size={16} /> <code>{pull.head}</code> into <code>{pull.base}</code> ·{" "}
               <code>{pull.head_sha.slice(0, 7)}</code>
               {pull.merge_sha && (
                 <>
@@ -529,7 +590,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
               commandfor="edit-item"
               command="show-modal"
             >
-              <Pencil size={14} />
+              <PencilIcon size={16} />
               Edit
             </button>
           )}
@@ -554,7 +615,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "overview" }}
             aria-current={tab === "overview" ? "page" : undefined}
           >
-            <MessageSquare size={15} />
+            <CommentIcon size={16} />
             Overview
           </Link>
           <Link
@@ -563,7 +624,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "commits" }}
             aria-current={tab === "commits" ? "page" : undefined}
           >
-            <GitCommitHorizontal size={15} />
+            <GitCommitIcon size={16} />
             Commits
           </Link>
           <Link
@@ -572,7 +633,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "checks" }}
             aria-current={tab === "checks" ? "page" : undefined}
           >
-            <ListChecks size={15} />
+            <ChecklistIcon size={16} />
             Checks <span className={styles.count}>{checks?.jobs.length || 0}</span>
           </Link>
           <Link
@@ -581,64 +642,10 @@ export function ItemDetail({ kind, number }: DetailProps) {
             search={{ tab: "files" }}
             aria-current={tab === "files" ? "page" : undefined}
           >
-            <Files size={15} />
+            <FileDiffIcon size={16} />
             Files changed
           </Link>
         </ScrollNavigation>
-      )}
-      {pull && item.state === "open" && (
-        <section className={styles.panel} aria-label="Merge status">
-          <div className={styles.panelHeading}>
-            <div>
-              <strong>{canMerge ? "Ready to merge" : "Merge requirements"}</strong>
-              <p className={styles.meta}>
-                {reasons.length > 0
-                  ? reasons[0]
-                  : "The current head meets the repository’s merge rules."}
-              </p>
-            </div>
-            {canWrite && (
-              <button
-                className={canMerge ? styles.primary : controls.button}
-                type="button"
-                disabled={!canMerge}
-                commandfor="merge-pull"
-                command="show-modal"
-                onClick={openMerge}
-              >
-                Merge
-              </button>
-            )}
-          </div>
-          {tab === "overview" && (
-            <details className={styles.disclosure}>
-              <summary>Merge details</summary>
-              {reasons.length > 0 ? (
-                <ul>
-                  {reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.meta}>
-                  Available methods:{" "}
-                  {availableMethods
-                    .map((method) => (method === "ff" ? "Fast-forward" : "Squash"))
-                    .join(", ")}
-                </p>
-              )}
-              <p className={styles.meta}>
-                Head <code>{pull.head_sha.slice(0, 7)}</code>
-                {checks && (
-                  <>
-                    {" "}
-                    · Checks: <Status value={checks.state} />
-                  </>
-                )}
-              </p>
-            </details>
-          )}
-        </section>
       )}
       {detailContent}
       {canWrite && (

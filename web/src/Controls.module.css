@@ -3,15 +3,15 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 2.5rem;
-  min-width: 2.5rem;
-  padding: 0.5rem 0.75rem;
+  min-height: var(--control-height);
+  min-width: var(--control-height);
+  padding: var(--control-padding);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  background: var(--raised);
   color: var(--text);
-  font-size: 0.8rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   &:hover {
     background: var(--hover);
   }
@@ -28,10 +28,10 @@
   padding: 3rem 1.5rem;
   text-align: center;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   & h2 {
-    font-size: 1.2rem;
+    font-size: var(--text-lg);
   }
   & p {
     color: var(--muted);
@@ -46,19 +46,19 @@
   &::picker(select) {
     appearance: base-select;
   }
-  min-height: 2.5rem;
-  padding: 0.5rem 0.8rem;
+  min-height: var(--control-height);
+  padding: var(--control-padding);
   min-width: 7rem;
   max-width: 100%;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  font-size: 0.8rem;
+  border-radius: var(--radius-md);
+  background: var(--raised);
+  font-size: var(--text-sm);
   &::picker(select) {
     margin-block-start: 0.4rem;
     border: 1px solid var(--border);
-    border-radius: 0.65rem;
-    background: var(--surface);
+    border-radius: var(--radius-lg);
+    background: var(--overlay);
     box-shadow: var(--shadow);
     padding: 0.3rem;
     color: var(--text);
@@ -72,7 +72,7 @@
   }
   & option {
     padding: 0.55rem 0.75rem;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     gap: 0.5rem;
   }
   & option:hover,
@@ -90,6 +90,6 @@
 @media (width <= 600px) {
   .button,
   .select {
-    min-height: 2.75rem;
+    min-height: var(--control-height-touch);
   }
 }

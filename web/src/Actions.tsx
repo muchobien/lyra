@@ -2,7 +2,15 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CirclePlay, Download, GitBranch, Pause, Play, RotateCw } from "lucide-react";
+import {
+  CalendarIcon,
+  DownloadIcon,
+  GitBranchIcon,
+  PauseIcon,
+  PlayIcon,
+  StopwatchIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { IdentityContext, request } from "./api";
 import {
   useGetRepo,
@@ -23,6 +31,7 @@ import {
   DialogClose,
   duration,
   FormError,
+  RunState,
   Status,
 } from "./Workspace";
 import controls from "./Controls.module.css";
@@ -129,7 +138,7 @@ export function ActionsList() {
           search={{ ref: search.ref }}
           aria-current={!search.workflow ? "page" : undefined}
         >
-          <CirclePlay size={16} />
+          <PlayIcon size={16} />
           All workflows
         </Link>
         {workflows.data?.map((workflow) => (
@@ -206,7 +215,7 @@ export function ActionsList() {
               command="show-modal"
               onClick={resetDispatch}
             >
-              <Play size={15} />
+              <PlayIcon size={16} />
               Run workflow
             </button>
           )}
@@ -229,34 +238,48 @@ export function ActionsList() {
         {workflows.error && <ErrorNotice error={workflows.error} retry={retry} />}
         {runs.isPending && <output className={common.empty}>Loading runs…</output>}
         {runs.data && (
-          <div className={common.panel}>
-            {visible.map((run) => (
-              <Link
-                className={common.row}
-                key={run.id}
-                to="/$owner/$repo/$section/$"
-                params={{ owner, repo, section: "runs", _splat: String(run.number) }}
-                search={{}}
-              >
-                <Status value={run.status} />
-                <div className={common.grow}>
-                  <strong className={common.rowTitle}>{run.title || run.name}</strong>
-                  <p className={common.meta}>
-                    {run.name} #{run.number} · {triggerLabels[run.event] || run.event} ·{" "}
-                    <ActorName actor={run.author} />
-                  </p>
-                  <p className={common.meta}>
-                    <GitBranch size={12} />{" "}
-                    {run.head_ref || run.ref.replace(/^refs\/(heads|tags)\//, "")} ·{" "}
-                    <code>{run.sha.slice(0, 7)}</code>
-                  </p>
-                </div>
-                <div className={styles.runTimes}>
-                  <DateTime value={run.created_at} />
-                  <span>{duration(run.started_at, run.stopped_at)}</span>
-                </div>
-              </Link>
-            ))}
+          <div className={`${common.panel} ${styles.runs}`}>
+            {visible.map((run) => {
+              return (
+                <Link
+                  className={common.row}
+                  key={run.id}
+                  to="/$owner/$repo/$section/$"
+                  params={{ owner, repo, section: "runs", _splat: String(run.number) }}
+                  search={{}}
+                >
+                  <RunState status={run.status} />
+                  <div className={common.grow}>
+                    <strong className={common.rowTitle}>{run.title || run.name}</strong>
+                    <p className={common.meta}>
+                      {run.name} #{run.number} · {triggerLabels[run.event] || run.event} ·{" "}
+                      <ActorName actor={run.author} />{" "}
+                      <span className={styles.ref}>
+                        <GitBranchIcon size={16} />
+                        {run.head_ref || run.ref.replace(/^refs\/(heads|tags)\//, "")}
+                      </span>{" "}
+                      <code>{run.sha.slice(0, 7)}</code>
+                    </p>
+                  </div>
+                  <div className={styles.runTimes}>
+                    <span>
+                      <CalendarIcon size={16} />
+                      <DateTime value={run.created_at} />
+                    </span>
+                    {run.started_at ? (
+                      <span>
+                        <StopwatchIcon size={16} />
+                        {duration(run.started_at, run.stopped_at)}
+                      </span>
+                    ) : (
+                      <span className={common.status} data-state={run.status}>
+                        {run.status}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
             {visible.length === 0 && <p className={common.empty}>No matching runs.</p>}
           </div>
         )}
@@ -613,7 +636,7 @@ export function RunDetail({ number }: RunDetailProps) {
               type="button"
               popoverTarget="rerun-options"
             >
-              <RotateCw size={15} />
+              <SyncIcon size={16} />
               Re-run
             </button>
           )}
@@ -623,7 +646,8 @@ export function RunDetail({ number }: RunDetailProps) {
         <summary>Run details</summary>
         <div>
           <span>
-            <GitBranch size={13} /> {data.head_ref || data.ref.replace(/^refs\/(heads|tags)\//, "")}
+            <GitBranchIcon size={16} />{" "}
+            {data.head_ref || data.ref.replace(/^refs\/(heads|tags)\//, "")}
           </span>
           <Link
             to="/$owner/$repo/$section/$"
@@ -668,7 +692,7 @@ export function RunDetail({ number }: RunDetailProps) {
               search={{ job: String(job.id) }}
               aria-current={selected?.id === job.id ? "page" : undefined}
             >
-              <Status value={job.status} />
+              <RunState status={job.status} />
               <span>{job.name}</span>
             </Link>
           ))}
@@ -685,7 +709,7 @@ export function RunDetail({ number }: RunDetailProps) {
             <span className={common.grow} />
             {active && (
               <button type="button" className={controls.button} onClick={toggleFollow}>
-                {following ? <Pause size={14} /> : <Play size={14} />}
+                {following ? <PauseIcon size={16} /> : <PlayIcon size={16} />}
                 {following ? "Pause following" : "Resume following"}
               </button>
             )}
@@ -695,7 +719,7 @@ export function RunDetail({ number }: RunDetailProps) {
                 download={`run-${number}-${selected.key}.log`}
                 className={controls.button}
               >
-                <Download size={14} />
+                <DownloadIcon size={16} />
                 Download log
               </a>
             )}

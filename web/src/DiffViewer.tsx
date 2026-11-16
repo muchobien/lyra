@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { FileCode2, Check } from "lucide-react";
+import { CheckIcon, FileCodeIcon } from "@primer/octicons-react";
 import type { DiffFile, DiffLine, DiscussionComment } from "./api";
 import type { Comment, CommentRequest } from "./api/generated/models";
 import { ActorName, Markdown, RichText } from "./Workspace";
+import { FileIcon } from "./FileIcon";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./DiffViewer.module.css";
@@ -170,7 +171,7 @@ export function DiffViewer({
       <div className={styles.workspace}>
         <details className={styles.navigation} open={navigationOpen}>
           <summary>
-            <FileCode2 size={15} />
+            <FileCodeIcon size={16} />
             Files <span>{files.length}</span>
           </summary>
           <nav aria-label="Changed files">
@@ -182,8 +183,14 @@ export function DiffViewer({
                 search={{ ...search, file: file.path }}
                 aria-current={selected?.path === file.path ? "page" : undefined}
               >
-                <span>{file.path}</span>
-                {viewed.has(file.path) && <Check size={13} />}
+                <FileIcon name={file.path.split("/").at(-1) ?? file.path} />
+                <span className={styles.fileName} title={file.path}>
+                  <strong>{file.path.split("/").at(-1)}</strong>
+                  {file.path.includes("/") && (
+                    <small>{file.path.split("/").slice(0, -1).join("/")}</small>
+                  )}
+                </span>
+                {viewed.has(file.path) && <CheckIcon size={16} />}
               </Link>
             ))}
           </nav>
@@ -192,6 +199,7 @@ export function DiffViewer({
           {displayedFiles.map(({ file, rows }) => (
             <details className={styles.file} key={file.path} open>
               <summary className={styles.fileHeading}>
+                <FileIcon name={file.path.split("/").at(-1) ?? file.path} />
                 <code>
                   {file.old_path && <span>{file.old_path} renamed to </span>}
                   {file.path}
@@ -200,9 +208,7 @@ export function DiffViewer({
                   <span>+{file.lines?.filter((line) => line.kind === "add").length || 0}</span>
                   <span>−{file.lines?.filter((line) => line.kind === "delete").length || 0}</span>
                 </span>
-              </summary>
-              <div className={styles.viewed}>
-                <label className={common.checkbox}>
+                <label className={`${common.checkbox} ${styles.viewed}`}>
                   <input
                     type="checkbox"
                     value={file.path}
@@ -211,7 +217,7 @@ export function DiffViewer({
                   />
                   Viewed
                 </label>
-              </div>
+              </summary>
               {file.binary && <p className={common.empty}>Binary file changed.</p>}
               {!file.binary &&
                 file.lines &&

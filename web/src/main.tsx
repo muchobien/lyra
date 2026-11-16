@@ -6,6 +6,7 @@ import { App } from "./App";
 import { RepositoryList } from "./RepositoryList";
 import { RepositoryPage } from "./RepositoryPage";
 import { RepositoryScreen } from "./RepositoryScreen";
+import { Settings } from "./Settings";
 import "./tokens.css";
 
 const rootRoute = createRootRoute({ component: App });
@@ -76,6 +77,16 @@ function validateScreenSearch(search: Record<string, unknown>) {
   }
   return parsed;
 }
+function InstanceSettings() {
+  return <Settings scope="instance" />;
+}
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: InstanceSettings,
+  validateSearch: (search: Record<string, unknown>) =>
+    typeof search.section === "string" ? { section: search.section } : {},
+});
 const sectionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/$owner/$repo/$section",
@@ -106,6 +117,7 @@ const router = createRouter({
   },
   routeTree: rootRoute.addChildren([
     indexRoute,
+    settingsRoute,
     ownerRoute,
     repositoryRoute,
     sectionRoute.addChildren([sectionIndexRoute, detailRoute]),

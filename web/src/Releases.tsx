@@ -1,14 +1,24 @@
 import { useContext, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { Download, Package, Plus, Tags, Pencil, Trash2 } from "lucide-react";
-import { IdentityContext, type Release } from "./api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  DownloadIcon,
+  GitCommitIcon,
+  PackageIcon,
+  PencilIcon,
+  PlusIcon,
+  TagIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
+import { APIError, IdentityContext, type Release } from "./api";
 import type { ReleaseWrite } from "./api/generated/models";
 import {
   useListReleases,
   useGetRepo,
   useGetReleaseByTag,
+  getLatestRelease,
+  getGetLatestReleaseQueryKey,
   useListImages,
   useCreateRelease,
   useEditRelease,
@@ -25,7 +35,8 @@ import {
   MarkdownEditor,
   RichText,
 } from "./Workspace";
-import { CodeNavigation } from "./CodeScreens";
+import { CodeBreadcrumb } from "./CodeScreens";
+import { FileIcon } from "./FileIcon";
 import { useDraft } from "./drafts";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
@@ -42,6 +53,19 @@ export function Releases({ tag }: ReleasesProps) {
   const list = useListReleases(owner, repo);
   const metadata = useGetRepo(owner, repo);
   const single = useGetReleaseByTag(owner, repo, tag, { query: { enabled: !!tag } });
+  const latest = useQuery({
+    queryKey: getGetLatestReleaseQueryKey(owner, repo),
+    queryFn: async ({ signal }) => {
+      try {
+        return await getLatestRelease(owner, repo, { signal });
+      } catch (error) {
+        if (error instanceof APIError && error.status === 404) {
+          return null;
+        }
+        throw error;
+      }
+    },
+  });
   const [editing, setEditing] = useState<Release | null>(null);
   const [draft, setDraft] = useState(true);
   const [prerelease, setPrerelease] = useState(false);
@@ -200,62 +224,80 @@ export function Releases({ tag }: ReleasesProps) {
   }
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active=""
-      />
-      <div className={styles.toolbar}>
-        {tag ? (
-          <Link
-            className={styles.link}
-            to="/$owner/$repo/$section"
-            params={{ owner, repo, section: "releases" }}
-            search={{}}
-          >
-            Releases
-          </Link>
-        ) : (
-          <>
-            <input
-              type="search"
-              className={styles.search}
-              name="q"
-              aria-label="Search releases"
-              placeholder="Search releases…"
-              value={search.q || ""}
-              onChange={filtersChanged}
-            />
-            <select
-              className={controls.select}
-              name="state"
-              aria-label="Release status"
-              value={search.state || ""}
-              onChange={filtersChanged}
+        section="releases"
+        label="Releases"
+        current={tag || undefined}
+      >
+        {canWrite && tag && single.data && (
+          <div className={styles.headingActions}>
+            <button
+              className={controls.button}
+              type="button"
+              data-id={single.data.id}
+              onClick={prepareEditor}
+              commandfor="release-editor"
+              command="show-modal"
             >
-              <option value="">All releases</option>
-              <option value="stable">Stable</option>
-              <option value="prerelease">Prereleases</option>
-              {canWrite && <option value="draft">Drafts</option>}
-            </select>
-          </>
+              <PencilIcon size={16} />
+              Edit
+            </button>
+            <button
+              className={styles.danger}
+              type="button"
+              data-id={single.data.id}
+              onClick={prepareDelete}
+              commandfor="delete-release"
+              command="show-modal"
+            >
+              <TrashIcon size={16} />
+              Delete
+            </button>
+          </div>
         )}
-        <span className={styles.grow} />
-        {canWrite && (
-          <button
-            className={styles.primary}
-            type="button"
-            commandfor="release-editor"
-            command="show-modal"
-            onClick={prepareEditor}
-            disabled={!metadata.data?.branches.length}
+      </CodeBreadcrumb>
+      {!tag && (
+        <div className={styles.toolbar}>
+          <input
+            type="search"
+            className={styles.search}
+            name="q"
+            aria-label="Search releases"
+            placeholder="Search releases…"
+            value={search.q || ""}
+            onChange={filtersChanged}
+          />
+          <select
+            className={controls.select}
+            name="state"
+            aria-label="Release status"
+            value={search.state || ""}
+            onChange={filtersChanged}
           >
-            <Plus size={15} />
-            New release
-          </button>
-        )}
-      </div>
+            <option value="">All releases</option>
+            <option value="stable">Stable</option>
+            <option value="prerelease">Prereleases</option>
+            {canWrite && <option value="draft">Drafts</option>}
+          </select>
+          <span className={styles.grow} />
+          {canWrite && (
+            <button
+              className={styles.primary}
+              type="button"
+              commandfor="release-editor"
+              command="show-modal"
+              onClick={prepareEditor}
+              disabled={!metadata.data?.branches.length}
+            >
+              <PlusIcon size={16} />
+              New release
+            </button>
+          )}
+        </div>
+      )}
       {error && <ErrorNotice error={error} retry={retry} />}
       {(tag ? single.isPending : list.isPending) && (
         <output className={styles.empty}>Loading releases…</output>
@@ -264,49 +306,46 @@ export function Releases({ tag }: ReleasesProps) {
         <article className={styles.panel} key={release.id}>
           <div className={`${styles.panelHeading} ${delivery.releaseHeading}`}>
             <div>
-              <Link
-                className={styles.rowTitle}
-                to="/$owner/$repo/$section/$"
-                params={{ owner, repo, section: "releases", _splat: `tag/${release.tag}` }}
-                search={{}}
-              >
-                <Tags size={16} /> {release.tag} · {release.title}
-              </Link>
+              <div className={delivery.titleLine}>
+                {tag ? (
+                  <h1 className={delivery.title}>{release.title || release.tag}</h1>
+                ) : (
+                  <Link
+                    className={styles.rowTitle}
+                    to="/$owner/$repo/$section/$"
+                    params={{ owner, repo, section: "releases", _splat: `tag/${release.tag}` }}
+                    search={{}}
+                  >
+                    {release.title || release.tag}
+                  </Link>
+                )}
+                {latest.data?.id === release.id && <span className={delivery.latest}>Latest</span>}
+                {release.draft && <span className={styles.label}>Draft</span>}
+                {release.prerelease && <span className={styles.count}>Prerelease</span>}
+              </div>
               <p className={styles.meta}>
+                {release.title && release.title !== release.tag && (
+                  <>
+                    <TagIcon size={16} /> {release.tag} ·{" "}
+                  </>
+                )}
                 <ActorName actor={release.author} /> ·{" "}
-                <DateTime value={release.published_at || release.created_at} /> ·{" "}
-                <code>{release.target}</code>
+                <DateTime value={release.published_at || release.created_at} />
+                {release.commit && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <Link
+                      className={styles.link}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commit", _splat: release.commit }}
+                      search={{}}
+                    >
+                      <GitCommitIcon size={16} /> <code>{release.commit.slice(0, 7)}</code>
+                    </Link>
+                  </>
+                )}
               </p>
-            </div>
-            <div className={styles.headingActions}>
-              {release.draft && <span className={styles.label}>Draft</span>}
-              {release.prerelease && <span className={styles.count}>Prerelease</span>}
-              {canWrite && (
-                <>
-                  <button
-                    className={controls.button}
-                    type="button"
-                    data-id={release.id}
-                    onClick={prepareEditor}
-                    commandfor="release-editor"
-                    command="show-modal"
-                    aria-label={`Edit ${release.tag}`}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    className={controls.button}
-                    type="button"
-                    data-id={release.id}
-                    onClick={prepareDelete}
-                    commandfor="delete-release"
-                    command="show-modal"
-                    aria-label={`Delete ${release.tag}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </>
-              )}
             </div>
           </div>
           {release.notes ? (
@@ -314,23 +353,29 @@ export function Releases({ tag }: ReleasesProps) {
           ) : (
             <p className={styles.empty}>No release notes.</p>
           )}
-          {(release.assets.length > 0 || tag) && (
+          {!tag && release.assets.length > 0 && (
+            <p className={delivery.assetLine}>
+              <PackageIcon size={16} />
+              {release.assets.length} {release.assets.length === 1 ? "asset" : "assets"} ·
+              {release.assets.map((asset) => (
+                <a key={asset.id} href={asset.download_url}>
+                  {asset.name}
+                </a>
+              ))}
+            </p>
+          )}
+          {tag && release.assets.length > 0 && (
             <section className={delivery.assets}>
               <h2>
                 Assets <span className={styles.count}>{release.assets.length}</span>
               </h2>
               {release.assets.map((asset) => (
-                <div className={styles.row} key={asset.id}>
-                  <Download size={16} />
-                  <div className={styles.grow}>
-                    <a href={asset.download_url} className={styles.link}>
-                      {asset.name}
-                    </a>
-                    <p className={styles.meta}>
-                      <code>sha256:{asset.sha256}</code>
-                    </p>
-                  </div>
-                  <span className={styles.meta}>
+                <div className={delivery.assetRow} key={asset.id}>
+                  <FileIcon name={asset.name} />
+                  <a href={asset.download_url} className={delivery.assetName}>
+                    {asset.name}
+                  </a>
+                  <span>
                     {new Intl.NumberFormat(undefined, {
                       style: "unit",
                       unit: "byte",
@@ -338,14 +383,18 @@ export function Releases({ tag }: ReleasesProps) {
                       notation: "compact",
                     }).format(asset.size)}
                   </span>
+                  <code title={`sha256:${asset.sha256}`}>sha256:{asset.sha256.slice(0, 12)}…</code>
                   <CopyButton
                     value={asset.sha256}
                     label={`Copy checksum for ${asset.name}`}
                     compact
                   />
+                  <a className={controls.button} href={asset.download_url}>
+                    <DownloadIcon size={16} />
+                    Download
+                  </a>
                 </div>
               ))}
-              {release.assets.length === 0 && <p className={styles.meta}>No uploaded assets.</p>}
             </section>
           )}
           {!!release.images?.length && (
@@ -353,7 +402,7 @@ export function Releases({ tag }: ReleasesProps) {
               <h2>Containers linked to {release.tag}</h2>
               {release.images.map((image) => (
                 <div className={styles.row} key={`${image.name}:${image.tag}`}>
-                  <Package size={16} />
+                  <PackageIcon size={16} />
                   <div className={styles.grow}>
                     <Link
                       className={styles.link}
@@ -528,15 +577,14 @@ export function Containers() {
     [];
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active=""
+        section="images"
+        label="Containers"
       />
       <div className={styles.toolbar}>
-        <Package size={18} />
-        <strong>Containers</strong>
         <input
           className={styles.search}
           type="search"
@@ -552,7 +600,7 @@ export function Containers() {
         <div className={styles.panel}>
           {visible.map((image) => (
             <article className={styles.row} key={`${image.name}:${image.tag}`}>
-              <Package size={20} />
+              <PackageIcon size={16} />
               <div className={styles.grow}>
                 <strong className={styles.rowTitle}>
                   {image.name}:<span className={styles.link}>{image.tag}</span>

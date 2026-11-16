@@ -10,12 +10,11 @@
   & > a {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.6rem;
     padding: 0.7rem 0.8rem;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--muted);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow-wrap: anywhere;
     &:hover {
       background: var(--hover);
@@ -23,7 +22,7 @@
     &[aria-current="page"] {
       color: var(--text);
       background: var(--accent-surface);
-      font-weight: 550;
+      font-weight: var(--weight-semibold);
     }
   }
   & p {
@@ -32,18 +31,41 @@
 }
 .runTimes {
   display: grid;
-  gap: 0.4rem;
+  justify-items: end;
+  gap: 0.25rem;
   color: var(--muted);
-  font-size: 0.7rem;
-  text-align: right;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  & > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+.runs > a {
+  align-items: flex-start;
+  & > :first-child {
+    margin-top: 0.25rem;
+  }
+}
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font: var(--text-xs) var(--mono);
+  vertical-align: middle;
 }
 .metadata {
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-md);
   margin-bottom: 1.5rem;
   background: var(--surface);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   & > summary {
     padding: 0.8rem 1rem;
     cursor: pointer;
@@ -72,12 +94,13 @@
   align-content: start;
   gap: 0.4rem;
   & a {
-    display: grid;
-    gap: 0.3rem;
-    padding: 0.8rem 1rem;
-    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-md);
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     overflow-wrap: anywhere;
     &:hover {
       background: var(--hover);
@@ -91,7 +114,7 @@
 }
 .logSection {
   border: 1px solid var(--border);
-  border-radius: 0.7rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   overflow: clip;
   min-width: 0;
@@ -104,15 +127,15 @@
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--border);
   & > strong {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
   & > span {
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
   }
   & button,
   & a {
     min-height: 2rem;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     padding: 0.3rem 0.6rem;
   }
 }
@@ -124,7 +147,7 @@
   & input {
     min-width: 5rem;
     min-height: 2rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 }
 .mobileJobs {
@@ -136,10 +159,10 @@
   overflow: auto;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
-  background: light-dark(#fbfafc, #111117);
+  background: var(--inset);
 }
 .logText {
-  font: 12px/1.9 var(--mono);
+  font: var(--text-xs) / 1.9 var(--mono);
   white-space: pre;
   padding: 1rem 1.2rem;
   margin: 0;
@@ -152,7 +175,7 @@
   gap: 0.7rem;
   padding: 0.6rem 1rem;
   background: var(--raised);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   border-bottom: 1px solid var(--border);
 }
 .step {
@@ -160,13 +183,17 @@
   & > summary {
     padding: 0.8rem 1rem;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     display: flex;
     gap: 0.7rem;
     align-items: center;
     &::before {
-      content: "▸";
-      color: var(--muted);
+      content: "";
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+      background: var(--muted);
+      mask: var(--chevron) center / contain no-repeat;
     }
     & > .stepDuration {
       margin-left: auto;
@@ -181,7 +208,7 @@
     padding: 0.85rem 1rem;
     cursor: pointer;
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     background: var(--raised);
   }
 }
@@ -196,9 +223,9 @@
   margin: 0.4rem 0 0;
   padding: 0.4rem;
   border: 1px solid var(--border);
-  border-radius: 0.6rem;
+  border-radius: var(--radius-lg);
   color: var(--text);
-  background: var(--surface);
+  background: var(--overlay);
   box-shadow: var(--shadow);
   min-width: 13rem;
   & button {
@@ -208,8 +235,8 @@
     border: 0;
     background: transparent;
     padding: 0.65rem;
-    border-radius: 0.4rem;
-    font-size: 0.8rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
     &:hover {
       background: var(--hover);
     }
@@ -258,10 +285,10 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
   .logText {
-    font-size: 11px;
+    font-size: var(--text-xs);
     padding: 0.8rem;
   }
   .runTimes {
-    text-align: left;
+    justify-items: start;
   }
 }

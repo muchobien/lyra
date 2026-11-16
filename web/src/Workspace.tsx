@@ -3,44 +3,78 @@ import { useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
-  Check,
-  CircleCheck,
-  CircleDot,
-  CircleX,
-  Clock3,
-  GitMerge,
-  GitPullRequest,
-  MessageSquare,
-  Minus,
-  X,
-} from "lucide-react";
+  BlockedIcon,
+  CheckCircleFillIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  ClockIcon,
+  CommentIcon,
+  FileDirectoryIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  SkipIcon,
+  StopIcon,
+  VerifiedIcon,
+  XCircleFillIcon,
+  XCircleIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { type Actor, type Checks, type Commit } from "./api";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
+const runIcons = {
+  success: CheckCircleFillIcon,
+  failure: XCircleFillIcon,
+  waiting: ClockIcon,
+  blocked: BlockedIcon,
+  cancelled: StopIcon,
+  skipped: SkipIcon,
+};
+
+type RunStateProps = { status: string };
+export function RunState({ status }: RunStateProps) {
+  const RunIcon = runIcons[status as keyof typeof runIcons] || ClockIcon;
+  return (
+    <span className={`${styles.status} ${styles.runState}`} data-state={status} title={status}>
+      {status === "running" ? (
+        <svg className={styles.spinner} viewBox="0 0 16 16" width="16" height="16">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25" />
+        </svg>
+      ) : (
+        <RunIcon size={16} />
+      )}
+      <span className={controls.srOnly}>{status}</span>
+    </span>
+  );
+}
+
 type StatusProps = { value: string; issue?: boolean; children?: ReactNode };
 export function Status({ value, issue, children }: StatusProps) {
   const icons = {
-    success: CircleCheck,
-    failure: CircleX,
-    cancelled: CircleX,
-    merged: GitMerge,
-    approved: Check,
-    changes_requested: CircleX,
-    commented: MessageSquare,
-    open: GitPullRequest,
-    closed: CircleX,
-    waiting: Clock3,
-    blocked: Clock3,
-    running: Clock3,
-    pending: Clock3,
-    skipped: Minus,
+    success: CheckCircleIcon,
+    failure: XCircleIcon,
+    cancelled: XCircleIcon,
+    merged: GitMergeIcon,
+    approved: CheckIcon,
+    changes_requested: XCircleIcon,
+    commented: CommentIcon,
+    open: GitPullRequestIcon,
+    closed: XCircleIcon,
+    waiting: ClockIcon,
+    blocked: ClockIcon,
+    running: ClockIcon,
+    pending: ClockIcon,
+    skipped: SkipIcon,
   };
   const Icon =
-    (issue && value === "open" ? CircleDot : icons[value as keyof typeof icons]) || CircleDot;
+    (issue && value === "open" ? IssueOpenedIcon : icons[value as keyof typeof icons]) ||
+    IssueOpenedIcon;
   return (
     <span className={styles.status} data-state={value}>
-      <Icon size={14} />
+      <Icon size={16} />
       {children || value.replaceAll("_", " ")}
     </span>
   );
@@ -242,34 +276,76 @@ export function DialogClose({ target }: DialogCloseProps) {
       command="close"
       aria-label="Close dialog"
     >
-      <X size={18} />
+      <XIcon size={16} />
     </button>
   );
 }
 
 type CommitRowsProps = { commits: Commit[]; owner: string; repo: string };
 export function CommitRows({ commits, owner, repo }: CommitRowsProps) {
+  const dayFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "full" });
+  const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
   return (
-    <div className={styles.panel}>
-      {commits.map((commit) => (
-        <article className={styles.row} key={commit.sha}>
-          <div className={styles.grow}>
-            <Link
-              className={styles.rowTitle}
-              to="/$owner/$repo/$section/$"
-              params={{ owner, repo, section: "commit", _splat: commit.sha }}
-              search={{}}
-            >
-              {commit.subject}
-            </Link>
-            <p className={styles.meta}>
-              {commit.author.name} · <DateTime value={commit.committer.date} />
-            </p>
+    <div className={`${styles.panel} ${styles.commits}`}>
+      {commits.map((commit, index) => {
+        const day = dayFormat.format(new Date(commit.committer.date));
+        const previous = commits[index - 1];
+        return (
+          <div key={commit.sha}>
+            {(!previous || dayFormat.format(new Date(previous.committer.date)) !== day) && (
+              <h2 className={styles.dayHeading}>{day}</h2>
+            )}
+            <article className={styles.row}>
+              <div className={styles.grow}>
+                <Link
+                  className={styles.rowTitle}
+                  to="/$owner/$repo/$section/$"
+                  params={{ owner, repo, section: "commit", _splat: commit.sha }}
+                  search={{}}
+                >
+                  {commit.subject}
+                </Link>
+                <p className={styles.meta}>
+                  <strong>{commit.author.name}</strong> committed at{" "}
+                  <time
+                    dateTime={commit.committer.date}
+                    title={new Date(commit.committer.date).toLocaleString()}
+                  >
+                    {timeFormat.format(new Date(commit.committer.date))}
+                  </time>
+                </p>
+              </div>
+              {commit.signature.status === "verified" && (
+                <span className={styles.verified} title="Verified">
+                  <VerifiedIcon size={16} />
+                  <span className={controls.srOnly}>Verified</span>
+                </span>
+              )}
+              {!["verified", "unverified"].includes(commit.signature.status) && (
+                <Status value={commit.signature.status} />
+              )}
+              <Link
+                className={styles.sha}
+                to="/$owner/$repo/$section/$"
+                params={{ owner, repo, section: "commit", _splat: commit.sha }}
+                search={{}}
+              >
+                {commit.sha.slice(0, 7)}
+              </Link>
+              <Link
+                className={styles.browse}
+                to="/$owner/$repo"
+                params={{ owner, repo }}
+                search={{ ref: commit.sha }}
+                aria-label={`Browse files at ${commit.sha.slice(0, 7)}`}
+                title="Browse files"
+              >
+                <FileDirectoryIcon size={16} />
+              </Link>
+            </article>
           </div>
-          <Status value={commit.signature.status} />
-          <code>{commit.sha.slice(0, 7)}</code>
-        </article>
-      ))}
+        );
+      })}
       {commits.length === 0 && <p className={styles.empty}>No commits.</p>}
     </div>
   );
@@ -278,7 +354,7 @@ export function CommitRows({ commits, owner, repo }: CommitRowsProps) {
 type ChecksProps = { checks: Checks; owner: string; repo: string };
 export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
   return (
-    <section className={styles.panel} aria-label="Checks">
+    <section className={`${styles.panel} ${styles.checks}`} aria-label="Checks">
       <div className={styles.panelHeading}>
         <h2>Checks</h2>
         <Status value={checks.state} />
@@ -291,11 +367,11 @@ export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
           params={{ owner, repo, section: "runs", _splat: String(check.run) }}
           search={{ job: String(check.job_id) }}
         >
-          <div className={styles.grow}>
-            <strong>{check.name}</strong>
-            <p className={styles.meta}>{check.workflow}</p>
-          </div>
-          <Status value={check.status} />
+          <RunState status={check.status} />
+          <span className={styles.grow}>
+            <strong>{check.name}</strong>{" "}
+            <span className={styles.muted}>· {check.workflow.split("/").at(-1)}</span>
+          </span>
           <span className={styles.link}>View logs</span>
         </Link>
       ))}

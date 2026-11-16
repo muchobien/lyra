@@ -3,16 +3,16 @@ import type { ChangeEvent, ToggleEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
-  Search,
-  Terminal,
-  Folder,
-  File,
-  Tags,
-  Package,
-  X,
-  ShieldCheck,
-  GitBranch,
-} from "lucide-react";
+  GitBranchIcon,
+  HistoryIcon,
+  PackageIcon,
+  SearchIcon,
+  TagIcon,
+  TerminalIcon,
+  VerifiedIcon,
+  VersionsIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { APIError } from "./api";
 import {
   useGetRepo,
@@ -21,11 +21,14 @@ import {
   getLatestRelease,
   getGetLatestReleaseQueryKey,
   useListImages,
+  useListReleases,
   useListRepositoryFiles,
+  useListTags,
   getGetRepositoryRawFileUrl,
 } from "./api/generated/lyra";
 import { CopyButton, ErrorNotice } from "./Controls";
-import { CodeNavigation } from "./CodeScreens";
+import { FileIcon } from "./FileIcon";
+import { DateTime } from "./Workspace";
 import controls from "./Controls.module.css";
 import styles from "./RepositoryPage.module.css";
 
@@ -59,6 +62,8 @@ export function RepositoryPage() {
     },
   });
   const images = useListImages(owner, repo);
+  const tags = useListTags(owner, repo);
+  const releases = useListReleases(owner, repo);
   const [finderOpen, setFinderOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const files = useListRepositoryFiles(owner, repo, { ref }, { query: { enabled: finderOpen } });
@@ -143,28 +148,45 @@ export function RepositoryPage() {
 
   return (
     <>
-      <CodeNavigation owner={owner} repo={repo} reference={ref} active="files" />
       <div className={styles.workspace}>
         <section className={styles.files}>
           <div className={styles.toolbar}>
-            <label className={controls.srOnly} htmlFor="branch-select">
-              Branch
-            </label>
-            <select
-              id="branch-select"
-              className={controls.select}
-              value={ref}
-              onChange={branchChanged}
-            >
-              {!metadata.data.branches.some((branch) => branch.name === ref) && (
-                <option value={ref}>{ref}</option>
+            <div className={styles.refs}>
+              <label className={controls.srOnly} htmlFor="branch-select">
+                Branch
+              </label>
+              <select
+                id="branch-select"
+                className={controls.select}
+                value={ref}
+                onChange={branchChanged}
+              >
+                {!metadata.data.branches.some((branch) => branch.name === ref) && (
+                  <option value={ref}>{ref}</option>
+                )}
+                {metadata.data.branches.map((branch) => (
+                  <option key={branch.name} value={branch.name}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+              <span>
+                <GitBranchIcon size={16} />
+                <strong>{metadata.data.branches.length}</strong>
+                {metadata.data.branches.length === 1 ? "branch" : "branches"}
+              </span>
+              {tags.data && (
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "tags" }}
+                  search={{}}
+                >
+                  <TagIcon size={16} />
+                  <strong>{tags.data.length}</strong>
+                  {tags.data.length === 1 ? "tag" : "tags"}
+                </Link>
               )}
-              {metadata.data.branches.map((branch) => (
-                <option key={branch.name} value={branch.name}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
+            </div>
             <div className={styles.toolbarActions}>
               <button
                 className={controls.button}
@@ -173,7 +195,7 @@ export function RepositoryPage() {
                 command="show-modal"
                 disabled={!hasBranches}
               >
-                <Search size={15} />
+                <SearchIcon size={16} />
                 Go to file <kbd>T</kbd>
               </button>
               <button
@@ -181,7 +203,7 @@ export function RepositoryPage() {
                 type="button"
                 popoverTarget="clone-options"
               >
-                <Terminal size={15} />
+                <TerminalIcon size={16} />
                 Clone
               </button>
             </div>
@@ -214,7 +236,7 @@ export function RepositoryPage() {
           )}
           {!search.file && tree.data?.empty && (
             <div className={styles.empty}>
-              <GitBranch size={28} />
+              <GitBranchIcon size={24} />
               <h1>Your repository is ready</h1>
               <p>Push your first commit to start browsing files.</p>
               <div className={styles.command}>
@@ -243,9 +265,9 @@ export function RepositoryPage() {
                       </Link>
                     </span>
                     {tree.data.last.signature.status === "verified" && (
-                      <span className={styles.verified}>
-                        <ShieldCheck size={14} />
-                        Verified
+                      <span className={styles.verified} title="Verified">
+                        <VerifiedIcon size={16} />
+                        <span className={controls.srOnly}>Verified</span>
                       </span>
                     )}
                     <Link
@@ -255,6 +277,16 @@ export function RepositoryPage() {
                       className={styles.sha}
                     >
                       {tree.data.last.sha.slice(0, 7)}
+                    </Link>
+                    <DateTime value={tree.data.last.committer.date} />
+                    <Link
+                      className={styles.history}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commits", _splat: ref }}
+                      search={{}}
+                    >
+                      <HistoryIcon size={16} />
+                      History
                     </Link>
                   </div>
                 )}
@@ -267,7 +299,7 @@ export function RepositoryPage() {
                   })
                   .map((entry) => (
                     <div className={styles.entry} key={entry.name}>
-                      {entry.type === "tree" ? <Folder size={16} /> : <File size={16} />}
+                      <FileIcon name={entry.name} folder={entry.type === "tree"} />
                       <Link
                         to="/$owner/$repo"
                         params={{ owner, repo }}
@@ -301,7 +333,7 @@ export function RepositoryPage() {
               {tree.data.readme && (
                 <section className={styles.readme}>
                   <div className={styles.fileHeading}>
-                    <File size={15} />
+                    <FileIcon name="README.md" />
                     README
                   </div>
                   <div
@@ -318,7 +350,7 @@ export function RepositoryPage() {
           {search.file && blob.data && (
             <section className={styles.blob}>
               <div className={styles.fileHeading}>
-                <File size={15} />
+                <FileIcon name={parts.at(-1) ?? ""} />
                 <strong>{parts.at(-1)}</strong>
                 <span>
                   {new Intl.NumberFormat(undefined, {
@@ -347,6 +379,30 @@ export function RepositoryPage() {
           <section className={styles.about}>
             <h2>About</h2>
             {metadata.data.description && <p>{metadata.data.description}</p>}
+            <ul className={styles.stats}>
+              <li>
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "releases" }}
+                  search={{}}
+                >
+                  <VersionsIcon size={16} />
+                  <strong>{releases.data?.length ?? 0}</strong>
+                  {releases.data?.length === 1 ? "release" : "releases"}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "images" }}
+                  search={{}}
+                >
+                  <PackageIcon size={16} />
+                  <strong>{images.data?.length ?? 0}</strong>
+                  {images.data?.length === 1 ? "container" : "containers"}
+                </Link>
+              </li>
+            </ul>
           </section>
           <section className={styles.delivery}>
             <div className={styles.sidebarHeading}>
@@ -372,17 +428,9 @@ export function RepositoryPage() {
                   params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
                   search={{}}
                 >
-                  <Tags size={17} />
-                  <strong>{latest.data.tag}</strong>
+                  <TagIcon size={16} />
+                  <strong>{latest.data.title || latest.data.tag}</strong>
                   <span>Latest</span>
-                </Link>
-                <Link
-                  className={styles.releaseTitle}
-                  to="/$owner/$repo/$section/$"
-                  params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
-                  search={{}}
-                >
-                  {latest.data.title}
                 </Link>
                 <time
                   className={styles.secondary}
@@ -416,7 +464,7 @@ export function RepositoryPage() {
                       params={{ owner, repo, section: "images" }}
                       search={{}}
                     >
-                      <Package size={16} />
+                      <PackageIcon size={16} />
                       <span>
                         {image.name}
                         <strong>:{image.tag}</strong>
@@ -469,7 +517,7 @@ export function RepositoryPage() {
           command="close"
           aria-label="Close file finder"
         >
-          <X size={17} />
+          <XIcon size={16} />
         </button>
         <div className={styles.finderResults}>
           {files.isPending && <output>Loading files…</output>}
@@ -482,7 +530,7 @@ export function RepositoryPage() {
               search={{ ref: search.ref, file: path }}
               onClick={closeFinder}
             >
-              <File size={15} />
+              <FileIcon name={path.split("/").at(-1) ?? path} />
               {path}
             </Link>
           ))}

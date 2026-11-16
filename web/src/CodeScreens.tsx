@@ -5,46 +5,61 @@ import {
   useGetCommitWorkspace,
 } from "./api/generated/lyra";
 import { useEffect } from "react";
-import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { Code, GitCommitHorizontal, Tags } from "lucide-react";
-import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
+import type { ChangeEvent, ReactNode } from "react";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { FileDirectoryIcon, TagIcon, VerifiedIcon } from "@primer/octicons-react";
+import { CopyButton, ErrorNotice } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
 
-type CodeNavigationProps = { owner: string; repo: string; reference: string; active: string };
-export function CodeNavigation({ owner, repo, reference, active }: CodeNavigationProps) {
+type CodeBreadcrumbProps = {
+  owner: string;
+  repo: string;
+  reference: string;
+  section: string;
+  label: string;
+  current?: string;
+  children?: ReactNode;
+};
+export function CodeBreadcrumb({
+  owner,
+  repo,
+  reference,
+  section,
+  label,
+  current,
+  children,
+}: CodeBreadcrumbProps) {
   return (
-    <ScrollNavigation className={styles.tabs} label="Code sections" active={active}>
-      <Link
-        to="/$owner/$repo"
-        params={{ owner, repo }}
-        search={{ ref: reference }}
-        aria-current={active === "files" ? "page" : undefined}
-      >
-        <Code size={15} />
-        Files
-      </Link>
-      <Link
-        to="/$owner/$repo/$section/$"
-        params={{ owner, repo, section: "commits", _splat: reference }}
-        search={{}}
-        aria-current={active === "commits" ? "page" : undefined}
-      >
-        <GitCommitHorizontal size={15} />
-        Commits
-      </Link>
-      <Link
-        to="/$owner/$repo/$section"
-        params={{ owner, repo, section: "tags" }}
-        search={{}}
-        aria-current={active === "tags" ? "page" : undefined}
-      >
-        <Tags size={15} />
-        Tags
-      </Link>
-    </ScrollNavigation>
+    <header className={styles.crumbs}>
+      <nav aria-label="Breadcrumb">
+        {current && section === "commits" && (
+          <Link
+            to="/$owner/$repo/$section/$"
+            params={{ owner, repo, section, _splat: reference }}
+            search={{}}
+          >
+            {label}
+          </Link>
+        )}
+        {current && section !== "commits" && (
+          <Link to="/$owner/$repo/$section" params={{ owner, repo, section }} search={{}}>
+            {label}
+          </Link>
+        )}
+        {current ? (
+          <>
+            <span>/</span>
+            <strong>{current}</strong>
+          </>
+        ) : (
+          <strong>{label}</strong>
+        )}
+      </nav>
+      {children}
+    </header>
   );
 }
 
@@ -54,6 +69,7 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   const search = useSearch({ strict: false });
   const name = `${owner}/${repo}`;
   const metadata = useGetRepo(owner, repo);
+  const navigate = useNavigate();
   const reference = target || metadata.data?.default_branch || "main";
   const limit = Math.max(30, Math.min(500, Number(search.limit) || 30));
   const commits = useListCommits(
@@ -69,6 +85,13 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   useEffect(() => {
     document.title = `${detail.data?.commit.subject || section} · ${name} · Lyra`;
   }, [detail.data?.commit.subject, section, name]);
+  function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
+    void navigate({
+      to: "/$owner/$repo/$section/$",
+      params: { owner, repo, section: "commits", _splat: event.target.value },
+      search: {},
+    });
+  }
   function retry() {
     if (section === "commits") {
       void commits.refetch();
@@ -88,10 +111,10 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   let content;
   if (section === "tags") {
     content = tags.data ? (
-      <div className={styles.panel}>
+      <div className={`${styles.panel} ${styles.commits}`}>
         {tags.data.map((tag) => (
           <article className={styles.row} key={tag.name}>
-            <Tags size={18} />
+            <TagIcon size={16} />
             <div className={styles.grow}>
               <Link
                 className={styles.rowTitle}
@@ -102,24 +125,44 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
                 {tag.name}
               </Link>
               <p className={styles.meta}>
-                {tag.annotated ? "Annotated tag" : "Lightweight tag"}
-                {tag.tagger && (
+                {tag.tagger ? (
                   <>
-                    {" "}
-                    · {tag.tagger.name} · <DateTime value={tag.tagger.date} />
+                    <strong>{tag.tagger.name}</strong> tagged <DateTime value={tag.tagger.date} />
                   </>
+                ) : (
+                  "Lightweight tag"
+                )}
+                {tag.message && tag.message.split("\n")[0] !== tag.name && (
+                  <> · {tag.message.split("\n")[0]}</>
                 )}
               </p>
-              {tag.message && <p className={styles.meta}>{tag.message.split("\n")[0]}</p>}
             </div>
-            <Status value={tag.signature.status} />
+            {tag.signature.status === "verified" && (
+              <span className={styles.verified} title="Verified">
+                <VerifiedIcon size={16} />
+                <span className={controls.srOnly}>Verified</span>
+              </span>
+            )}
+            {!["verified", "unverified"].includes(tag.signature.status) && (
+              <Status value={tag.signature.status} />
+            )}
             <Link
-              className={styles.link}
+              className={styles.sha}
               to="/$owner/$repo/$section/$"
               params={{ owner, repo, section: "commit", _splat: tag.target }}
               search={{}}
             >
-              <code>{tag.target.slice(0, 7)}</code>
+              {tag.target.slice(0, 7)}
+            </Link>
+            <Link
+              className={styles.browse}
+              to="/$owner/$repo"
+              params={{ owner, repo }}
+              search={{ ref: `refs/tags/${tag.name}` }}
+              aria-label={`Browse files at ${tag.name}`}
+              title="Browse files"
+            >
+              <FileDirectoryIcon size={16} />
             </Link>
           </article>
         ))}
@@ -139,9 +182,24 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       content = (
         <>
           <div className={styles.toolbar}>
-            <span className={styles.meta}>
-              History of <code>{reference}</code>
-            </span>
+            <label className={controls.srOnly} htmlFor="commits-branch">
+              Branch
+            </label>
+            <select
+              id="commits-branch"
+              className={controls.select}
+              value={reference}
+              onChange={branchChanged}
+            >
+              {!metadata.data?.branches.some((branch) => branch.name === reference) && (
+                <option value={reference}>{reference.slice(0, 12)}</option>
+              )}
+              {metadata.data?.branches.map((branch) => (
+                <option key={branch.name} value={branch.name}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
           </div>
           <CommitRows commits={commits.data} owner={owner} repo={repo} />
           {commits.data.length === limit && limit < 500 && (
@@ -184,44 +242,46 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
           <div className={styles.grow}>
             <h1 className={styles.title}>{commit.subject}</h1>
             <p className={styles.meta}>
-              {commit.author.name} committed <DateTime value={commit.committer.date} />
+              <strong>{commit.author.name}</strong> committed{" "}
+              <DateTime value={commit.committer.date} /> · <code>{commit.sha.slice(0, 7)}</code>
+              {commit.parents.length > 0 && (
+                <>
+                  {" "}
+                  · {commit.parents.length === 1 ? "parent" : "parents"}{" "}
+                  {commit.parents.map((parent) => (
+                    <Link
+                      key={parent}
+                      className={styles.link}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commit", _splat: parent }}
+                      search={{}}
+                    >
+                      <code>{parent.slice(0, 7)}</code>{" "}
+                    </Link>
+                  ))}
+                </>
+              )}
             </p>
           </div>
           <div className={styles.headingActions}>
             <Status value={commit.signature.status} />
-            <CopyButton value={commit.sha} label="Copy commit SHA" compact />
-          </div>
-        </div>
-        <div className={styles.panel}>
-          <div className={styles.panelHeading}>
-            <code>{commit.sha}</code>
             <Link
-              className={styles.link}
+              className={controls.button}
               to="/$owner/$repo"
               params={{ owner, repo }}
               search={{ ref: commit.sha }}
             >
+              <FileDirectoryIcon size={16} />
               Browse files
             </Link>
+            <CopyButton value={commit.sha} label="Copy commit SHA" compact />
           </div>
-          {commit.body && <pre className={styles.plainText}>{commit.body}</pre>}
-          {commit.parents.length > 0 && (
-            <p className={styles.meta} style={{ padding: "0 1.25rem 1rem" }}>
-              Parents:{" "}
-              {commit.parents.map((parent) => (
-                <Link
-                  key={parent}
-                  className={styles.link}
-                  to="/$owner/$repo/$section/$"
-                  params={{ owner, repo, section: "commit", _splat: parent }}
-                  search={{}}
-                >
-                  {parent.slice(0, 7)}{" "}
-                </Link>
-              ))}
-            </p>
-          )}
         </div>
+        {commit.body.trim() && (
+          <div className={styles.panel}>
+            <pre className={styles.plainText}>{commit.body.trim()}</pre>
+          </div>
+        )}
         <ChecksPanel checks={checks} owner={owner} repo={repo} />
         <DiffViewer
           key={commit.sha}
@@ -239,11 +299,13 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   }
   return (
     <>
-      <CodeNavigation
+      <CodeBreadcrumb
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        active={section === "tags" ? "tags" : "commits"}
+        section={section === "tags" ? "tags" : "commits"}
+        label={section === "tags" ? "Tags" : "Commits"}
+        current={section === "commit" ? target.slice(0, 7) : undefined}
       />
       {content}
     </>

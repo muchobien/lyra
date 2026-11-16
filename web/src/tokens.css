@@ -35,19 +35,50 @@
 @layer tokens {
   :root {
     color-scheme: light dark;
-    --canvas: light-dark(#f5f4f8, #15151b);
-    --surface: light-dark(#fff, #1c1c24);
-    --raised: light-dark(#f8f7fb, #23232d);
-    --hover: light-dark(#eeebf5, #282834);
-    --text: light-dark(#25212f, #efedf6);
-    --muted: light-dark(#696273, #a09cac);
-    --border: light-dark(#dedbe5, #34323f);
-    --soft-border: light-dark(#e9e6ef, #2b2936);
-    --accent: light-dark(#6e47bc, #bca6ff);
-    --accent-surface: light-dark(#eee7fa, #30273f);
-    --success: light-dark(#26744f, #83d2ac);
-    --shadow: 0 12px 40px light-dark(#33234419, #0006);
+    --canvas: light-dark(#ffffff, #0d1117);
+    --surface: light-dark(#ffffff, #0d1117);
+    --overlay: light-dark(#ffffff, #161b22);
+    --raised: light-dark(#f6f8fa, #161b22);
+    --inset: light-dark(#f6f8fa, #010409);
+    --hover: light-dark(#f4f6f8, #171b22);
+    --text: light-dark(#1f2328, #e6edf3);
+    --muted: light-dark(#656d76, #7d8590);
+    --border: light-dark(#d0d7de, #30363d);
+    --soft-border: color-mix(in srgb, var(--border) 60%, var(--surface));
+    --ring: light-dark(#0969da, #1f6feb);
+    --accent: light-dark(#0969da, #2f81f7);
+    --accent-surface: color-mix(in srgb, var(--accent) 12%, transparent);
+    --primary: light-dark(#1f883d, #238636);
+    --on-primary: #ffffff;
+    --success: light-dark(#1a7f37, #3fb950);
+    --danger: light-dark(#cf222e, #ff7b72);
+    --danger-surface: color-mix(in srgb, var(--danger) 10%, transparent);
+    --danger-border: color-mix(in srgb, var(--danger) 40%, transparent);
+    --attention: light-dark(#9a6700, #d29922);
+    --done: light-dark(#8250df, #bc8cff);
+    --brand: light-dark(#8250df, #bc8cff);
+    --added: color-mix(in srgb, var(--success) 15%, transparent);
+    --removed: color-mix(in srgb, var(--danger) 15%, transparent);
+    --backdrop: light-dark(#1f232866, #010409b3);
+    --shadow: 0 8px 24px light-dark(#8c959f33, #010409cc);
+
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.5rem;
+    --weight-normal: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --radius-sm: 0.1875rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.75rem;
+    --radius-full: 999px;
+    --control-height: 2.5rem;
+    --control-height-touch: 2.75rem;
+    --control-padding: 0.5rem 0.75rem;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E");
   }
   :root[data-theme="light"] {
     color-scheme: light;
@@ -66,7 +97,7 @@
   body {
     background: var(--canvas);
     color: var(--text);
-    font-size: 14px;
+    font-size: var(--text-sm);
     line-height: 1.6;
     min-width: 320px;
   }
@@ -90,7 +121,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--ring);
     outline-offset: 4px;
   }
   button:disabled {

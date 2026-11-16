@@ -9,7 +9,7 @@
   top: 1rem;
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 0.6rem;
+  border-radius: var(--radius-md);
   max-height: calc(100dvh - 2rem);
   overflow: auto;
   & summary {
@@ -18,11 +18,15 @@
     gap: 0.5rem;
     padding: 0.85rem;
     cursor: pointer;
-    font-size: 0.8rem;
-    font-weight: 550;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
     &::before {
-      content: "▸";
-      color: var(--muted);
+      content: "";
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+      background: var(--muted);
+      mask: var(--chevron) center / contain no-repeat;
     }
     & span {
       margin-left: auto;
@@ -38,22 +42,40 @@
   & a {
     display: flex;
     gap: 0.5rem;
-    justify-content: space-between;
     align-items: center;
-    padding: 0.55rem 0.6rem;
-    border-radius: 0.4rem;
-    font: 0.7rem/1.7 var(--mono);
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-md);
     color: var(--muted);
-    & span {
-      overflow-wrap: anywhere;
-    }
     &:hover {
       background: var(--hover);
     }
     &[aria-current="page"] {
       color: var(--accent);
       background: var(--accent-surface);
+      & strong {
+        color: var(--accent);
+      }
     }
+  }
+}
+.fileName {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+  & strong,
+  & small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & strong {
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+  & small {
+    font-size: var(--text-xs);
   }
 }
 .files {
@@ -62,7 +84,7 @@
 .file {
   position: relative;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   margin-bottom: 1.2rem;
   content-visibility: auto;
@@ -79,12 +101,15 @@
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   background: var(--raised);
-  border-radius: 0.65rem 0.65rem 0 0;
-  font-size: 0.75rem;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-size: var(--text-xs);
   &::before {
-    content: "▸";
-    color: var(--muted);
+    content: "";
+    width: 1rem;
+    height: 1rem;
     flex-shrink: 0;
+    background: var(--muted);
+    mask: var(--chevron) center / contain no-repeat;
   }
   & code {
     margin-right: auto;
@@ -100,20 +125,20 @@
 .fileStats {
   display: flex;
   gap: 0.5rem;
-  font: 0.65rem var(--mono);
+  font: var(--text-xs) var(--mono);
   white-space: nowrap;
   & span:first-child {
     color: var(--success);
   }
   & span:last-child {
-    color: light-dark(#b3223e, #ff9aaa);
+    color: var(--danger);
   }
 }
 .viewed {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 1rem;
-  border-bottom: 1px solid var(--soft-border);
+  flex-shrink: 0;
+  margin-block: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
 .codeScroll {
   display: grid;
@@ -127,7 +152,7 @@
   padding: 0.4rem 1rem 0.4rem 5.5rem;
   color: var(--muted);
   background: var(--raised);
-  font: 11px/1.8 var(--mono);
+  font: var(--text-xs) / 1.8 var(--mono);
   white-space: pre;
   min-width: max-content;
 }
@@ -136,13 +161,13 @@
   grid-template-columns: 2.8rem 2.8rem minmax(max-content, 1fr);
   grid-template-areas: "oldnumber newnumber code";
   min-width: 100%;
-  font: 12px/1.85 var(--mono);
+  font: var(--text-xs) / 1.85 var(--mono);
   background: var(--surface);
   &[data-kind="add"] {
-    background: light-dark(#e8f5ed, #183027);
+    background: var(--added);
   }
   &[data-kind="delete"] {
-    background: light-dark(#fdecef, #3b232c);
+    background: var(--removed);
   }
 }
 .oldNumber,
@@ -152,7 +177,6 @@
   color: var(--muted);
   background: color-mix(in oklch, var(--raised) 40%, transparent);
   user-select: none;
-  font-size: 10px;
   & button {
     width: 100%;
     text-align: right;
@@ -213,10 +237,10 @@
     grid-template-areas: "oldnumber oldcode newnumber code";
   }
   & .line[data-old-kind="delete"] > :is(.oldNumber, .oldCode) {
-    background: light-dark(#fdecef, #3b232c);
+    background: var(--removed);
   }
   & .line[data-new-kind="add"] > :is(.newNumber, .code) {
-    background: light-dark(#e8f5ed, #183027);
+    background: var(--added);
   }
   & .newNumber {
     border-inline-start: 1px solid var(--border);
@@ -225,7 +249,7 @@
 .lineComment {
   margin: 0.5rem 1rem 1rem 5.6rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   max-width: min(50rem, calc(100cqw - 6.6rem));
   overflow-wrap: anywhere;
@@ -242,7 +266,6 @@
 @media (width <= 600px) {
   .line {
     grid-template-columns: 2.1rem 2.1rem minmax(max-content, 1fr);
-    font-size: 11px;
   }
   .hunk {
     padding-left: 4.2rem;

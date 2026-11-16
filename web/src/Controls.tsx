@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Copy, Check } from "lucide-react";
+import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { APIError } from "./api";
 import styles from "./Controls.module.css";
 
@@ -57,7 +57,7 @@ export function CopyButton({ value, label, compact = false }: CopyButtonProps) {
         aria-label={copied ? "Copied" : label}
         title={label}
       >
-        {copied ? <Check size={15} /> : <Copy size={15} />}{" "}
+        {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}{" "}
         {!compact && (copied ? "Copied" : label)}
       </button>
       <output className={styles.srOnly}>{copied ? "Copied to clipboard." : error}</output>

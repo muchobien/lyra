@@ -5,20 +5,22 @@ import {
   getRenderMarkdownQueryKey,
 } from "./api/generated/lyra";
 import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
 import { Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Code,
-  GitPullRequest,
-  CircleDot,
-  CirclePlay,
-  LockKeyhole,
-  Moon,
-  Sun,
-  Check,
-  Activity,
-  Settings,
-} from "lucide-react";
+  CheckIcon,
+  CodeIcon,
+  GearIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  LockIcon,
+  DeviceDesktopIcon,
+  MoonIcon,
+  PlayIcon,
+  PulseIcon,
+  SunIcon,
+} from "@primer/octicons-react";
 import { ConnectionContext, IdentityContext } from "./api";
 import { ErrorNotice, ScrollNavigation } from "./Controls";
 import styles from "./App.module.css";
@@ -26,6 +28,12 @@ import styles from "./App.module.css";
 const initialPath = location.pathname;
 const serverError = document.getElementById("root")?.dataset.errorMessage;
 const serverErrorTitle = document.getElementById("root")?.dataset.errorTitle;
+
+const themes = [
+  { id: "system", name: "System", icon: DeviceDesktopIcon },
+  { id: "light", name: "Light", icon: SunIcon },
+  { id: "dark", name: "Dark", icon: MoonIcon },
+];
 
 export function App() {
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -118,13 +126,13 @@ export function App() {
     localStorage.setItem("lyra-theme", theme);
   }, [theme]);
 
-  function changeTheme() {
-    const dark =
-      theme === "dark" ||
-      (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-    setTheme(dark ? "light" : "dark");
+  function changeTheme(event: ChangeEvent<HTMLInputElement>) {
+    setTheme(event.target.value);
   }
 
+  function closeAccount() {
+    document.getElementById("account-menu")?.hidePopover();
+  }
   function closePicker() {
     document.getElementById("repository-picker")?.hidePopover();
   }
@@ -134,6 +142,7 @@ export function App() {
   function retryPage() {
     location.reload();
   }
+  const instanceAdmin = identity.data?.scope === "admin" && !identity.data.repos.length;
   let content = <Outlet />;
   if (identity.error) {
     content = <ErrorNotice error={identity.error} retry={retryIdentity} />;
@@ -155,10 +164,15 @@ export function App() {
         <div className={styles.bar}>
           <Link to="/" className={styles.brand} aria-label="Lyra repositories">
             <svg viewBox="0 0 32 32" aria-hidden="true">
-              <path d="m7 7 4 19h10l4-19M7 7l9 8 9-8M11 26l5-11 5 11" />
-              <circle cx="7" cy="7" r="2" />
-              <circle cx="25" cy="7" r="2" />
-              <circle cx="16" cy="15" r="2" />
+              <path d="M21 6l6 4-6.5 3.5L21 6m-.5 7.5L10 15 7.5 27 18 25.5l2.5-12" />
+              <g className={styles.stars}>
+                <circle cx="21" cy="6" r="3.2" />
+                <circle cx="27" cy="10" r="1.6" />
+                <circle cx="20.5" cy="13.5" r="1.9" />
+                <circle cx="10" cy="15" r="1.9" />
+                <circle cx="7.5" cy="27" r="2.2" />
+                <circle cx="18" cy="25.5" r="2.1" />
+              </g>
             </svg>
           </Link>
           {owner && (
@@ -175,37 +189,21 @@ export function App() {
                     type="button"
                     aria-label={`Switch repository: ${repo}`}
                   >
-                    <LockKeyhole size={13} />
+                    <LockIcon size={16} />
                     <strong>{repo}</strong>
                   </button>
                 </>
               )}
             </div>
           )}
-          <div className={styles.appearance}>
-            {owner && repo && (
-              <Link
-                to="/$owner/$repo/$section"
-                params={{ owner, repo, section: "settings" }}
-                search={{}}
-                className={styles.theme}
-                aria-label="Repository settings"
-              >
-                <Settings size={18} />
-              </Link>
-            )}
-            <button
-              className={styles.theme}
-              type="button"
-              onClick={changeTheme}
-              aria-label="Switch appearance"
-            >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
-            <span className={styles.avatar} title={identity.data?.actor.user}>
-              {identity.data?.actor.user.slice(0, 1).toUpperCase() || "?"}
-            </span>
-          </div>
+          <button
+            className={styles.avatar}
+            popoverTarget="account-menu"
+            type="button"
+            aria-label="Account and appearance"
+          >
+            {identity.data?.actor.user.slice(0, 1).toUpperCase() || "?"}
+          </button>
         </div>
         {owner && repo && (
           <ScrollNavigation
@@ -233,7 +231,7 @@ export function App() {
                   : undefined
               }
             >
-              <Code size={16} />
+              <CodeIcon size={16} />
               Code
             </Link>
             <Link
@@ -243,7 +241,7 @@ export function App() {
               className={section === "pulls" ? styles.selected : undefined}
               aria-current={section === "pulls" ? "page" : undefined}
             >
-              <GitPullRequest size={16} />
+              <GitPullRequestIcon size={16} />
               Pull requests
             </Link>
             <Link
@@ -253,7 +251,7 @@ export function App() {
               className={section === "issues" ? styles.selected : undefined}
               aria-current={section === "issues" ? "page" : undefined}
             >
-              <CircleDot size={16} />
+              <IssueOpenedIcon size={16} />
               Issues
             </Link>
             <Link
@@ -263,7 +261,7 @@ export function App() {
               className={section === "runs" ? styles.selected : undefined}
               aria-current={section === "runs" ? "page" : undefined}
             >
-              <CirclePlay size={16} />
+              <PlayIcon size={16} />
               Actions
             </Link>
             <Link
@@ -273,29 +271,70 @@ export function App() {
               className={section === "activity" ? styles.selected : undefined}
               aria-current={section === "activity" ? "page" : undefined}
             >
-              <Activity size={16} />
+              <PulseIcon size={16} />
               Activity
+            </Link>
+            <Link
+              to="/$owner/$repo/$section"
+              params={{ owner, repo, section: "settings" }}
+              search={{}}
+              className={section === "settings" ? styles.selected : undefined}
+              aria-current={section === "settings" ? "page" : undefined}
+            >
+              <GearIcon size={16} />
+              Settings
             </Link>
           </ScrollNavigation>
         )}
       </header>
+      <div id="account-menu" popover="auto" className={styles.accountMenu}>
+        <span className={styles.pickerLabel}>Signed in as</span>
+        <strong className={styles.account}>{identity.data?.actor.user}</strong>
+        <fieldset className={styles.themes}>
+          <legend className={styles.pickerLabel}>Theme</legend>
+          {themes.map((entry) => {
+            const Icon = entry.icon;
+            return (
+              <label key={entry.id}>
+                <input
+                  type="radio"
+                  name="theme"
+                  value={entry.id}
+                  checked={theme === entry.id}
+                  onChange={changeTheme}
+                />
+                <Icon size={16} />
+                {entry.name}
+              </label>
+            );
+          })}
+        </fieldset>
+        {instanceAdmin && (
+          <Link to="/settings" search={{}} onClick={closeAccount}>
+            <GearIcon size={16} />
+            Instance settings
+          </Link>
+        )}
+      </div>
       <div id="repository-picker" popover="auto" className={styles.repositoryPicker}>
         <span className={styles.pickerLabel}>Repositories</span>
-        {repositories.data?.map((entry) => {
-          const [entryOwner, entryRepo] = entry.name.split("/");
-          return (
-            <Link
-              key={entry.name}
-              to="/$owner/$repo"
-              params={{ owner: entryOwner, repo: entryRepo }}
-              search={{}}
-              onClick={closePicker}
-            >
-              <span>{entry.name}</span>
-              {entryOwner === owner && entryRepo === repo && <Check size={15} />}
-            </Link>
-          );
-        })}
+        {repositories.data
+          ?.filter((entry) => entry.name.startsWith(`${owner}/`))
+          .map((entry) => {
+            const [entryOwner, entryRepo] = entry.name.split("/");
+            return (
+              <Link
+                key={entry.name}
+                to="/$owner/$repo"
+                params={{ owner: entryOwner, repo: entryRepo }}
+                search={{}}
+                onClick={closePicker}
+              >
+                <span>{entryRepo}</span>
+                {entryRepo === repo && <CheckIcon size={16} />}
+              </Link>
+            );
+          })}
         <Link to="/" onClick={closePicker}>
           All repositories
         </Link>

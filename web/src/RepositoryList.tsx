@@ -1,7 +1,7 @@
 import { useListOwners } from "./api/generated/lyra";
 import { useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { BookMarked } from "lucide-react";
+import { RepoIcon } from "@primer/octicons-react";
 import { ErrorNotice } from "./Controls";
 import styles from "./RepositoryList.module.css";
 
@@ -43,7 +43,7 @@ export function RepositoryList() {
                 params={{ owner: group.name, repo: repository.name.split("/")[1] }}
                 search={{}}
               >
-                <BookMarked size={20} />
+                <RepoIcon size={16} />
                 <div>
                   <strong>{repository.name.split("/")[1]}</strong>
                   {repository.description && <p>{repository.description}</p>}
