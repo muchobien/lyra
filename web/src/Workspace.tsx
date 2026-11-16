@@ -3,6 +3,8 @@ import { useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  BlockedIcon,
+  CheckCircleFillIcon,
   CheckCircleIcon,
   CheckIcon,
   ClockIcon,
@@ -11,12 +13,41 @@ import {
   GitPullRequestIcon,
   IssueOpenedIcon,
   SkipIcon,
+  StopIcon,
+  XCircleFillIcon,
   XCircleIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { type Actor, type Checks, type Commit } from "./api";
 import controls from "./Controls.module.css";
 import styles from "./Workspace.module.css";
+
+const runIcons = {
+  success: CheckCircleFillIcon,
+  failure: XCircleFillIcon,
+  waiting: ClockIcon,
+  blocked: BlockedIcon,
+  cancelled: StopIcon,
+  skipped: SkipIcon,
+};
+
+type RunStateProps = { status: string };
+export function RunState({ status }: RunStateProps) {
+  const RunIcon = runIcons[status as keyof typeof runIcons] || ClockIcon;
+  return (
+    <span className={`${styles.status} ${styles.runState}`} data-state={status} title={status}>
+      {status === "running" ? (
+        <svg className={styles.spinner} viewBox="0 0 16 16" width="16" height="16">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25" />
+        </svg>
+      ) : (
+        <RunIcon size={16} />
+      )}
+      <span className={controls.srOnly}>{status}</span>
+    </span>
+  );
+}
 
 type StatusProps = { value: string; issue?: boolean; children?: ReactNode };
 export function Status({ value, issue, children }: StatusProps) {
@@ -279,7 +310,7 @@ export function CommitRows({ commits, owner, repo }: CommitRowsProps) {
 type ChecksProps = { checks: Checks; owner: string; repo: string };
 export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
   return (
-    <section className={styles.panel} aria-label="Checks">
+    <section className={`${styles.panel} ${styles.checks}`} aria-label="Checks">
       <div className={styles.panelHeading}>
         <h2>Checks</h2>
         <Status value={checks.state} />
@@ -292,11 +323,11 @@ export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
           params={{ owner, repo, section: "runs", _splat: String(check.run) }}
           search={{ job: String(check.job_id) }}
         >
-          <div className={styles.grow}>
-            <strong>{check.name}</strong>
-            <p className={styles.meta}>{check.workflow}</p>
-          </div>
-          <Status value={check.status} />
+          <RunState status={check.status} />
+          <span className={styles.grow}>
+            <strong>{check.name}</strong>{" "}
+            <span className={styles.muted}>· {check.workflow.split("/").at(-1)}</span>
+          </span>
           <span className={styles.link}>View logs</span>
         </Link>
       ))}

@@ -365,6 +365,7 @@
 .plainText {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  margin: 0;
   padding: 1.25rem;
   font-size: var(--text-sm);
 }
@@ -542,6 +543,33 @@
   }
   & ul {
     padding-inline-start: 1rem;
+  }
+}
+.runState {
+  display: inline-flex;
+}
+.spinner {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  animation: spin 1s linear infinite;
+  & circle {
+    stroke-opacity: 0.3;
+  }
+}
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+.checks > a {
+  padding-block: 0.6rem;
+  @media (width <= 600px) {
+    flex-wrap: nowrap;
+    & > .link {
+      display: none;
+    }
   }
 }
 .live {

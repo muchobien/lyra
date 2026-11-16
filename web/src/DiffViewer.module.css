@@ -38,22 +38,40 @@
   & a {
     display: flex;
     gap: 0.5rem;
-    justify-content: space-between;
     align-items: center;
-    padding: 0.55rem 0.6rem;
+    padding: 0.4rem 0.6rem;
     border-radius: var(--radius-md);
-    font: var(--text-xs) / 1.7 var(--mono);
     color: var(--muted);
-    & span {
-      overflow-wrap: anywhere;
-    }
     &:hover {
       background: var(--hover);
     }
     &[aria-current="page"] {
       color: var(--accent);
       background: var(--accent-surface);
+      & strong {
+        color: var(--accent);
+      }
     }
+  }
+}
+.fileName {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+  & strong,
+  & small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & strong {
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+  & small {
+    font-size: var(--text-xs);
   }
 }
 .files {
@@ -110,10 +128,10 @@
   }
 }
 .viewed {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 1rem;
-  border-bottom: 1px solid var(--soft-border);
+  flex-shrink: 0;
+  margin-block: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
 .codeScroll {
   display: grid;

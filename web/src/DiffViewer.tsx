@@ -183,7 +183,13 @@ export function DiffViewer({
                 search={{ ...search, file: file.path }}
                 aria-current={selected?.path === file.path ? "page" : undefined}
               >
-                <span>{file.path}</span>
+                <FileIcon name={file.path.split("/").at(-1) ?? file.path} />
+                <span className={styles.fileName} title={file.path}>
+                  <strong>{file.path.split("/").at(-1)}</strong>
+                  {file.path.includes("/") && (
+                    <small>{file.path.split("/").slice(0, -1).join("/")}</small>
+                  )}
+                </span>
                 {viewed.has(file.path) && <CheckIcon size={16} />}
               </Link>
             ))}
@@ -202,9 +208,7 @@ export function DiffViewer({
                   <span>+{file.lines?.filter((line) => line.kind === "add").length || 0}</span>
                   <span>−{file.lines?.filter((line) => line.kind === "delete").length || 0}</span>
                 </span>
-              </summary>
-              <div className={styles.viewed}>
-                <label className={common.checkbox}>
+                <label className={`${common.checkbox} ${styles.viewed}`}>
                   <input
                     type="checkbox"
                     value={file.path}
@@ -213,7 +217,7 @@ export function DiffViewer({
                   />
                   Viewed
                 </label>
-              </div>
+              </summary>
               {file.binary && <p className={common.empty}>Binary file changed.</p>}
               {!file.binary &&
                 file.lines &&

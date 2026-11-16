@@ -3,19 +3,13 @@ import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BlockedIcon,
   CalendarIcon,
-  CheckCircleFillIcon,
-  ClockIcon,
   DownloadIcon,
   GitBranchIcon,
   PauseIcon,
   PlayIcon,
-  SkipIcon,
-  StopIcon,
   StopwatchIcon,
   SyncIcon,
-  XCircleFillIcon,
 } from "@primer/octicons-react";
 import { IdentityContext, request } from "./api";
 import {
@@ -37,20 +31,12 @@ import {
   DialogClose,
   duration,
   FormError,
+  RunState,
   Status,
 } from "./Workspace";
 import controls from "./Controls.module.css";
 import common from "./Workspace.module.css";
 import styles from "./Actions.module.css";
-
-const runIcons = {
-  success: CheckCircleFillIcon,
-  failure: XCircleFillIcon,
-  waiting: ClockIcon,
-  blocked: BlockedIcon,
-  cancelled: StopIcon,
-  skipped: SkipIcon,
-};
 
 export function ActionsList() {
   const { owner = "", repo = "" } = useParams({ strict: false });
@@ -254,7 +240,6 @@ export function ActionsList() {
         {runs.data && (
           <div className={`${common.panel} ${styles.runs}`}>
             {visible.map((run) => {
-              const RunIcon = runIcons[run.status as keyof typeof runIcons] || ClockIcon;
               return (
                 <Link
                   className={common.row}
@@ -263,21 +248,7 @@ export function ActionsList() {
                   params={{ owner, repo, section: "runs", _splat: String(run.number) }}
                   search={{}}
                 >
-                  <span
-                    className={`${common.status} ${styles.runState}`}
-                    data-state={run.status}
-                    title={run.status}
-                  >
-                    {run.status === "running" ? (
-                      <svg className={styles.spinner} viewBox="0 0 16 16" width="16" height="16">
-                        <circle cx="8" cy="8" r="6.25" />
-                        <path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25" />
-                      </svg>
-                    ) : (
-                      <RunIcon size={16} />
-                    )}
-                    <span className={controls.srOnly}>{run.status}</span>
-                  </span>
+                  <RunState status={run.status} />
                   <div className={common.grow}>
                     <strong className={common.rowTitle}>{run.title || run.name}</strong>
                     <p className={common.meta}>

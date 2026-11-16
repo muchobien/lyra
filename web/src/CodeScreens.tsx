@@ -7,7 +7,7 @@ import {
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { TagIcon } from "@primer/octicons-react";
+import { FileDirectoryIcon, TagIcon } from "@primer/octicons-react";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
@@ -203,44 +203,46 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
           <div className={styles.grow}>
             <h1 className={styles.title}>{commit.subject}</h1>
             <p className={styles.meta}>
-              {commit.author.name} committed <DateTime value={commit.committer.date} />
+              <strong>{commit.author.name}</strong> committed{" "}
+              <DateTime value={commit.committer.date} /> · <code>{commit.sha.slice(0, 7)}</code>
+              {commit.parents.length > 0 && (
+                <>
+                  {" "}
+                  · {commit.parents.length === 1 ? "parent" : "parents"}{" "}
+                  {commit.parents.map((parent) => (
+                    <Link
+                      key={parent}
+                      className={styles.link}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commit", _splat: parent }}
+                      search={{}}
+                    >
+                      <code>{parent.slice(0, 7)}</code>{" "}
+                    </Link>
+                  ))}
+                </>
+              )}
             </p>
           </div>
           <div className={styles.headingActions}>
             <Status value={commit.signature.status} />
-            <CopyButton value={commit.sha} label="Copy commit SHA" compact />
-          </div>
-        </div>
-        <div className={styles.panel}>
-          <div className={styles.panelHeading}>
-            <code>{commit.sha}</code>
             <Link
-              className={styles.link}
+              className={controls.button}
               to="/$owner/$repo"
               params={{ owner, repo }}
               search={{ ref: commit.sha }}
             >
+              <FileDirectoryIcon size={16} />
               Browse files
             </Link>
+            <CopyButton value={commit.sha} label="Copy commit SHA" compact />
           </div>
-          {commit.body && <pre className={styles.plainText}>{commit.body}</pre>}
-          {commit.parents.length > 0 && (
-            <p className={styles.meta} style={{ padding: "0 1.25rem 1rem" }}>
-              Parents:{" "}
-              {commit.parents.map((parent) => (
-                <Link
-                  key={parent}
-                  className={styles.link}
-                  to="/$owner/$repo/$section/$"
-                  params={{ owner, repo, section: "commit", _splat: parent }}
-                  search={{}}
-                >
-                  {parent.slice(0, 7)}{" "}
-                </Link>
-              ))}
-            </p>
-          )}
         </div>
+        {commit.body.trim() && (
+          <div className={styles.panel}>
+            <pre className={styles.plainText}>{commit.body.trim()}</pre>
+          </div>
+        )}
         <ChecksPanel checks={checks} owner={owner} repo={repo} />
         <DiffViewer
           key={commit.sha}
