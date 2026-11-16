@@ -5,8 +5,8 @@ import {
   useGetCommitWorkspace,
 } from "./api/generated/lyra";
 import { useEffect } from "react";
-import type { ReactNode } from "react";
-import { Link, useParams, useSearch } from "@tanstack/react-router";
+import type { ChangeEvent, ReactNode } from "react";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { FileDirectoryIcon, TagIcon } from "@primer/octicons-react";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
@@ -73,6 +73,7 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   const search = useSearch({ strict: false });
   const name = `${owner}/${repo}`;
   const metadata = useGetRepo(owner, repo);
+  const navigate = useNavigate();
   const reference = target || metadata.data?.default_branch || "main";
   const limit = Math.max(30, Math.min(500, Number(search.limit) || 30));
   const commits = useListCommits(
@@ -88,6 +89,13 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   useEffect(() => {
     document.title = `${detail.data?.commit.subject || section} · ${name} · Lyra`;
   }, [detail.data?.commit.subject, section, name]);
+  function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
+    void navigate({
+      to: "/$owner/$repo/$section/$",
+      params: { owner, repo, section: "commits", _splat: event.target.value },
+      search: {},
+    });
+  }
   function retry() {
     if (section === "commits") {
       void commits.refetch();
@@ -158,9 +166,24 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       content = (
         <>
           <div className={styles.toolbar}>
-            <span className={styles.meta}>
-              History of <code>{reference}</code>
-            </span>
+            <label className={controls.srOnly} htmlFor="commits-branch">
+              Branch
+            </label>
+            <select
+              id="commits-branch"
+              className={controls.select}
+              value={reference}
+              onChange={branchChanged}
+            >
+              {!metadata.data?.branches.some((branch) => branch.name === reference) && (
+                <option value={reference}>{reference.slice(0, 12)}</option>
+              )}
+              {metadata.data?.branches.map((branch) => (
+                <option key={branch.name} value={branch.name}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
           </div>
           <CommitRows commits={commits.data} owner={owner} repo={repo} />
           {commits.data.length === limit && limit < 500 && (

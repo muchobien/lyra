@@ -174,7 +174,7 @@ export function Activity() {
             return (
               <div key={event.id}>
                 {(!previous || dayFormat.format(new Date(previous.at)) !== day) && (
-                  <h2 className={activity.day}>{day}</h2>
+                  <h2 className={styles.dayHeading}>{day}</h2>
                 )}
                 <details className={activity.event}>
                   <summary>
