@@ -6,7 +6,13 @@ import {
 } from "./api/generated/lyra";
 import { useEffect } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
-import { CodeIcon, GitCommitIcon, TagIcon } from "@primer/octicons-react";
+import {
+  CodeIcon,
+  GitCommitIcon,
+  PackageIcon,
+  TagIcon,
+  VersionsIcon,
+} from "@primer/octicons-react";
 import { CopyButton, ErrorNotice, ScrollNavigation } from "./Controls";
 import { ChecksPanel, CommitRows, DateTime, Status } from "./Workspace";
 import { DiffViewer } from "./DiffViewer";
@@ -43,6 +49,24 @@ export function CodeNavigation({ owner, repo, reference, active }: CodeNavigatio
       >
         <TagIcon size={16} />
         Tags
+      </Link>
+      <Link
+        to="/$owner/$repo/$section"
+        params={{ owner, repo, section: "releases" }}
+        search={{}}
+        aria-current={active === "releases" ? "page" : undefined}
+      >
+        <VersionsIcon size={16} />
+        Releases
+      </Link>
+      <Link
+        to="/$owner/$repo/$section"
+        params={{ owner, repo, section: "images" }}
+        search={{}}
+        aria-current={active === "images" ? "page" : undefined}
+      >
+        <PackageIcon size={16} />
+        Containers
       </Link>
     </ScrollNavigation>
   );
