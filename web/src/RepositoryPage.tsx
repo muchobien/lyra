@@ -4,11 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   GitBranchIcon,
+  HistoryIcon,
   PackageIcon,
   SearchIcon,
   TagIcon,
   TerminalIcon,
   VerifiedIcon,
+  VersionsIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { APIError } from "./api";
@@ -19,12 +21,15 @@ import {
   getLatestRelease,
   getGetLatestReleaseQueryKey,
   useListImages,
+  useListReleases,
   useListRepositoryFiles,
+  useListTags,
   getGetRepositoryRawFileUrl,
 } from "./api/generated/lyra";
 import { CopyButton, ErrorNotice } from "./Controls";
 import { CodeNavigation } from "./CodeScreens";
 import { FileIcon } from "./FileIcon";
+import { DateTime } from "./Workspace";
 import controls from "./Controls.module.css";
 import styles from "./RepositoryPage.module.css";
 
@@ -58,6 +63,8 @@ export function RepositoryPage() {
     },
   });
   const images = useListImages(owner, repo);
+  const tags = useListTags(owner, repo);
+  const releases = useListReleases(owner, repo);
   const [finderOpen, setFinderOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const files = useListRepositoryFiles(owner, repo, { ref }, { query: { enabled: finderOpen } });
@@ -146,24 +153,42 @@ export function RepositoryPage() {
       <div className={styles.workspace}>
         <section className={styles.files}>
           <div className={styles.toolbar}>
-            <label className={controls.srOnly} htmlFor="branch-select">
-              Branch
-            </label>
-            <select
-              id="branch-select"
-              className={controls.select}
-              value={ref}
-              onChange={branchChanged}
-            >
-              {!metadata.data.branches.some((branch) => branch.name === ref) && (
-                <option value={ref}>{ref}</option>
+            <div className={styles.refs}>
+              <label className={controls.srOnly} htmlFor="branch-select">
+                Branch
+              </label>
+              <select
+                id="branch-select"
+                className={controls.select}
+                value={ref}
+                onChange={branchChanged}
+              >
+                {!metadata.data.branches.some((branch) => branch.name === ref) && (
+                  <option value={ref}>{ref}</option>
+                )}
+                {metadata.data.branches.map((branch) => (
+                  <option key={branch.name} value={branch.name}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+              <span>
+                <GitBranchIcon size={16} />
+                <strong>{metadata.data.branches.length}</strong>
+                {metadata.data.branches.length === 1 ? "branch" : "branches"}
+              </span>
+              {tags.data && (
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "tags" }}
+                  search={{}}
+                >
+                  <TagIcon size={16} />
+                  <strong>{tags.data.length}</strong>
+                  {tags.data.length === 1 ? "tag" : "tags"}
+                </Link>
               )}
-              {metadata.data.branches.map((branch) => (
-                <option key={branch.name} value={branch.name}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
+            </div>
             <div className={styles.toolbarActions}>
               <button
                 className={controls.button}
@@ -242,9 +267,9 @@ export function RepositoryPage() {
                       </Link>
                     </span>
                     {tree.data.last.signature.status === "verified" && (
-                      <span className={styles.verified}>
+                      <span className={styles.verified} title="Verified">
                         <VerifiedIcon size={16} />
-                        Verified
+                        <span className={controls.srOnly}>Verified</span>
                       </span>
                     )}
                     <Link
@@ -254,6 +279,16 @@ export function RepositoryPage() {
                       className={styles.sha}
                     >
                       {tree.data.last.sha.slice(0, 7)}
+                    </Link>
+                    <DateTime value={tree.data.last.committer.date} />
+                    <Link
+                      className={styles.history}
+                      to="/$owner/$repo/$section/$"
+                      params={{ owner, repo, section: "commits", _splat: ref }}
+                      search={{}}
+                    >
+                      <HistoryIcon size={16} />
+                      History
                     </Link>
                   </div>
                 )}
@@ -346,6 +381,34 @@ export function RepositoryPage() {
           <section className={styles.about}>
             <h2>About</h2>
             {metadata.data.description && <p>{metadata.data.description}</p>}
+            <div className={styles.command}>
+              <code>{metadata.data.clone_url}</code>
+              <CopyButton value={metadata.data.clone_url} label="Copy clone URL" compact />
+            </div>
+            <ul className={styles.stats}>
+              <li>
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "releases" }}
+                  search={{}}
+                >
+                  <VersionsIcon size={16} />
+                  <strong>{releases.data?.length ?? 0}</strong>
+                  {releases.data?.length === 1 ? "release" : "releases"}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/$owner/$repo/$section"
+                  params={{ owner, repo, section: "images" }}
+                  search={{}}
+                >
+                  <PackageIcon size={16} />
+                  <strong>{images.data?.length ?? 0}</strong>
+                  {images.data?.length === 1 ? "container" : "containers"}
+                </Link>
+              </li>
+            </ul>
           </section>
           <section className={styles.delivery}>
             <div className={styles.sidebarHeading}>
@@ -372,16 +435,8 @@ export function RepositoryPage() {
                   search={{}}
                 >
                   <TagIcon size={16} />
-                  <strong>{latest.data.tag}</strong>
+                  <strong>{latest.data.title || latest.data.tag}</strong>
                   <span>Latest</span>
-                </Link>
-                <Link
-                  className={styles.releaseTitle}
-                  to="/$owner/$repo/$section/$"
-                  params={{ owner, repo, section: "releases", _splat: `tag/${latest.data.tag}` }}
-                  search={{}}
-                >
-                  {latest.data.title}
                 </Link>
                 <time
                   className={styles.secondary}
