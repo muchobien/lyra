@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import type { ChangeEvent, CSSProperties, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, SubmitEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -161,7 +161,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
   function retryPatch() {
     void patch.refetch();
   }
-  function submitComment(event: FormEvent<HTMLFormElement>) {
+  function submitComment(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     commenting.mutate(comment.value);
   }
@@ -171,7 +171,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     editTitle.setValue(event.target.value);
   }
-  function submitEdit(event: FormEvent<HTMLFormElement>) {
+  function submitEdit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspace.data) {
       return;
@@ -208,7 +208,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
       setReviewDecision(value);
     }
   }
-  function submitReview(event: FormEvent<HTMLFormElement>) {
+  function submitReview(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     reviewing.mutate({
       owner,
@@ -238,7 +238,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
   function mergeTitleChanged(event: ChangeEvent<HTMLInputElement>) {
     mergeTitle.setValue(event.target.value);
   }
-  function submitMerge(event: FormEvent<HTMLFormElement>) {
+  function submitMerge(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     merging.mutate({
@@ -260,7 +260,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
     document.getElementById("line-comment-body")?.focus();
   }
-  function submitLine(event: FormEvent<HTMLFormElement>) {
+  function submitLine(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     lineCommenting.mutate({
       owner,

@@ -1,5 +1,5 @@
 import { useContext, useEffect } from "react";
-import type { ChangeEvent, CSSProperties, FormEvent } from "react";
+import type { ChangeEvent, CSSProperties, SubmitEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -98,13 +98,13 @@ export function ItemList({ kind }: ItemListProps) {
       resetScroll: false,
     });
   }
-  function preventSearchSubmit(event: FormEvent<HTMLFormElement>) {
+  function preventSearchSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
   }
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     title.setValue(event.target.value);
   }
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const body: CreateIssueRequest = {

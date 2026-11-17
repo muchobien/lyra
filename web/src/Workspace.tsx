@@ -1,6 +1,6 @@
 import { useRenderMarkdown } from "./api/generated/lyra";
 import { useState } from "react";
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import type { ChangeEvent, ReactNode, SubmitEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BlockedIcon,
@@ -233,7 +233,7 @@ export function ConfirmDialog({
   error = null,
   danger = false,
 }: DialogProps) {
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     onConfirm();
   }

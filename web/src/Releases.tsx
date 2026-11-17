@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent, MouseEvent } from "react";
+import type { ChangeEvent, MouseEvent, SubmitEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -154,7 +154,7 @@ export function Releases({ tag }: ReleasesProps) {
       setPrerelease(checked);
     }
   }
-  function saveRelease(event: FormEvent<HTMLFormElement>) {
+  function saveRelease(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = { title: title.value, notes: notes.value, draft, prerelease };
     if (editing) {

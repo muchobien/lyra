@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent, MouseEvent, ToggleEvent } from "react";
+import type { ChangeEvent, MouseEvent, SubmitEvent, ToggleEvent } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -148,7 +148,7 @@ export function Settings({ scope }: SettingsProps) {
   function valueChanged(event: ChangeEvent<HTMLTextAreaElement>) {
     setEditingValue(event.target.value);
   }
-  function valueSubmit(event: FormEvent<HTMLFormElement>) {
+  function valueSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
@@ -167,7 +167,7 @@ export function Settings({ scope }: SettingsProps) {
     changing.reset();
     setValidationError(null);
   }
-  function ruleSubmit(event: FormEvent<HTMLFormElement>) {
+  function ruleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const methods = form
@@ -192,7 +192,7 @@ export function Settings({ scope }: SettingsProps) {
         }),
     });
   }
-  function labelSubmit(event: FormEvent<HTMLFormElement>) {
+  function labelSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
@@ -205,7 +205,7 @@ export function Settings({ scope }: SettingsProps) {
         }),
     });
   }
-  function keySubmit(event: FormEvent<HTMLFormElement>) {
+  function keySubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     changing.mutate({
@@ -219,7 +219,7 @@ export function Settings({ scope }: SettingsProps) {
         }),
     });
   }
-  function tokenSubmit(event: FormEvent<HTMLFormElement>) {
+  function tokenSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const scope = formValue(form, "scope");
@@ -238,7 +238,7 @@ export function Settings({ scope }: SettingsProps) {
       },
     });
   }
-  function runnerTokenSubmit(event: FormEvent<HTMLFormElement>) {
+  function runnerTokenSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     mintRunnerToken.mutate({ data: { name: formValue(form, "name") } });

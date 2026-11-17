@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent, MouseEvent, UIEvent } from "react";
+import type { ChangeEvent, MouseEvent, SubmitEvent, UIEvent } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -104,7 +104,7 @@ export function ActionsList() {
       resetScroll: false,
     });
   }
-  function dispatchRun(event: FormEvent<HTMLFormElement>) {
+  function dispatchRun(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) {
       return;
