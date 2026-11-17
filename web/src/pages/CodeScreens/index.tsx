@@ -221,6 +221,9 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   }
   return (
     <>
+      {section === "commit" && (
+        <title>{`${detail.data?.commit.subject || "Commit"} · ${owner}/${repo} · Lyra`}</title>
+      )}
       <CodeBreadcrumb
         owner={owner}
         repo={repo}

@@ -720,6 +720,9 @@ export function Settings({ scope }: SettingsProps) {
   }
   return (
     <div className="lyra-settings-workspace">
+      <title>
+        {[selectedArea?.name || "Settings", instance ? "Instance" : name, "Lyra"].join(" · ")}
+      </title>
       <ScrollNavigation
         className="lyra-settings-navigation"
         label="Settings sections"

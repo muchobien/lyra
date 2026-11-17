@@ -1,4 +1,5 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import { HeadContent, Link } from "@tanstack/react-router";
+import { type ReactElement, type ReactNode } from "react";
 import {
   CheckIcon,
   CodeIcon,
@@ -18,11 +19,14 @@ import { ScrollNavigation } from "@/components/controls/ScrollNavigation";
 import "./styles.css";
 import { useConnect } from "./connect";
 
-const initialPath = location.pathname;
-
-const serverError = document.getElementById("root")?.dataset.errorMessage;
-
-const serverErrorTitle = document.getElementById("root")?.dataset.errorTitle;
+const root = document.getElementById("root");
+export const initialPageError = root?.dataset.errorMessage
+  ? {
+      pathname: location.pathname,
+      error: new Error(root.dataset.errorMessage),
+      title: root.dataset.errorTitle,
+    }
+  : undefined;
 
 const themes = [
   { id: "system", name: "System", icon: DeviceDesktopIcon },
@@ -30,9 +34,19 @@ const themes = [
   { id: "dark", name: "Dark", icon: MoonIcon },
 ];
 
-export function App() {
+const repositoryTabs = [
+  { to: "/$owner/$repo/pulls", icon: GitPullRequestIcon, label: "Pull requests" },
+  { to: "/$owner/$repo/issues", icon: IssueOpenedIcon, label: "Issues" },
+  { to: "/$owner/$repo/runs", icon: PlayIcon, label: "Actions" },
+  { to: "/$owner/$repo/activity", icon: PulseIcon, label: "Activity" },
+  { to: "/$owner/$repo/settings", icon: GearIcon, label: "Settings" },
+] as const;
+
+export function App({ children }: { children: ReactNode }): ReactElement {
   const {
     pathname,
+    loading,
+    matchRoute,
     owner,
     repo,
     section,
@@ -46,26 +60,33 @@ export function App() {
     retryPage,
     instanceAdmin,
   } = useConnect();
-  let content = <Outlet />;
-  if (identity.error) {
+  let content = children;
+  const pageError = initialPageError?.pathname === pathname ? initialPageError : undefined;
+  if (identity.error && identity.data) {
     content = <ErrorNotice error={identity.error} retry={retryIdentity} />;
-  } else if (identity.isPending) {
-    content = <output>Loading workspace…</output>;
   }
-  if (serverError && pathname === initialPath) {
-    content = (
-      <ErrorNotice error={new Error(serverError)} retry={retryPage} title={serverErrorTitle} />
-    );
+  if (pageError) {
+    content = <ErrorNotice error={pageError.error} retry={retryPage} title={pageError.title} />;
   }
 
   return (
     <>
+      {pageError ? (
+        <title>{pageError.title ? `${pageError.title} · Lyra` : "Lyra"}</title>
+      ) : (
+        <HeadContent />
+      )}
       <a href="#main" className="lyra-app-skip">
         Skip to content
       </a>
-      <header className="lyra-app-header">
+      <header className="lyra-app-header" data-loading={loading || undefined}>
         <div className="lyra-app-bar">
-          <Link to="/" className="lyra-app-brand" aria-label="Lyra repositories">
+          <Link
+            to="/"
+            activeOptions={{ exact: true }}
+            className="lyra-app-brand"
+            aria-label="Lyra repositories"
+          >
             <svg viewBox="0 0 32 32" aria-hidden="true">
               <path d="M21 6l6 4-6.5 3.5L21 6m-.5 7.5L10 15 7.5 27 18 25.5l2.5-12" />
               <g className="lyra-app-stars">
@@ -80,7 +101,7 @@ export function App() {
           </Link>
           {owner && (
             <div className="lyra-app-context">
-              <Link to="/$owner" params={{ owner }}>
+              <Link to="/$owner" params={{ owner }} activeOptions={{ exact: true }}>
                 {owner}
               </Link>
               {repo && (
@@ -118,14 +139,16 @@ export function App() {
               to="/$owner/$repo"
               params={{ owner, repo }}
               search={{}}
-              className={
-                !section ||
-                section === "commits" ||
-                section === "commit" ||
-                section === "tags" ||
-                section === "releases" ||
-                section === "images"
-                  ? "lyra-app-selected"
+              activeOptions={{ exact: true, includeSearch: false }}
+              data-pending={
+                loading &&
+                matchRoute({
+                  to: "/$owner/$repo",
+                  params: { owner, repo },
+                  pending: true,
+                  includeSearch: false,
+                })
+                  ? true
                   : undefined
               }
               aria-current={
@@ -137,56 +160,30 @@ export function App() {
               <CodeIcon size={16} />
               Code
             </Link>
-            <Link
-              to="/$owner/$repo/pulls"
-              params={{ owner, repo }}
-              search={{}}
-              className={section === "pulls" ? "lyra-app-selected" : undefined}
-              aria-current={section === "pulls" ? "page" : undefined}
-            >
-              <GitPullRequestIcon size={16} />
-              Pull requests
-            </Link>
-            <Link
-              to="/$owner/$repo/issues"
-              params={{ owner, repo }}
-              search={{}}
-              className={section === "issues" ? "lyra-app-selected" : undefined}
-              aria-current={section === "issues" ? "page" : undefined}
-            >
-              <IssueOpenedIcon size={16} />
-              Issues
-            </Link>
-            <Link
-              to="/$owner/$repo/runs"
-              params={{ owner, repo }}
-              search={{}}
-              className={section === "runs" ? "lyra-app-selected" : undefined}
-              aria-current={section === "runs" ? "page" : undefined}
-            >
-              <PlayIcon size={16} />
-              Actions
-            </Link>
-            <Link
-              to="/$owner/$repo/activity"
-              params={{ owner, repo }}
-              search={{}}
-              className={section === "activity" ? "lyra-app-selected" : undefined}
-              aria-current={section === "activity" ? "page" : undefined}
-            >
-              <PulseIcon size={16} />
-              Activity
-            </Link>
-            <Link
-              to="/$owner/$repo/settings"
-              params={{ owner, repo }}
-              search={{}}
-              className={section === "settings" ? "lyra-app-selected" : undefined}
-              aria-current={section === "settings" ? "page" : undefined}
-            >
-              <GearIcon size={16} />
-              Settings
-            </Link>
+            {repositoryTabs.map(({ to, icon: Icon, label }) => (
+              <Link
+                key={to}
+                to={to}
+                params={{ owner, repo }}
+                search={{}}
+                activeOptions={{ includeSearch: false }}
+                data-pending={
+                  loading &&
+                  matchRoute({
+                    to,
+                    params: { owner, repo },
+                    pending: true,
+                    fuzzy: true,
+                    includeSearch: false,
+                  })
+                    ? true
+                    : undefined
+                }
+              >
+                <Icon size={16} />
+                {label}
+              </Link>
+            ))}
           </ScrollNavigation>
         )}
       </header>
@@ -221,31 +218,28 @@ export function App() {
       </div>
       <div id="repository-picker" popover="auto" className="lyra-app-repositoryPicker">
         <span className="lyra-app-pickerLabel">Repositories</span>
-        {repositories.data
-          ?.filter((entry) => entry.name.startsWith(`${owner}/`))
-          .map((entry) => {
-            const [entryOwner, entryRepo] = entry.name.split("/");
-            return (
-              <Link
-                key={entry.name}
-                to="/$owner/$repo"
-                params={{ owner: entryOwner, repo: entryRepo }}
-                search={{}}
-                onClick={closePicker}
-              >
-                <span>{entryRepo}</span>
-                {entryRepo === repo && <CheckIcon size={16} />}
-              </Link>
-            );
-          })}
+        {repositories.data?.map((entry) => {
+          const [entryOwner, entryRepo] = entry.name.split("/");
+          return (
+            <Link
+              key={entry.name}
+              to="/$owner/$repo"
+              params={{ owner: entryOwner, repo: entryRepo }}
+              search={{}}
+              onClick={closePicker}
+            >
+              <span>{entryRepo}</span>
+              {entryRepo === repo && <CheckIcon size={16} />}
+            </Link>
+          );
+        })}
         <Link to="/" onClick={closePicker}>
           All repositories
         </Link>
       </div>
-      <main id="main" className="lyra-app-main">
+      <main id="main" className="lyra-app-main" aria-busy={loading}>
         <IdentityContext value={identity.data || null}>{content}</IdentityContext>
       </main>
-      <link rel="stylesheet" href="/api/code.css" />
     </>
   );
 }

@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useContext, useState, type ChangeEvent, type SubmitEvent } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,8 +25,9 @@ import { formValue } from "@/utils/forms";
 import { type CommentAnchor } from "@/components/code/DiffViewer";
 import { useDraft } from "@/hooks/useDraft";
 import { itemDetailPaths } from "@/routing/paths";
+import { repositoryQueries } from "@/api/repositoryQueries";
 
-export type DetailProps = { kind: "pulls" | "issues"; number: string };
+export type DetailProps = { kind: "pulls" | "issues"; number: number };
 
 export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -35,19 +35,19 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
   const name = `${owner}/${repo}`;
-  const issueWorkspace = useGetIssueWorkspace(owner, repo, Number(number), {
+  const issueWorkspace = useGetIssueWorkspace(owner, repo, number, {
     query: { enabled: kind === "issues" },
   });
-  const pullWorkspace = useGetPullWorkspace(owner, repo, Number(number), {
+  const pullWorkspace = useGetPullWorkspace(owner, repo, number, {
     query: { enabled: kind === "pulls" },
   });
   const workspace = kind === "pulls" ? pullWorkspace : issueWorkspace;
   const labels = useListLabels(owner, repo);
   const tab = search.tab || "overview";
-  const commits = useListPullCommits(owner, repo, Number(number), {
+  const commits = useListPullCommits(owner, repo, number, {
     query: { enabled: kind === "pulls" && tab === "commits" },
   });
-  const patch = useGetPullPatch(owner, repo, Number(number), {
+  const patch = useGetPullPatch(owner, repo, number, {
     query: { enabled: kind === "pulls" && tab === "files" },
   });
   const draftKey = `${identity?.actor.user}/${name}/${kind}/${number}`;
@@ -74,13 +74,13 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     `${draftKey}/line/${anchor.head_sha}/${anchor.side}/${anchor.path}/${anchor.line}`,
   );
   async function refresh() {
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries(repositoryQueries(owner, repo));
   }
   const commenting = useMutation({
     mutationFn: (body: string) =>
       kind === "pulls"
-        ? commentPull(owner, repo, Number(number), { body })
-        : commentIssue(owner, repo, Number(number), { body }),
+        ? commentPull(owner, repo, number, { body })
+        : commentIssue(owner, repo, number, { body }),
     onSuccess: async () => {
       comment.clear();
       await refresh();
@@ -88,9 +88,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   });
   const editing = useMutation({
     mutationFn: (body: EditItemRequest) =>
-      kind === "pulls"
-        ? editPull(owner, repo, Number(number), body)
-        : editIssue(owner, repo, Number(number), body),
+      kind === "pulls" ? editPull(owner, repo, number, body) : editIssue(owner, repo, number, body),
     onSuccess: async () => {
       document.querySelector<HTMLDialogElement>("#edit-item")?.close();
       editTitle.clear();
@@ -126,7 +124,6 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       },
     },
   });
-  useDocumentTitle(`${workspace.data?.item.title || `#${number}`} · ${name}`);
   function retry() {
     void workspace.refetch();
   }
@@ -188,7 +185,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     reviewing.mutate({
       owner,
       repo,
-      number: Number(number),
+      number,
       data: { state: reviewDecision, body: reviewBody.value, head_sha: reviewHead },
     });
   }
@@ -219,7 +216,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     merging.mutate({
       owner,
       repo,
-      number: Number(number),
+      number,
       data: {
         method: mergeMethod,
         head_sha: mergeHead,
@@ -240,7 +237,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     lineCommenting.mutate({
       owner,
       repo,
-      number: Number(number),
+      number,
       data: { ...anchor, body: lineBody.value },
     });
   }

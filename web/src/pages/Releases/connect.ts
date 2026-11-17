@@ -1,5 +1,4 @@
 import { useLatestRelease } from "@/api/releases";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useContext, useState, type ChangeEvent, type SubmitEvent, type MouseEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,12 +14,13 @@ import {
   useDeleteRelease,
 } from "@/api/generated/lyra";
 import { useDraft } from "@/hooks/useDraft";
+import { repositoryQueries } from "@/api/repositoryQueries";
 
 export type ReleasesProps = { tag: string };
 
 export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
-  const search = useSearch({ strict: false });
+  const search = useSearch({ from: "/$owner/$repo/releases/", shouldThrow: false });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
@@ -40,7 +40,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
   const target = useDraft(`${draftKey}/target`, editing?.target || metadata.data?.default_branch);
   const canWrite = identity?.scope !== "read";
   async function refresh() {
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries(repositoryQueries(owner, repo));
   }
   async function saved(release: ReleaseWrite) {
     document.querySelector<HTMLDialogElement>("#release-editor")?.close();
@@ -79,7 +79,6 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       },
     },
   });
-  useDocumentTitle(`${single.data?.title || "Releases"} · ${name}`);
   function retry() {
     void list.refetch();
     if (tag) {
@@ -179,9 +178,9 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
     ? [single.data].filter((release): release is Release => !!release)
     : (list.data || []).filter(
         (release) =>
-          (!search.q ||
+          (!search?.q ||
             `${release.tag} ${release.title}`.toLowerCase().includes(search.q.toLowerCase())) &&
-          (!search.state ||
+          (!search?.state ||
             (search.state === "draft" && release.draft) ||
             (search.state === "prerelease" && release.prerelease && !release.draft) ||
             (search.state === "stable" && !release.draft && !release.prerelease)),

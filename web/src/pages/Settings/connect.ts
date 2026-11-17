@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useContext, useState, type SubmitEvent, type MouseEvent, type ToggleEvent } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +20,11 @@ import {
   useGetSigningKey,
   useListRunners,
   useListRunnerTokens,
+  getListTokensQueryKey,
+  getListKeysQueryKey,
+  getGetSigningKeyQueryKey,
+  getListRunnersQueryKey,
+  getListRunnerTokensQueryKey,
   useCreateToken,
   useCreateRunnerToken,
   setSecret,
@@ -38,6 +42,15 @@ import {
   deleteRunnerToken,
 } from "@/api/generated/lyra";
 import { formValue } from "@/utils/forms";
+import { repositoryQueries } from "@/api/repositoryQueries";
+
+const instanceSettingsQueries = new Set<string>([
+  getListTokensQueryKey()[0],
+  getListKeysQueryKey()[0],
+  getGetSigningKeyQueryKey()[0],
+  getListRunnersQueryKey()[0],
+  getListRunnerTokensQueryKey()[0],
+]);
 
 type ConfigChange = { save: () => Promise<unknown>; dialog: string };
 
@@ -51,7 +64,7 @@ export type SettingsProps = { scope: "instance" | "repository" };
 
 export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
   const { owner = "", repo = "" } = useParams({ strict: false });
-  const search = useSearch({ strict: false });
+  const search = useSearch({ from: scope === "instance" ? "/settings" : "/$owner/$repo/settings" });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
   const name = `${owner}/${repo}`;
@@ -96,7 +109,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       const dialog = document.querySelector<HTMLDialogElement>(`#${change.dialog}`);
       dialog?.close();
       dialog?.querySelector("form")?.reset();
-      await queryClient.invalidateQueries();
+      await refresh();
     },
   });
   const removing = useMutation({
@@ -108,7 +121,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     },
     onSuccess: async () => {
       document.querySelector<HTMLDialogElement>("#delete-setting")?.close();
-      await queryClient.invalidateQueries();
+      await refresh();
     },
   });
   const mintToken = useCreateToken({
@@ -118,7 +131,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
         document.querySelector<HTMLDialogElement>("#new-token")?.close();
         setOneTime({ title: created.token.name, secret: created.secret });
         document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
-        void queryClient.invalidateQueries();
+        void refresh();
       },
     },
   });
@@ -133,11 +146,10 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
           url: created.url,
         });
         document.querySelector<HTMLDialogElement>("#one-time-secret")?.showModal();
-        void queryClient.invalidateQueries();
+        void refresh();
       },
     },
   });
-  useDocumentTitle(`${area[0]?.toUpperCase() || ""}${area.slice(1)} · ${name}`);
   function prepareValue(event: MouseEvent<HTMLButtonElement>) {
     const selected = event.currentTarget.dataset.name || "";
     setEditor({
@@ -318,7 +330,17 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     }
   }
   function retry() {
-    void queryClient.invalidateQueries();
+    void refresh();
+  }
+  function refresh() {
+    return queryClient.invalidateQueries(
+      instance
+        ? {
+            predicate: ({ queryKey: [key] }) =>
+              typeof key === "string" && instanceSettingsQueries.has(key),
+          }
+        : repositoryQueries(owner, repo),
+    );
   }
   const areas = [
     { id: "secrets", name: "Secrets", icon: LockIcon, visible: !instance && admin },

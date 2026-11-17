@@ -144,6 +144,7 @@ export function RunDetail({ number }: RunDetailProps) {
   }
   return (
     <>
+      <title>{`${data.title || "Run"} #${number} · ${name} · Lyra`}</title>
       <div className="lyra-workspace-heading">
         <div className="lyra-workspace-grow">
           <h1 className="lyra-workspace-title">
@@ -206,7 +207,7 @@ export function RunDetail({ number }: RunDetailProps) {
           {data.pull && (
             <Link
               to="/$owner/$repo/pulls/$number"
-              params={{ owner, repo, number: String(data.pull) }}
+              params={{ owner, repo, number: data.pull }}
               search={{}}
               className="lyra-workspace-link"
             >

@@ -1,4 +1,10 @@
-import { type SubmitEventHandler, type ReactNode, type ToggleEventHandler } from "react";
+import {
+  type ChangeEvent,
+  type SubmitEventHandler,
+  type ReactNode,
+  type ToggleEvent,
+  type ToggleEventHandler,
+} from "react";
 import "@/styles/controls.css";
 import "./styles.css";
 import "@/styles/workspace.css";
@@ -34,15 +40,24 @@ export function FormDialog({
   submitLabel,
   submitDisabled = false,
 }: FormDialogProps) {
+  function markDirty(event: ChangeEvent<HTMLFormElement>) {
+    event.currentTarget.dataset.dirty = "";
+  }
+  function toggled(event: ToggleEvent<HTMLDialogElement>) {
+    if (event.newState === "closed") {
+      event.currentTarget.querySelector("form")?.removeAttribute("data-dirty");
+    }
+    onToggle?.(event);
+  }
   return (
     <dialog
       id={id}
       className="lyra-workspace-dialog"
       closedby="any"
       aria-labelledby={`${id}-title`}
-      onToggle={onToggle}
+      onToggle={toggled}
     >
-      <form key={formKey} onSubmit={onSubmit}>
+      <form key={formKey} onChange={markDirty} onSubmit={onSubmit}>
         <h2 id={`${id}-title`}>{title}</h2>
         {description}
         <fieldset key={fieldsKey} disabled={pending}>

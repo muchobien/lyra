@@ -3,6 +3,10 @@ import { useSyncExternalStore } from "react";
 const drafts = new Map<string, string>();
 const listeners = new Set<() => void>();
 
+export function hasDrafts() {
+  return drafts.size > 0;
+}
+
 export function useDraft(key: string, initial = "") {
   const value = useSyncExternalStore(
     function subscribe(listener) {
@@ -12,7 +16,11 @@ export function useDraft(key: string, initial = "") {
     () => drafts.get(key) ?? initial,
   );
   function setValue(value: string) {
-    drafts.set(key, value);
+    if (value === initial) {
+      drafts.delete(key);
+    } else {
+      drafts.set(key, value);
+    }
     listeners.forEach((listener) => listener());
   }
   function clear() {

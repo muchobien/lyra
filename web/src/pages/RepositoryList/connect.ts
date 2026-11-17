@@ -1,14 +1,13 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useListOwners } from "@/api/generated/lyra";
-import { useParams } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { ownerListOptions } from "@/api/repositoryQueries";
 
-export function useConnect() {
-  const { owner } = useParams({ strict: false });
-  const owners = useListOwners();
-  useDocumentTitle(`${owner || "Repositories"}`);
+export function useConnect(owner?: string) {
+  const { data, error, refetch } = useSuspenseQuery({
+    ...ownerListOptions,
+    select: (groups) => (owner ? groups.filter((group) => group.name === owner) : groups),
+  });
   function retry() {
-    void owners.refetch();
+    void refetch();
   }
-
-  return { owner, owners, retry };
+  return { groups: data, error, retry };
 }

@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import {
   useContext,
   useEffect,
@@ -12,10 +11,11 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
+import { repositoryQueries } from "@/api/repositoryQueries";
 
 type Logs = { lines: string[]; offset: number; done: boolean };
 
-export type RunDetailProps = { number: string };
+export type RunDetailProps = { number: number };
 
 export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -24,7 +24,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
   const name = `${owner}/${repo}`;
-  const run = useGetRun(owner, repo, Number(number), {
+  const run = useGetRun(owner, repo, number, {
     query: {
       refetchInterval: (query) =>
         query.state.data && ["waiting", "blocked", "running"].includes(query.state.data.status)
@@ -43,7 +43,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
         (first.started_at ? Date.parse(first.started_at) : 0),
     )[0];
   const active = !!run.data && ["waiting", "blocked", "running"].includes(run.data.status);
-  const logsURL = selected ? getGetJobLogsUrl(owner, repo, Number(number), selected.id) : "";
+  const logsURL = selected ? getGetJobLogsUrl(owner, repo, number, selected.id) : "";
   const logKey = [logsURL, selected?.attempt || 0, selected?.started_at || "queued"];
   const logs = useQuery({
     queryKey: logKey,
@@ -51,7 +51,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     queryFn: async ({ signal }) => {
       const previous = queryClient.getQueryData<Logs>(logKey);
       const response = await request(
-        getGetJobLogsUrl(owner, repo, Number(number), selected?.id || 0, {
+        getGetJobLogsUrl(owner, repo, number, selected?.id || 0, {
           offset: previous?.offset || 0,
         }),
         signal,
@@ -77,7 +77,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     mutation: {
       onSuccess: () => {
         document.querySelector<HTMLDialogElement>("#cancel-run")?.close();
-        void queryClient.invalidateQueries();
+        void queryClient.invalidateQueries(repositoryQueries(owner, repo));
       },
     },
   });
@@ -85,11 +85,10 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     mutation: {
       onSuccess: () => {
         document.getElementById("rerun-options")?.hidePopover();
-        void queryClient.invalidateQueries();
+        void queryClient.invalidateQueries(repositoryQueries(owner, repo));
       },
     },
   });
-  useDocumentTitle(`${run.data?.title || "Run"} #${number} · ${name}`);
   useEffect(() => {
     if (following && active && logPanel.current) {
       logPanel.current.scrollTop = logPanel.current.scrollHeight;
@@ -105,12 +104,12 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     rerun.mutate({
       owner,
       repo,
-      number: Number(number),
+      number,
       params: { failed: event.currentTarget.dataset.failed === "true" },
     });
   }
   function cancelRun() {
-    cancel.mutate({ owner, repo, number: Number(number) });
+    cancel.mutate({ owner, repo, number });
   }
   function toggleFollow() {
     setFollowing(!following);

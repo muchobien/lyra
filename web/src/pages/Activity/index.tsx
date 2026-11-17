@@ -181,7 +181,7 @@ export function Activity() {
                           params={{
                             owner,
                             repo,
-                            number: String(event.item),
+                            number: event.item,
                           }}
                           search={{}}
                         >
@@ -192,7 +192,7 @@ export function Activity() {
                         <Link
                           className="lyra-workspace-link"
                           to="/$owner/$repo/runs/$number"
-                          params={{ owner, repo, number: String(data.number) }}
+                          params={{ owner, repo, number: Number(data.number) }}
                           search={{}}
                         >
                           #{data.number}

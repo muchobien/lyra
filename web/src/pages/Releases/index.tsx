@@ -60,6 +60,7 @@ export function Releases({ tag }: ReleasesProps) {
   } = useConnect({ tag });
   return (
     <>
+      {tag && <title>{`${single.data?.title || "Releases"} · ${owner}/${repo} · Lyra`}</title>}
       <CodeBreadcrumb
         owner={owner}
         repo={repo}
@@ -103,14 +104,14 @@ export function Releases({ tag }: ReleasesProps) {
             name="q"
             aria-label="Search releases"
             placeholder="Search releases…"
-            value={search.q || ""}
+            value={search?.q || ""}
             onChange={filtersChanged}
           />
           <select
             className="lyra-controls-select"
             name="state"
             aria-label="Release status"
-            value={search.state || ""}
+            value={search?.state || ""}
             onChange={filtersChanged}
           >
             <option value="">All releases</option>

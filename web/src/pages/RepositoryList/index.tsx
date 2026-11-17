@@ -4,18 +4,12 @@ import { ErrorNotice } from "@/components/controls/ErrorNotice";
 import "./styles.css";
 import { useConnect } from "./connect";
 
-export function RepositoryList() {
-  const { owner, owners, retry } = useConnect();
-  if (owners.error) {
-    return <ErrorNotice error={owners.error} retry={retry} />;
-  }
-  if (owners.isPending) {
-    return <output className="lyra-repository-list-loading">Loading repositories…</output>;
-  }
-  const groups = owners.data.filter((group) => !owner || group.name === owner);
+export function RepositoryList({ owner }: { owner?: string }) {
+  const { groups, error, retry } = useConnect(owner);
   return (
     <div className="lyra-repository-list-list">
       <h1>{owner || "Repositories"}</h1>
+      {error && <ErrorNotice error={error} retry={retry} />}
       {groups.map((group) => (
         <section key={group.name} className="lyra-repository-list-group">
           {!owner && (
