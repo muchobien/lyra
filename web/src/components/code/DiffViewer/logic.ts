@@ -45,7 +45,10 @@ export function useLogic({
   DiffProps,
   "files" | "owner" | "repo" | "section" | "target" | "head" | "onComment" | "comments"
 >) {
-  const search = useSearch({ strict: false });
+  const search = useSearch({
+    strict: false,
+    select: ({ file, layout, tab }) => ({ file, layout, tab }),
+  });
   const navigate = useNavigate();
   const storageKey = `${owner}/${repo}/${section}/${target}/${head}`;
   const [viewed, setViewed] = useState(() => new Set(reviewedFiles.get(storageKey)));
@@ -102,7 +105,7 @@ export function useLogic({
   function layoutChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
       to: diffPaths[section],
-      params: { owner, repo, number: target, sha: target },
+      params: { owner, repo, number: Number(target), sha: target },
       search: { ...search, layout: event.target.value },
       replace: true,
       resetScroll: false,

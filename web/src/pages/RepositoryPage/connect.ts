@@ -1,5 +1,4 @@
 import { useLatestRelease } from "@/api/releases";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useEffect, useState, type ChangeEvent, type ToggleEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
@@ -37,8 +36,6 @@ export function useConnect() {
   const files = useListRepositoryFiles(owner, repo, { ref }, { query: { enabled: finderOpen } });
   const visibleFiles =
     files.data?.filter((path) => path.toLowerCase().includes(filter.toLowerCase())) || [];
-
-  useDocumentTitle(`${search.file || search.path || name}`);
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -85,9 +82,10 @@ export function useConnect() {
   }
   function retry() {
     void metadata.refetch();
-    void tree.refetch();
     if (search.file) {
       void blob.refetch();
+    } else {
+      void tree.refetch();
     }
   }
   function retryFiles() {

@@ -1,8 +1,8 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useListEvents } from "@/api/generated/lyra";
 import { useContext, type ChangeEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ConnectionContext } from "@/api";
+import { searchLimit } from "@/routing/search";
 
 export function useConnect() {
   const connection = useContext(ConnectionContext);
@@ -10,9 +10,8 @@ export function useConnect() {
   const search = useSearch({ from: "/$owner/$repo/activity" });
   const navigate = useNavigate({ from: "/$owner/$repo/activity" });
   const name = `${owner}/${repo}`;
-  const limit = Math.max(100, Math.min(1000, Number(search.limit) || 100));
+  const limit = searchLimit(search.limit, 100);
   const events = useListEvents({ repo: name, limit });
-  useDocumentTitle(`Activity · ${name}`);
   function retry() {
     void events.refetch();
   }

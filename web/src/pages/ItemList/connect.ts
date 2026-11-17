@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useContext, type ChangeEvent, type SubmitEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +20,8 @@ import {
 import { formValue } from "@/utils/forms";
 import { useDraft } from "@/hooks/useDraft";
 import { itemListPaths, itemDetailPaths } from "@/routing/paths";
+import { itemListParams } from "@/routing/search";
+import { repositoryQueries } from "@/api/repositoryQueries";
 
 export type ItemListProps = { kind: "pulls" | "issues" };
 
@@ -32,15 +33,8 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
   const identity = useContext(IdentityContext);
   const name = `${owner}/${repo}`;
   const canWrite = identity?.scope !== "read";
-  const state = search.state || "open";
-  const limit = Math.max(50, Math.min(1000, Number(search.limit) || 50));
-  const params = {
-    state,
-    limit,
-    q: search.q,
-    label: search.label ? [search.label] : undefined,
-    assignee: search.assignee ? [search.assignee] : undefined,
-  };
+  const params = itemListParams(search);
+  const { state, limit } = params;
   const issues = useListIssues(owner, repo, params, { query: { enabled: kind === "issues" } });
   const pulls = useListPulls(owner, repo, params, { query: { enabled: kind === "pulls" } });
   const items = kind === "pulls" ? pulls : issues;
@@ -53,17 +47,16 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
     title.clear();
     description.clear();
     document.querySelector<HTMLDialogElement>("#new-item")?.close();
-    void queryClient.invalidateQueries();
+    void queryClient.invalidateQueries(repositoryQueries(owner, repo));
     void navigate({
       to: itemDetailPaths[kind],
-      params: { owner, repo, number: String(item.number) },
+      params: { owner, repo, number: item.number },
       search: {},
     });
   }
   const issueCreation = useCreateIssue({ mutation: { onSuccess: created } });
   const pullCreation = useCreatePull({ mutation: { onSuccess: created } });
   const creation = kind === "pulls" ? pullCreation : issueCreation;
-  useDocumentTitle(`${kind === "pulls" ? "Pull requests" : "Issues"} · ${name}`);
   function retry() {
     void items.refetch();
   }

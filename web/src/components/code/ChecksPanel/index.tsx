@@ -19,7 +19,7 @@ export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
           className="lyra-workspace-row"
           key={`${check.run}-${check.job_id}`}
           to="/$owner/$repo/runs/$number"
-          params={{ owner, repo, number: String(check.run) }}
+          params={{ owner, repo, number: check.run }}
           search={{ job: String(check.job_id) }}
         >
           <RunState status={check.status} />

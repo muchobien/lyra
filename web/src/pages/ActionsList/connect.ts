@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useContext, type ChangeEvent, type SubmitEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,6 +10,8 @@ import {
   useDispatchWorkflow,
 } from "@/api/generated/lyra";
 import { formValue } from "@/utils/forms";
+import { repositoryQueries } from "@/api/repositoryQueries";
+import { searchLimit } from "@/routing/search";
 
 export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -18,8 +19,7 @@ export function useConnect() {
   const navigate = useNavigate({ from: "/$owner/$repo/runs/" });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
-  const name = `${owner}/${repo}`;
-  const limit = Math.max(50, Math.min(1000, Number(search.limit) || 50));
+  const limit = searchLimit(search.limit, 50);
   const metadata = useGetRepo(owner, repo);
   const reference = search.ref || metadata.data?.default_branch || "main";
   const workflows = useListWorkflows(
@@ -55,16 +55,15 @@ export function useConnect() {
     mutation: {
       onSuccess: (run) => {
         document.querySelector<HTMLDialogElement>("#dispatch-workflow")?.close();
-        void queryClient.invalidateQueries();
+        void queryClient.invalidateQueries(repositoryQueries(owner, repo));
         void navigate({
           to: "/$owner/$repo/runs/$number",
-          params: { owner, repo, number: String(run.number) },
+          params: { owner, repo, number: run.number },
           search: {},
         });
       },
     },
   });
-  useDocumentTitle(`Actions · ${name}`);
   function retry() {
     void runs.refetch();
     void workflows.refetch();

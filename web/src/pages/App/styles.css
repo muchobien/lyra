@@ -1,7 +1,21 @@
 .lyra-app-header {
+  position: relative;
   background: var(--inset);
   color: var(--text);
   border-bottom: 1px solid var(--border);
+  &::after {
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: var(--accent);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+  }
+  &[data-loading]::after {
+    opacity: 1;
+    transition: opacity 120ms 250ms;
+  }
 }
 
 .lyra-app-bar {
@@ -110,10 +124,14 @@
   & a:hover {
     color: var(--text);
   }
-  & a.lyra-app-selected {
+  & a[aria-current="page"] {
     border-color: var(--accent);
     color: var(--text);
     font-weight: var(--weight-semibold);
+  }
+  & a[data-pending]:not([aria-current="page"]) {
+    border-color: var(--border);
+    color: var(--text);
   }
 }
 

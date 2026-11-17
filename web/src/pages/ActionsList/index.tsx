@@ -152,7 +152,7 @@ export function ActionsList() {
                   className="lyra-workspace-row"
                   key={run.id}
                   to="/$owner/$repo/runs/$number"
-                  params={{ owner, repo, number: String(run.number) }}
+                  params={{ owner, repo, number: run.number }}
                   search={{}}
                 >
                   <RunState status={run.status} />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { getGetMeQueryKey, getRenderMarkdownQueryKey } from "@/api/generated/lyra";
+import { repositoryQueries } from "@/api/repositoryQueries";
 
 export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -14,16 +14,11 @@ export function useConnect() {
     const stream = new EventSource(
       `/api/events/stream?repo=${encodeURIComponent(`${owner}/${repo}`)}`,
     );
-    const markdownKey = getRenderMarkdownQueryKey({ body: "" });
     let pending: ReturnType<typeof setTimeout> | undefined;
     function refresh() {
       clearTimeout(pending);
       pending = setTimeout(() => {
-        void queryClient.invalidateQueries({
-          predicate: (query) =>
-            !(query.queryKey[0] === markdownKey[0] && query.queryKey[1] === markdownKey[1]) &&
-            query.queryKey[0] !== getGetMeQueryKey()[0],
-        });
+        void queryClient.invalidateQueries(repositoryQueries(owner, repo));
       }, 200);
     }
     stream.onopen = () => {

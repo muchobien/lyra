@@ -144,7 +144,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
           owner={owner}
           repo={repo}
           section={kind}
-          target={number}
+          target={String(number)}
           head={patch.data.head_sha}
           canComment={canWrite && item.state === "open"}
           onComment={openLineComment}
@@ -363,6 +363,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
   }
   return (
     <>
+      <title>{`${item.title || `#${number}`} · ${name} · Lyra`}</title>
       <div className="lyra-workspace-heading">
         <div className="lyra-workspace-grow">
           <h1 className="lyra-workspace-title">

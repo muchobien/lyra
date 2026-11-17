@@ -1,4 +1,3 @@
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import {
   useGetRepo,
   useListCommits,
@@ -7,17 +6,17 @@ import {
 } from "@/api/generated/lyra";
 import { type ChangeEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { searchLimit } from "@/routing/search";
 
 export type CodeScreenProps = { section: "commits" | "commit" | "tags"; target: string };
 
 export function useConnect({ section, target }: Pick<CodeScreenProps, "section" | "target">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
-  const search = useSearch({ strict: false });
-  const name = `${owner}/${repo}`;
+  const limitSearch = useSearch({ strict: false, select: (search) => search.limit });
   const metadata = useGetRepo(owner, repo);
   const navigate = useNavigate();
   const reference = target || metadata.data?.default_branch || "main";
-  const limit = Math.max(30, Math.min(500, Number(search.limit) || 30));
+  const limit = searchLimit(limitSearch, 30, 500);
   const commits = useListCommits(
     owner,
     repo,
@@ -28,7 +27,6 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
   const detail = useGetCommitWorkspace(owner, repo, target, {
     query: { enabled: section === "commit" && !!target },
   });
-  useDocumentTitle(`${detail.data?.commit.subject || section} · ${name}`);
   function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
       to: "/$owner/$repo/commits/$",

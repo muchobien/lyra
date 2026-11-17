@@ -171,7 +171,7 @@ export function ItemList({ kind }: ItemListProps) {
                     <Link
                       className="lyra-workspace-rowTitle"
                       to={itemDetailPaths[kind]}
-                      params={{ owner, repo, number: String(item.number) }}
+                      params={{ owner, repo, number: item.number }}
                       search={{}}
                     >
                       {item.title}
