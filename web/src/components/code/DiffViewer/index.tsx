@@ -39,6 +39,7 @@ export function DiffViewer({
     commentOnLine,
     nextFile,
   } = useLogic({ files, owner, repo, section, target, head, onComment, comments });
+
   return (
     <section aria-label="Files changed">
       <div className="lyra-workspace-toolbar">
@@ -78,6 +79,7 @@ export function DiffViewer({
           </select>
         )}
       </div>
+
       <div className="lyra-diff-viewer-workspace">
         <ResponsiveDetails className="lyra-diff-viewer-navigation" query="(width > 800px)">
           <summary>

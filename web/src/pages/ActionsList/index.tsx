@@ -36,6 +36,7 @@ export function ActionsList() {
     resetDispatch,
     triggerLabels,
   } = useConnect();
+
   return (
     <div className="lyra-actions-listWorkspace">
       <aside className="lyra-actions-workflows">
@@ -65,6 +66,7 @@ export function ActionsList() {
           <p className="lyra-workspace-meta">No workflow files at this ref.</p>
         )}
       </aside>
+
       <div className="lyra-workspace-grow">
         <div className="lyra-workspace-toolbar">
           <input

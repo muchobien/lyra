@@ -6,6 +6,7 @@ import { useConnect } from "./connect";
 
 export function RepositoryList({ owner }: { owner?: string }) {
   const { groups, error, retry } = useConnect(owner);
+
   return (
     <div className="lyra-repository-list-list">
       <h1>{owner || "Repositories"}</h1>

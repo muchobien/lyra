@@ -34,6 +34,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   const search = useSearch({ from: itemDetailPaths[kind] });
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
+
   const name = `${owner}/${repo}`;
   const issueWorkspace = useGetIssueWorkspace(owner, repo, number, {
     query: { enabled: kind === "issues" },
@@ -50,6 +51,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   const patch = useGetPullPatch(owner, repo, number, {
     query: { enabled: kind === "pulls" && tab === "files" },
   });
+
   const draftKey = `${identity?.actor.user}/${name}/${kind}/${number}`;
   const comment = useDraft(`${draftKey}/comment`);
   const editTitle = useDraft(`${draftKey}/edit/title`, workspace.data?.item.title);
@@ -60,6 +62,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     workspace.data ? `${workspace.data.item.title} (#${number})` : "",
   );
   const mergeBody = useDraft(`${draftKey}/merge/body`, workspace.data?.item.body);
+
   const [reviewHead, setReviewHead] = useState("");
   const [mergeHead, setMergeHead] = useState("");
   const [reviewDecision, setReviewDecision] = useState<ReviewRequest["state"]>("comment");
@@ -70,12 +73,15 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     side: "new",
     head_sha: "",
   });
+
   const lineBody = useDraft(
     `${draftKey}/line/${anchor.head_sha}/${anchor.side}/${anchor.path}/${anchor.line}`,
   );
+
   async function refresh() {
     await queryClient.invalidateQueries(repositoryQueries(owner, repo));
   }
+
   const commenting = useMutation({
     mutationFn: (body: string) =>
       kind === "pulls"
@@ -86,6 +92,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       await refresh();
     },
   });
+
   const editing = useMutation({
     mutationFn: (body: EditItemRequest) =>
       kind === "pulls" ? editPull(owner, repo, number, body) : editIssue(owner, repo, number, body),
@@ -96,6 +103,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       await refresh();
     },
   });
+
   const reviewing = useReviewPull({
     mutation: {
       onSuccess: async () => {
@@ -105,6 +113,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       },
     },
   });
+
   const merging = useMergePull({
     mutation: {
       onSuccess: async () => {
@@ -115,6 +124,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       },
     },
   });
+
   const lineCommenting = useCommentPull({
     mutation: {
       onSuccess: async () => {
@@ -124,25 +134,32 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       },
     },
   });
+
   function retry() {
     void workspace.refetch();
   }
+
   function retryCommits() {
     void commits.refetch();
   }
+
   function retryPatch() {
     void patch.refetch();
   }
+
   function submitComment(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     commenting.mutate(comment.value);
   }
+
   function changeState() {
     editing.mutate({ state: workspace.data?.item.state === "open" ? "closed" : "open" });
   }
+
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     editTitle.setValue(event.target.value);
   }
+
   function submitEdit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspace.data) {
@@ -170,16 +187,19 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       ),
     });
   }
+
   function openReview() {
     setReviewHead(workspace.data?.pull?.head_sha || "");
     reviewing.reset();
   }
+
   function decisionChanged(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "comment" || value === "approve" || value === "request_changes") {
       setReviewDecision(value);
     }
   }
+
   function submitReview(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     reviewing.mutate({
@@ -189,6 +209,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       data: { state: reviewDecision, body: reviewBody.value, head_sha: reviewHead },
     });
   }
+
   function openMerge() {
     setMergeHead(workspace.data?.pull?.head_sha || "");
     const plan = workspace.data?.merge;
@@ -201,15 +222,18 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     }
     merging.reset();
   }
+
   function methodChanged(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "squash" || value === "ff") {
       setMergeMethod(value);
     }
   }
+
   function mergeTitleChanged(event: ChangeEvent<HTMLInputElement>) {
     mergeTitle.setValue(event.target.value);
   }
+
   function submitMerge(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -226,12 +250,14 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       },
     });
   }
+
   function openLineComment(next: CommentAnchor) {
     setAnchor(next);
     lineCommenting.reset();
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
     document.getElementById("line-comment-body")?.focus();
   }
+
   function submitLine(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     lineCommenting.mutate({

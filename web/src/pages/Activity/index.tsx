@@ -85,6 +85,7 @@ export function Activity() {
     dayFormat,
     timeFormat,
   } = useConnect();
+
   return (
     <>
       <div className="lyra-workspace-toolbar">
@@ -119,8 +120,10 @@ export function Activity() {
           {connection}
         </span>
       </div>
+
       {events.error && <ErrorNotice error={events.error} retry={retry} />}
       {events.isPending && <output className="lyra-workspace-empty">Loading activity…</output>}
+
       {events.data && (
         <div className="lyra-workspace-panel">
           {visible.map((event, index) => {
@@ -253,6 +256,7 @@ export function Activity() {
           {visible.length === 0 && <p className="lyra-workspace-empty">No matching activity.</p>}
         </div>
       )}
+
       {events.data?.length === limit && limit < 1000 && (
         <div className="lyra-workspace-actions">
           <Link

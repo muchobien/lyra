@@ -41,12 +41,14 @@ export function RunDetail({ number }: RunDetailProps) {
     jobChanged,
     searchChanged,
   } = useConnect({ number });
+
   if (run.error) {
     return <ErrorNotice error={run.error} retry={retry} />;
   }
   if (!run.data) {
     return <output className="lyra-workspace-empty">Loading run…</output>;
   }
+
   const data = run.data;
   const canWrite = identity?.scope !== "read";
   const logLines = logs.data?.lines || [];
@@ -142,9 +144,11 @@ export function RunDetail({ number }: RunDetailProps) {
       </div>
     );
   }
+
   return (
     <>
       <title>{`${data.title || "Run"} #${number} · ${name} · Lyra`}</title>
+
       <div className="lyra-workspace-heading">
         <div className="lyra-workspace-grow">
           <h1 className="lyra-workspace-title">
@@ -185,6 +189,7 @@ export function RunDetail({ number }: RunDetailProps) {
           )}
         </div>
       </div>
+
       <ResponsiveDetails className="lyra-actions-metadata" query="(width > 600px)">
         <summary>Run details</summary>
         <div>
@@ -224,7 +229,9 @@ export function RunDetail({ number }: RunDetailProps) {
           </Link>
         </div>
       </ResponsiveDetails>
+
       <FormError error={rerun.error} />
+
       <div className="lyra-actions-runWorkspace">
         <nav className="lyra-actions-jobs" aria-label="Run jobs">
           {jobs.map((job) => (
@@ -301,6 +308,7 @@ export function RunDetail({ number }: RunDetailProps) {
           {jobs.length === 0 && <p className="lyra-workspace-empty">This run has no jobs.</p>}
         </section>
       </div>
+
       <div id="rerun-options" popover="auto" className="lyra-actions-rerunMenu">
         <button type="button" onClick={rerunClicked} data-failed="false" disabled={rerun.isPending}>
           Re-run all jobs
@@ -317,6 +325,7 @@ export function RunDetail({ number }: RunDetailProps) {
           Re-run failed jobs
         </button>
       </div>
+
       <ConfirmDialog
         id="cancel-run"
         title={`Cancel run #${number}?`}

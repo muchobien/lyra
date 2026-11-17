@@ -9,12 +9,15 @@ export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const search = useSearch({ from: "/$owner/$repo/activity" });
   const navigate = useNavigate({ from: "/$owner/$repo/activity" });
+
   const name = `${owner}/${repo}`;
   const limit = searchLimit(search.limit, 100);
   const events = useListEvents({ repo: name, limit });
+
   function retry() {
     void events.refetch();
   }
+
   function filterChanged(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     void navigate({
       search: { ...search, [event.target.name]: event.target.value },
@@ -22,6 +25,7 @@ export function useConnect() {
       resetScroll: false,
     });
   }
+
   const visible =
     events.data?.filter(
       (event) =>

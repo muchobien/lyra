@@ -60,6 +60,7 @@ export function App({ children }: { children: ReactNode }): ReactElement {
     retryPage,
     instanceAdmin,
   } = useConnect();
+
   let content = children;
   const pageError = initialPageError?.pathname === pathname ? initialPageError : undefined;
   if (identity.error && identity.data) {
@@ -76,9 +77,11 @@ export function App({ children }: { children: ReactNode }): ReactElement {
       ) : (
         <HeadContent />
       )}
+
       <a href="#main" className="lyra-app-skip">
         Skip to content
       </a>
+
       <header className="lyra-app-header" data-loading={loading || undefined}>
         <div className="lyra-app-bar">
           <Link
@@ -187,6 +190,7 @@ export function App({ children }: { children: ReactNode }): ReactElement {
           </ScrollNavigation>
         )}
       </header>
+
       <div id="account-menu" popover="auto" className="lyra-app-accountMenu">
         <span className="lyra-app-pickerLabel">Signed in as</span>
         <strong className="lyra-app-account">{identity.data?.actor.user}</strong>
@@ -216,6 +220,7 @@ export function App({ children }: { children: ReactNode }): ReactElement {
           </Link>
         )}
       </div>
+
       <div id="repository-picker" popover="auto" className="lyra-app-repositoryPicker">
         <span className="lyra-app-pickerLabel">Repositories</span>
         {repositories.data?.map((entry) => {
@@ -237,6 +242,7 @@ export function App({ children }: { children: ReactNode }): ReactElement {
           All repositories
         </Link>
       </div>
+
       <main id="main" className="lyra-app-main" aria-busy={loading}>
         <IdentityContext value={identity.data || null}>{content}</IdentityContext>
       </main>

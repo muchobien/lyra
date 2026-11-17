@@ -31,18 +31,22 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
+
   const name = `${owner}/${repo}`;
   const canWrite = identity?.scope !== "read";
   const params = itemListParams(search);
   const { state, limit } = params;
+
   const issues = useListIssues(owner, repo, params, { query: { enabled: kind === "issues" } });
   const pulls = useListPulls(owner, repo, params, { query: { enabled: kind === "pulls" } });
   const items = kind === "pulls" ? pulls : issues;
   const listedItems: (Item | Pull)[] = items.data || [];
   const labels = useListLabels(owner, repo);
   const metadata = useGetRepo(owner, repo);
+
   const title = useDraft(`${identity?.actor.user}/${name}/${kind}/new/title`);
   const description = useDraft(`${identity?.actor.user}/${name}/${kind}/new/body`);
+
   function created(item: ItemWrite | PullWrite) {
     title.clear();
     description.clear();
@@ -54,12 +58,15 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
       search: {},
     });
   }
+
   const issueCreation = useCreateIssue({ mutation: { onSuccess: created } });
   const pullCreation = useCreatePull({ mutation: { onSuccess: created } });
   const creation = kind === "pulls" ? pullCreation : issueCreation;
+
   function retry() {
     void items.refetch();
   }
+
   function filtersChanged(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     if (!event.currentTarget.form) {
       return;
@@ -78,12 +85,15 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
       resetScroll: false,
     });
   }
+
   function preventSearchSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
   }
+
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     title.setValue(event.target.value);
   }
+
   function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);

@@ -28,9 +28,11 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
     retry,
     error,
   } = useConnect({ section, target });
+
   if (error) {
     return <ErrorNotice error={error} retry={retry} />;
   }
+
   let content;
   if (section === "tags") {
     content = tags.data ? (
@@ -219,11 +221,13 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
   } else {
     content = <output className="lyra-workspace-empty">Loading commit…</output>;
   }
+
   return (
     <>
       {section === "commit" && (
         <title>{`${detail.data?.commit.subject || "Commit"} · ${owner}/${repo} · Lyra`}</title>
       )}
+
       <CodeBreadcrumb
         owner={owner}
         repo={repo}
@@ -232,6 +236,7 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
         label={section === "tags" ? "Tags" : "Commits"}
         current={section === "commit" ? target.slice(0, 7) : undefined}
       />
+
       {content}
     </>
   );

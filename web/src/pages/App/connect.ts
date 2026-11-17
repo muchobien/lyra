@@ -16,6 +16,7 @@ export function useConnect() {
   const matchRoute = useMatchRoute();
   const { owner, repo } = useParams({ strict: false });
   const section = useMatches({ select: (matches) => matches.at(-1)?.staticData.section });
+
   const identity = useGetMe();
   const repositories = useListRepos({
     query: {
@@ -23,6 +24,7 @@ export function useConnect() {
       select: (repositories) => repositories.filter((entry) => entry.name.startsWith(`${owner}/`)),
     },
   });
+
   const [theme, setTheme] = useState(localStorage.getItem("lyra-theme") || "system");
 
   useBlocker({
@@ -46,15 +48,19 @@ export function useConnect() {
   function closeAccount() {
     document.getElementById("account-menu")?.hidePopover();
   }
+
   function closePicker() {
     document.getElementById("repository-picker")?.hidePopover();
   }
+
   function retryIdentity() {
     void identity.refetch();
   }
+
   function retryPage() {
     location.reload();
   }
+
   const instanceAdmin = identity.data?.scope === "admin" && !identity.data.repos.length;
 
   return {

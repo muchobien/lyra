@@ -19,6 +19,7 @@ export function useConnect() {
   const navigate = useNavigate({ from: "/$owner/$repo/runs/" });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
+
   const limit = searchLimit(search.limit, 50);
   const metadata = useGetRepo(owner, repo);
   const reference = search.ref || metadata.data?.default_branch || "main";
@@ -42,6 +43,7 @@ export function useConnect() {
       },
     },
   );
+
   const selected = workflows.data?.find((workflow) => workflow.path === search.workflow);
   const visible =
     runs.data?.filter(
@@ -51,6 +53,7 @@ export function useConnect() {
         (!search.q ||
           `${run.title} ${run.name} ${run.number}`.toLowerCase().includes(search.q.toLowerCase())),
     ) || [];
+
   const dispatch = useDispatchWorkflow({
     mutation: {
       onSuccess: (run) => {
@@ -64,10 +67,12 @@ export function useConnect() {
       },
     },
   });
+
   function retry() {
     void runs.refetch();
     void workflows.refetch();
   }
+
   function filtersChanged(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     void navigate({
       search: { ...search, [event.target.name]: event.target.value },
@@ -75,6 +80,7 @@ export function useConnect() {
       resetScroll: false,
     });
   }
+
   function dispatchRun(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) {
@@ -90,9 +96,11 @@ export function useConnect() {
     }
     dispatch.mutate({ owner, repo, data: { workflow: selected.path, ref: reference, inputs } });
   }
+
   function resetDispatch() {
     dispatch.reset();
   }
+
   const triggerLabels: Record<string, string> = {
     push: "Push",
     pull_request: "Pull request",
