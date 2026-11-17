@@ -1,5 +1,5 @@
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useContext, type ChangeEvent, type FormEvent } from "react";
+import { useContext, type ChangeEvent, type SubmitEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { IdentityContext } from "@/api";
@@ -76,7 +76,7 @@ export function useConnect() {
       resetScroll: false,
     });
   }
-  function dispatchRun(event: FormEvent<HTMLFormElement>) {
+  function dispatchRun(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) {
       return;

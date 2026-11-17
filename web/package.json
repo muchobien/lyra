@@ -8,7 +8,8 @@
     "api:check": "orval --config orval.config.ts --outdated",
     "dev": "vp dev",
     "build": "vp build",
-    "check": "pnpm api:check && vp check && tsc --noEmit",
+    "check": "pnpm api:check && vp check --deny-warnings && tsc --noEmit",
+    "lint": "vp lint --deny-warnings",
     "fmt": "vp fmt",
     "preview": "vp preview"
   },
@@ -28,8 +29,8 @@
     "@vitejs/plugin-react": "6.3.0",
     "orval": "8.47.0",
     "typescript": "7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
-    "vite-plus": "1.6.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0"
   },
   "devEngines": {
     "packageManager": {

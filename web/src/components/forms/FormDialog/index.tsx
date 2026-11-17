@@ -1,4 +1,4 @@
-import { type FormEventHandler, type ReactNode, type ToggleEventHandler } from "react";
+import { type SubmitEventHandler, type ReactNode, type ToggleEventHandler } from "react";
 import "@/styles/controls.css";
 import "./styles.css";
 import "@/styles/workspace.css";
@@ -9,7 +9,7 @@ type FormDialogProps = {
   id: string;
   title: ReactNode;
   children: ReactNode;
-  onSubmit: FormEventHandler<HTMLFormElement>;
+  onSubmit: SubmitEventHandler<HTMLFormElement>;
   onToggle?: ToggleEventHandler<HTMLDialogElement>;
   formKey?: string;
   fieldsKey?: string;

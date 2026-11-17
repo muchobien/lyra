@@ -1,4 +1,4 @@
-import { type ReactNode, type FormEvent } from "react";
+import { type ReactNode, type SubmitEvent } from "react";
 
 export type DialogProps = {
   id: string;
@@ -12,7 +12,7 @@ export type DialogProps = {
 };
 
 export function useLogic({ onConfirm }: Pick<DialogProps, "onConfirm">) {
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     onConfirm(new FormData(event.currentTarget));
   }

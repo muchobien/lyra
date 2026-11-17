@@ -1,5 +1,5 @@
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useContext, type ChangeEvent, type FormEvent } from "react";
+import { useContext, type ChangeEvent, type SubmitEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { IdentityContext } from "@/api";
@@ -85,13 +85,13 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
       resetScroll: false,
     });
   }
-  function preventSearchSubmit(event: FormEvent<HTMLFormElement>) {
+  function preventSearchSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
   }
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     title.setValue(event.target.value);
   }
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const body: CreateIssueRequest = {

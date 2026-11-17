@@ -1,6 +1,6 @@
 import { useLatestRelease } from "@/api/releases";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useContext, useState, type ChangeEvent, type FormEvent, type MouseEvent } from "react";
+import { useContext, useState, type ChangeEvent, type SubmitEvent, type MouseEvent } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { IdentityContext, type Release } from "@/api";
@@ -111,7 +111,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       setDraft(checked);
     }
   }
-  function saveRelease(event: FormEvent<HTMLFormElement>) {
+  function saveRelease(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const body = {

@@ -1,5 +1,5 @@
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useContext, useState, type ChangeEvent, type FormEvent } from "react";
+import { useContext, useState, type ChangeEvent, type SubmitEvent } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext } from "@/api";
@@ -136,7 +136,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   function retryPatch() {
     void patch.refetch();
   }
-  function submitComment(event: FormEvent<HTMLFormElement>) {
+  function submitComment(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     commenting.mutate(comment.value);
   }
@@ -146,7 +146,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   function titleChanged(event: ChangeEvent<HTMLInputElement>) {
     editTitle.setValue(event.target.value);
   }
-  function submitEdit(event: FormEvent<HTMLFormElement>) {
+  function submitEdit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspace.data) {
       return;
@@ -183,7 +183,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       setReviewDecision(value);
     }
   }
-  function submitReview(event: FormEvent<HTMLFormElement>) {
+  function submitReview(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     reviewing.mutate({
       owner,
@@ -213,7 +213,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
   function mergeTitleChanged(event: ChangeEvent<HTMLInputElement>) {
     mergeTitle.setValue(event.target.value);
   }
-  function submitMerge(event: FormEvent<HTMLFormElement>) {
+  function submitMerge(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     merging.mutate({
@@ -235,7 +235,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
     document.getElementById("line-comment-body")?.focus();
   }
-  function submitLine(event: FormEvent<HTMLFormElement>) {
+  function submitLine(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     lineCommenting.mutate({
       owner,
