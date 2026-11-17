@@ -2,10 +2,10 @@
 "github:github/gh-actions-lock" = { version = "0.4.1", bin = "gh-actions-lock" }
 go = "1.27.4"
 node = "26.13.1"
-pnpm = "12.18.0"
+pnpm = "12.21.0"
 golangci-lint = "2.15.0"
 goreleaser = "2.20.2"
-jactionlint = "2.5.0"
+jactionlint = "2.6.0"
 "go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" = "2.8.2"
 packslip = { version = "1.11.4", identity_prefix = "https://github.com/jdx/packslip/.github/workflows/release.yml@", issuer = "https://token.actions.githubusercontent.com", list_identity_prefix = "https://github.com/jdx/packslip/.github/workflows/packslip-releases.yml@" }
 sqlc = "1.31.1"
