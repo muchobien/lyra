@@ -27,6 +27,7 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
   const detail = useGetCommitWorkspace(owner, repo, target, {
     query: { enabled: section === "commit" && !!target },
   });
+
   function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
       to: "/$owner/$repo/commits/$",
@@ -34,6 +35,7 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
       search: {},
     });
   }
+
   function retry() {
     if (section === "commits") {
       void commits.refetch();
@@ -46,6 +48,7 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
     }
     void metadata.refetch();
   }
+
   const error = metadata.error || commits.error || tags.error || detail.error;
 
   return {

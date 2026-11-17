@@ -6,8 +6,10 @@ export function useConnect(owner?: string) {
     ...ownerListOptions,
     select: (groups) => (owner ? groups.filter((group) => group.name === owner) : groups),
   });
+
   function retry() {
     void refetch();
   }
+
   return { groups: data, error, retry };
 }

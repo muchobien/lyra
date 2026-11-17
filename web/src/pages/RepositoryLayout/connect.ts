@@ -6,7 +6,9 @@ import { repositoryQueries } from "@/api/repositoryQueries";
 export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const queryClient = useQueryClient();
+
   const [connection, setConnection] = useState("connecting");
+
   useEffect(() => {
     if (!owner || !repo) {
       return;

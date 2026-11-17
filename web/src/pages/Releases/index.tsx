@@ -58,9 +58,11 @@ export function Releases({ tag }: ReleasesProps) {
     error,
     saveLabel,
   } = useConnect({ tag });
+
   return (
     <>
       {tag && <title>{`${single.data?.title || "Releases"} · ${owner}/${repo} · Lyra`}</title>}
+
       <CodeBreadcrumb
         owner={owner}
         repo={repo}
@@ -96,6 +98,7 @@ export function Releases({ tag }: ReleasesProps) {
           </div>
         )}
       </CodeBreadcrumb>
+
       {!tag && (
         <div className="lyra-workspace-toolbar">
           <input
@@ -135,10 +138,12 @@ export function Releases({ tag }: ReleasesProps) {
           )}
         </div>
       )}
+
       {error && <ErrorNotice error={error} retry={retry} />}
       {(tag ? single.isPending : list.isPending) && (
         <output className="lyra-workspace-empty">Loading releases…</output>
       )}
+
       {shown.map((release) => (
         <article className="lyra-workspace-panel" key={release.id}>
           <div className="lyra-workspace-panelHeading lyra-releases-releaseHeading">
@@ -266,11 +271,13 @@ export function Releases({ tag }: ReleasesProps) {
           )}
         </article>
       ))}
+
       {!error && !(tag ? single.isPending : list.isPending) && shown.length === 0 && (
         <div className="lyra-workspace-panel">
           <p className="lyra-workspace-empty">No matching releases.</p>
         </div>
       )}
+
       {canWrite && (
         <FormDialog
           id="release-editor"
@@ -346,6 +353,7 @@ export function Releases({ tag }: ReleasesProps) {
           )}
         </FormDialog>
       )}
+
       <ConfirmDialog
         id="delete-release"
         title={`Delete ${deleting?.tag || "release"}?`}

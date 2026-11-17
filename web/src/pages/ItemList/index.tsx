@@ -48,6 +48,7 @@ export function ItemList({ kind }: ItemListProps) {
     titleChanged,
     submit,
   } = useConnect({ kind });
+
   return (
     <>
       <search>
@@ -104,12 +105,14 @@ export function ItemList({ kind }: ItemListProps) {
           )}
         </form>
       </search>
+
       {items.error && <ErrorNotice error={items.error} retry={retry} />}
       {items.isPending && (
         <output className="lyra-workspace-empty">
           Loading {kind === "pulls" ? "pull requests" : "issues"}…
         </output>
       )}
+
       {items.data && (
         <div className="lyra-workspace-panel">
           <nav
@@ -225,6 +228,7 @@ export function ItemList({ kind }: ItemListProps) {
           )}
         </div>
       )}
+
       {items.data?.length === limit && limit < 1000 && (
         <div className="lyra-workspace-actions">
           <Link
@@ -237,6 +241,7 @@ export function ItemList({ kind }: ItemListProps) {
           </Link>
         </div>
       )}
+
       {(kind !== "pulls" || metadata.data) && (
         <FormDialog
           id="new-item"

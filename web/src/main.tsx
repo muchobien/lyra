@@ -10,6 +10,7 @@ if (!container) {
   throw new Error("Missing application root");
 }
 document.head.querySelector("title")?.remove();
+
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

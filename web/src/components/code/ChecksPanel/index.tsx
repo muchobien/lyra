@@ -14,6 +14,7 @@ export function ChecksPanel({ checks, owner, repo }: ChecksProps) {
         <h2>Checks</h2>
         <Status value={checks.state} />
       </div>
+
       {checks.jobs.map((check) => (
         <Link
           className="lyra-workspace-row"

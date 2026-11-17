@@ -24,24 +24,30 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const identity = useContext(IdentityContext);
+
   const name = `${owner}/${repo}`;
   const list = useListReleases(owner, repo);
   const metadata = useGetRepo(owner, repo);
   const single = useGetReleaseByTag(owner, repo, tag, { query: { enabled: !!tag } });
   const latest = useLatestRelease(owner, repo);
+
   const [editing, setEditing] = useState<Release | null>(null);
   const [draft, setDraft] = useState(true);
   const [editorVersion, setEditorVersion] = useState(0);
   const [deleting, setDeleting] = useState<Release | null>(null);
+
   const draftKey = `${identity?.actor.user}/${name}/release/${editing?.id || "new"}`;
   const title = useDraft(`${draftKey}/title`, editing?.title);
   const notes = useDraft(`${draftKey}/notes`, editing?.notes);
   const releaseTag = useDraft(`${draftKey}/tag`, editing?.tag);
   const target = useDraft(`${draftKey}/target`, editing?.target || metadata.data?.default_branch);
+
   const canWrite = identity?.scope !== "read";
+
   async function refresh() {
     await queryClient.invalidateQueries(repositoryQueries(owner, repo));
   }
+
   async function saved(release: ReleaseWrite) {
     document.querySelector<HTMLDialogElement>("#release-editor")?.close();
     title.clear();
@@ -55,15 +61,18 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       search: {},
     });
   }
+
   const creating = useCreateRelease({ mutation: { onSuccess: saved } });
   const updating = useEditRelease({ mutation: { onSuccess: saved } });
   const saving = editing ? updating : creating;
+
   const generating = usePreviewReleaseNotes({
     mutation: {
       onSuccess: (result) =>
         notes.setValue([notes.value.trim(), result.notes].filter(Boolean).join("\n\n")),
     },
   });
+
   const removing = useDeleteRelease({
     mutation: {
       onSuccess: async () => {
@@ -79,12 +88,14 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       },
     },
   });
+
   function retry() {
     void list.refetch();
     if (tag) {
       void single.refetch();
     }
   }
+
   function prepareEditor(event: MouseEvent<HTMLButtonElement>) {
     const release =
       list.data?.find((release) => release.id === Number(event.currentTarget.dataset.id)) || null;
@@ -95,6 +106,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
     updating.reset();
     generating.reset();
   }
+
   function editorChanged(event: ChangeEvent<HTMLInputElement>) {
     const { name, value, checked } = event.target;
     if (name === "title") {
@@ -110,6 +122,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       setDraft(checked);
     }
   }
+
   function saveRelease(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -137,6 +150,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       });
     }
   }
+
   function generateNotes(event: MouseEvent<HTMLButtonElement>) {
     if (!event.currentTarget.form) {
       return;
@@ -148,6 +162,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       params: { tag: releaseTag.value, target: target.value, prerelease: form.has("prerelease") },
     });
   }
+
   function prepareDelete(event: MouseEvent<HTMLButtonElement>) {
     setDeleting(
       list.data?.find((release) => release.id === Number(event.currentTarget.dataset.id)) || null,
@@ -155,6 +170,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
     document.querySelector<HTMLDialogElement>("#delete-release")?.querySelector("form")?.reset();
     removing.reset();
   }
+
   function deleteRelease(form: FormData) {
     if (deleting) {
       removing.mutate({
@@ -165,6 +181,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       });
     }
   }
+
   function filtersChanged(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     void navigate({
       to: "/$owner/$repo/releases",
@@ -174,6 +191,7 @@ export function useConnect({ tag }: Pick<ReleasesProps, "tag">) {
       resetScroll: false,
     });
   }
+
   const shown = tag
     ? [single.data].filter((release): release is Release => !!release)
     : (list.data || []).filter(

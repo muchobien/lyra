@@ -81,6 +81,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     openLineComment,
     submitLine,
   } = useConnect({ kind, number });
+
   if (workspace.error) {
     return <ErrorNotice error={workspace.error} retry={retry} />;
   }
@@ -91,6 +92,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
       </output>
     );
   }
+
   const { item, pull, merge, checks, can_write: canWrite } = workspace.data;
   const reasons = [...(merge?.blocked || [])];
   if (workspace.data.merge_error) {
@@ -361,9 +363,11 @@ export function ItemDetail({ kind, number }: DetailProps) {
       </div>
     );
   }
+
   return (
     <>
       <title>{`${item.title || `#${number}`} · ${name} · Lyra`}</title>
+
       <div className="lyra-workspace-heading">
         <div className="lyra-workspace-grow">
           <h1 className="lyra-workspace-title">
@@ -425,6 +429,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
           )}
         </div>
       </div>
+
       {pull && (
         <ScrollNavigation
           className="lyra-workspace-tabs"
@@ -469,7 +474,9 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </Link>
         </ScrollNavigation>
       )}
+
       {detailContent}
+
       {canWrite && (
         <FormDialog
           id="edit-item"
@@ -496,6 +503,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </Field>
         </FormDialog>
       )}
+
       {pull && canWrite && (
         <>
           <FormDialog
@@ -540,6 +548,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
               required={reviewDecision !== "approve"}
             />
           </FormDialog>
+
           <FormDialog
             id="merge-pull"
             title={<>Merge into {pull.base}</>}
@@ -583,6 +592,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
               Delete {pull.head} after merging
             </label>
           </FormDialog>
+
           <FormDialog
             id="line-comment"
             title="Comment on line"

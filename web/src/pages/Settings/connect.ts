@@ -67,6 +67,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
   const search = useSearch({ from: scope === "instance" ? "/settings" : "/$owner/$repo/settings" });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
+
   const name = `${owner}/${repo}`;
   const canWrite = identity?.scope !== "read";
   const admin = identity?.scope === "admin";
@@ -77,6 +78,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     fallbackArea = "access";
   }
   const area = search.section || fallbackArea;
+
   const [editor, setEditor] = useState<SettingsEditor>({
     name: "",
     value: "",
@@ -86,6 +88,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
   const [deletion, setDeletion] = useState<Deletion | null>(null);
   const [oneTime, setOneTime] = useState<MintedSecret | null>(null);
   const [validationError, setValidationError] = useState<Error | null>(null);
+
   const variables = useListVariables(owner, repo, { query: { enabled: area === "variables" } });
   const secrets = useListSecrets(owner, repo, { query: { enabled: area === "secrets" && admin } });
   const rules = useListRules(owner, repo, { query: { enabled: area === "rules" } });
@@ -102,6 +105,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
   const runnerTokens = useListRunnerTokens({
     query: { enabled: area === "runners" && instanceAdmin },
   });
+
   const changing = useMutation({
     gcTime: 0,
     mutationFn: (change: ConfigChange) => change.save(),
@@ -112,6 +116,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       await refresh();
     },
   });
+
   const removing = useMutation({
     mutationFn: () => {
       if (!deletion) {
@@ -124,6 +129,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       await refresh();
     },
   });
+
   const mintToken = useCreateToken({
     mutation: {
       gcTime: 0,
@@ -135,6 +141,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       },
     },
   });
+
   const mintRunnerToken = useCreateRunnerToken({
     mutation: {
       gcTime: 0,
@@ -150,6 +157,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       },
     },
   });
+
   function prepareValue(event: MouseEvent<HTMLButtonElement>) {
     const selected = event.currentTarget.dataset.name || "";
     setEditor({
@@ -160,6 +168,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     });
     changing.reset();
   }
+
   function valueSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -171,6 +180,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       dialog: "value-editor",
     });
   }
+
   function prepareRule(event: MouseEvent<HTMLButtonElement>) {
     setEditor({
       name: "",
@@ -181,6 +191,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     changing.reset();
     setValidationError(null);
   }
+
   function ruleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -206,6 +217,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
         }),
     });
   }
+
   function labelSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -219,6 +231,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
         }),
     });
   }
+
   function keySubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -233,6 +246,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
         }),
     });
   }
+
   function tokenSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -252,20 +266,25 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       },
     });
   }
+
   function runnerTokenSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     mintRunnerToken.mutate({ data: { name: formValue(form, "name") } });
   }
+
   function resetChange() {
     changing.reset();
   }
+
   function resetToken() {
     mintToken.reset();
   }
+
   function resetRunnerToken() {
     mintRunnerToken.reset();
   }
+
   function prepareDeletion(event: MouseEvent<HTMLButtonElement>) {
     const {
       kind = "",
@@ -306,15 +325,18 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
     setDeletion({ remove, title, description });
     removing.reset();
   }
+
   function deleteSetting() {
     removing.mutate();
   }
+
   function clearValue(event: ToggleEvent<HTMLDialogElement>) {
     if (event.newState === "closed") {
       event.currentTarget.querySelector("form")?.reset();
       changing.reset();
     }
   }
+
   function clearToken(event: ToggleEvent<HTMLDialogElement>) {
     if (event.newState === "closed") {
       event.currentTarget.querySelector("form")?.reset();
@@ -322,6 +344,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       mintRunnerToken.reset();
     }
   }
+
   function clearOneTime(event: ToggleEvent<HTMLDialogElement>) {
     if (event.newState === "closed") {
       setOneTime(null);
@@ -329,9 +352,11 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
       mintRunnerToken.reset();
     }
   }
+
   function retry() {
     void refresh();
   }
+
   function refresh() {
     return queryClient.invalidateQueries(
       instance
@@ -342,6 +367,7 @@ export function useConnect({ scope }: Pick<SettingsProps, "scope">) {
         : repositoryQueries(owner, repo),
     );
   }
+
   const areas = [
     { id: "secrets", name: "Secrets", icon: LockIcon, visible: !instance && admin },
     { id: "variables", name: "Variables", icon: SlidersIcon, visible: !instance },

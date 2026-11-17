@@ -718,11 +718,13 @@ export function Settings({ scope }: SettingsProps) {
       </>
     );
   }
+
   return (
     <div className="lyra-settings-workspace">
       <title>
         {[selectedArea?.name || "Settings", instance ? "Instance" : name, "Lyra"].join(" · ")}
       </title>
+
       <ScrollNavigation
         className="lyra-settings-navigation"
         label="Settings sections"
@@ -757,7 +759,9 @@ export function Settings({ scope }: SettingsProps) {
             );
           })}
       </ScrollNavigation>
+
       <div className="lyra-workspace-grow">{content}</div>
+
       <ConfirmDialog
         id="delete-setting"
         title={deletion?.title || "Delete item?"}
@@ -769,6 +773,7 @@ export function Settings({ scope }: SettingsProps) {
       >
         <p>{deletion?.description}</p>
       </ConfirmDialog>
+
       <dialog
         className="lyra-workspace-dialog"
         id="one-time-secret"

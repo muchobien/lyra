@@ -6,15 +6,19 @@ export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const search = useSearch({ from: "/$owner/$repo/images" });
   const navigate = useNavigate({ from: "/$owner/$repo/images" });
+
   const images = useListImages(owner, repo);
   const releases = useListReleases(owner, repo);
   const metadata = useGetRepo(owner, repo);
+
   function retry() {
     void images.refetch();
   }
+
   function searchChanged(event: ChangeEvent<HTMLInputElement>) {
     void navigate({ search: { q: event.target.value }, replace: true, resetScroll: false });
   }
+
   const visible =
     images.data
       ?.filter(

@@ -15,6 +15,7 @@ export function useDraft(key: string, initial = "") {
     },
     () => drafts.get(key) ?? initial,
   );
+
   function setValue(value: string) {
     if (value === initial) {
       drafts.delete(key);
@@ -23,9 +24,11 @@ export function useDraft(key: string, initial = "") {
     }
     listeners.forEach((listener) => listener());
   }
+
   function clear() {
     drafts.delete(key);
     listeners.forEach((listener) => listener());
   }
+
   return { value, setValue, clear };
 }

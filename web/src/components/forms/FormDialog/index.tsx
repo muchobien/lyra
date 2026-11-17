@@ -43,12 +43,14 @@ export function FormDialog({
   function markDirty(event: ChangeEvent<HTMLFormElement>) {
     event.currentTarget.dataset.dirty = "";
   }
+
   function toggled(event: ToggleEvent<HTMLDialogElement>) {
     if (event.newState === "closed") {
       event.currentTarget.querySelector("form")?.removeAttribute("data-dirty");
     }
     onToggle?.(event);
   }
+
   return (
     <dialog
       id={id}

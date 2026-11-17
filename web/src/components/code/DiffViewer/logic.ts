@@ -51,9 +51,11 @@ export function useLogic({
   });
   const navigate = useNavigate();
   const storageKey = `${owner}/${repo}/${section}/${target}/${head}`;
+
   const [viewed, setViewed] = useState(() => new Set(reviewedFiles.get(storageKey)));
   const [largeFiles, setLargeFiles] = useState(new Set<string>());
   const [wide, setWide] = useState(() => matchMedia("(width > 800px)").matches);
+
   useEffect(() => {
     const media = matchMedia("(width > 800px)");
     function changed() {
@@ -62,6 +64,7 @@ export function useLogic({
     media.addEventListener("change", changed);
     return () => media.removeEventListener("change", changed);
   }, []);
+
   const split = search.layout === "split" && wide;
   const selected = files.find((file) => file.path === search.file);
   const visible = selected ? [selected] : files;
@@ -102,6 +105,7 @@ export function useLogic({
     return { file, rows };
   });
   const commentHTML = new Map(comments.map((comment) => [comment.id, comment.html]));
+
   function layoutChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
       to: diffPaths[section],
@@ -111,6 +115,7 @@ export function useLogic({
       resetScroll: false,
     });
   }
+
   function viewedChanged(event: ChangeEvent<HTMLInputElement>) {
     const next = new Set(viewed);
     if (event.target.checked) {
@@ -121,9 +126,11 @@ export function useLogic({
     reviewedFiles.set(storageKey, next);
     setViewed(next);
   }
+
   function showLarge(event: MouseEvent<HTMLButtonElement>) {
     setLargeFiles(new Set([...largeFiles, event.currentTarget.dataset.path || ""]));
   }
+
   function commentOnLine(event: MouseEvent<HTMLButtonElement>) {
     const { path = "", line = "0", side = "new" } = event.currentTarget.dataset;
     if (side !== "new" && side !== "old") {
@@ -131,6 +138,7 @@ export function useLogic({
     }
     onComment?.({ path, line: Number(line), side, head_sha: head });
   }
+
   const selectedIndex = selected ? files.indexOf(selected) : -1;
   const nextFile = files[selectedIndex + 1];
 

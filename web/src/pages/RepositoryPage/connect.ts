@@ -15,6 +15,7 @@ export function useConnect() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const search = useSearch({ from: "/$owner/$repo/" });
   const navigate = useNavigate({ from: "/$owner/$repo/" });
+
   const name = `${owner}/${repo}`;
   const metadata = useGetRepo(owner, repo);
   const hasBranches = Boolean(metadata.data?.branches.length);
@@ -31,8 +32,10 @@ export function useConnect() {
   const images = useListImages(owner, repo);
   const tags = useListTags(owner, repo);
   const releases = useListReleases(owner, repo);
+
   const [finderOpen, setFinderOpen] = useState(false);
   const [filter, setFilter] = useState("");
+
   const files = useListRepositoryFiles(owner, repo, { ref }, { query: { enabled: finderOpen } });
   const visibleFiles =
     files.data?.filter((path) => path.toLowerCase().includes(filter.toLowerCase())) || [];
@@ -67,12 +70,15 @@ export function useConnect() {
   function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({ search: { ref: event.target.value } });
   }
+
   function searchChanged(event: ChangeEvent<HTMLInputElement>) {
     setFilter(event.target.value);
   }
+
   function finderToggled(event: ToggleEvent<HTMLDialogElement>) {
     setFinderOpen(event.newState === "open");
   }
+
   function closeFinder() {
     const dialog = document.getElementById("file-finder");
     if (dialog instanceof HTMLDialogElement) {
@@ -80,6 +86,7 @@ export function useConnect() {
     }
     setFilter("");
   }
+
   function retry() {
     void metadata.refetch();
     if (search.file) {
@@ -88,6 +95,7 @@ export function useConnect() {
       void tree.refetch();
     }
   }
+
   function retryFiles() {
     void files.refetch();
   }
