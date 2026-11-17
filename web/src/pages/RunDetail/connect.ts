@@ -1,0 +1,161 @@
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent,
+  type UIEvent,
+} from "react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { IdentityContext, request } from "@/api";
+import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
+
+type Logs = { lines: string[]; offset: number; done: boolean };
+
+export type RunDetailProps = { number: string };
+
+export function useConnect({ number }: Pick<RunDetailProps, "number">) {
+  const { owner, repo } = useParams({ from: "/$owner/$repo" });
+  const search = useSearch({ from: "/$owner/$repo/runs/$number" });
+  const navigate = useNavigate({ from: "/$owner/$repo/runs/$number" });
+  const identity = useContext(IdentityContext);
+  const queryClient = useQueryClient();
+  const name = `${owner}/${repo}`;
+  const run = useGetRun(owner, repo, Number(number), {
+    query: {
+      refetchInterval: (query) =>
+        query.state.data && ["waiting", "blocked", "running"].includes(query.state.data.status)
+          ? 2000
+          : false,
+    },
+  });
+  const jobs = run.data?.jobs || [];
+  const selected =
+    jobs.find((job) => String(job.id) === search.job) ||
+    jobs.find((job) => job.status === "failure") ||
+    jobs.find((job) => job.status === "running") ||
+    jobs.toSorted(
+      (first, second) =>
+        (second.started_at ? Date.parse(second.started_at) : 0) -
+        (first.started_at ? Date.parse(first.started_at) : 0),
+    )[0];
+  const active = !!run.data && ["waiting", "blocked", "running"].includes(run.data.status);
+  const logsURL = selected ? getGetJobLogsUrl(owner, repo, Number(number), selected.id) : "";
+  const logKey = [logsURL, selected?.attempt || 0, selected?.started_at || "queued"];
+  const logs = useQuery({
+    queryKey: logKey,
+    enabled: !!selected?.started_at,
+    queryFn: async ({ signal }) => {
+      const previous = queryClient.getQueryData<Logs>(logKey);
+      const response = await request(
+        getGetJobLogsUrl(owner, repo, Number(number), selected?.id || 0, {
+          offset: previous?.offset || 0,
+        }),
+        signal,
+      );
+      const text = await response.text();
+      const lines = text ? text.replace(/\n$/, "").split("\n") : [];
+      return {
+        lines: [...(previous?.lines || []), ...lines],
+        offset: Number(response.headers.get("Lyra-Log-Next") || 0),
+        done: response.headers.get("Lyra-Log-Done") === "true",
+      };
+    },
+    refetchInterval: (query) => {
+      if (query.state.error || query.state.data?.done) {
+        return false;
+      }
+      return 1000;
+    },
+  });
+  const [following, setFollowing] = useState(true);
+  const logPanel = useRef<HTMLDivElement>(null);
+  const cancel = useCancelRun({
+    mutation: {
+      onSuccess: () => {
+        document.querySelector<HTMLDialogElement>("#cancel-run")?.close();
+        void queryClient.invalidateQueries();
+      },
+    },
+  });
+  const rerun = useRerunRun({
+    mutation: {
+      onSuccess: () => {
+        document.getElementById("rerun-options")?.hidePopover();
+        void queryClient.invalidateQueries();
+      },
+    },
+  });
+  useDocumentTitle(`${run.data?.title || "Run"} #${number} · ${name}`);
+  useEffect(() => {
+    if (following && active && logPanel.current) {
+      logPanel.current.scrollTop = logPanel.current.scrollHeight;
+    }
+  }, [logs.data?.offset, following, active]);
+  function retry() {
+    void run.refetch();
+  }
+  function retryLogs() {
+    void logs.refetch();
+  }
+  function rerunClicked(event: MouseEvent<HTMLButtonElement>) {
+    rerun.mutate({
+      owner,
+      repo,
+      number: Number(number),
+      params: { failed: event.currentTarget.dataset.failed === "true" },
+    });
+  }
+  function cancelRun() {
+    cancel.mutate({ owner, repo, number: Number(number) });
+  }
+  function toggleFollow() {
+    setFollowing(!following);
+  }
+  function logScrolled(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight > 40) {
+      setFollowing(false);
+    }
+  }
+  function jobChanged(event: ChangeEvent<HTMLSelectElement>) {
+    void navigate({ search: { ...search, job: event.target.value }, resetScroll: false });
+    setFollowing(true);
+  }
+  function searchChanged(event: ChangeEvent<HTMLInputElement>) {
+    void navigate({
+      search: { ...search, q: event.target.value },
+      replace: true,
+      resetScroll: false,
+    });
+  }
+
+  return {
+    owner,
+    repo,
+    search,
+    identity,
+    name,
+    run,
+    jobs,
+    selected,
+    active,
+    logsURL,
+    logs,
+    following,
+    logPanel,
+    cancel,
+    rerun,
+    retry,
+    retryLogs,
+    rerunClicked,
+    cancelRun,
+    toggleFollow,
+    logScrolled,
+    jobChanged,
+    searchChanged,
+  };
+}

@@ -1,0 +1,52 @@
+.lyra-workspace-dayHeading {
+  padding: 0.5rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+div:not(:first-child) > .lyra-workspace-dayHeading {
+  border-top: 1px solid var(--border);
+}
+
+.lyra-workspace-commits {
+  & > div:last-child > .lyra-workspace-row {
+    border-bottom: 0;
+  }
+  & .lyra-workspace-row {
+    padding-block: 0.6rem;
+  }
+  & .lyra-workspace-meta {
+    margin-top: 0;
+  }
+  & .lyra-workspace-meta strong {
+    color: var(--text);
+    font-weight: var(--weight-medium);
+  }
+}
+
+.lyra-workspace-verified {
+  display: inline-flex;
+  color: var(--success);
+}
+
+.lyra-workspace-sha {
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  &:hover {
+    color: var(--accent);
+  }
+}
+
+.lyra-workspace-browse {
+  display: inline-flex;
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  &:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}

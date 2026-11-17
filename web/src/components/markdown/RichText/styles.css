@@ -1,0 +1,7 @@
+.lyra-workspace-plainText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  padding: 1.25rem;
+  font-size: var(--text-sm);
+}

@@ -1,0 +1,234 @@
+.lyra-actions-metadata {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  font-size: var(--text-xs);
+  & > summary {
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+  }
+  & > div {
+    display: flex;
+    gap: 1.2rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0 1rem 1rem;
+    & span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      overflow-wrap: anywhere;
+    }
+  }
+}
+
+.lyra-actions-runWorkspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1.3rem;
+}
+
+.lyra-actions-jobs {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  & a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &[aria-current="page"] {
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--surface);
+    }
+  }
+}
+
+.lyra-actions-logSection {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: clip;
+  min-width: 0;
+}
+
+.lyra-actions-logToolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
+  & > strong {
+    font-size: var(--text-sm);
+  }
+  & > span {
+    font-size: var(--text-xs);
+  }
+  & button,
+  & a {
+    min-height: 2rem;
+    font-size: var(--text-xs);
+    padding: 0.3rem 0.6rem;
+  }
+}
+
+.lyra-actions-logFilters {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--soft-border);
+  & input {
+    min-width: 5rem;
+    min-height: 2rem;
+    font-size: var(--text-xs);
+  }
+}
+
+.lyra-actions-mobileJobs {
+  display: none;
+}
+
+.lyra-actions-logPanel {
+  max-height: 65dvh;
+  min-height: 15rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  background: var(--inset);
+}
+
+.lyra-actions-logText {
+  font: var(--text-xs) / 1.9 var(--mono);
+  white-space: pre;
+  padding: 1rem 1.2rem;
+  margin: 0;
+  tab-size: 4;
+  color: var(--text);
+}
+
+.lyra-actions-activeStep {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 1rem;
+  background: var(--raised);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.lyra-actions-step {
+  border-bottom: 1px solid var(--soft-border);
+  & > summary {
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    &::before {
+      content: "";
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+      background: var(--muted);
+      mask: var(--chevron) center / contain no-repeat;
+    }
+    & > .lyra-actions-stepDuration {
+      margin-left: auto;
+    }
+  }
+  &[open] > summary::before {
+    rotate: 90deg;
+  }
+}
+
+.lyra-actions-completedSteps {
+  & > summary {
+    padding: 0.85rem 1rem;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    background: var(--raised);
+  }
+}
+
+.lyra-actions-rerunTrigger {
+  anchor-name: --rerun-trigger;
+}
+
+.lyra-actions-rerunMenu {
+  position-anchor: --rerun-trigger;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-inline, flip-block;
+  inset: auto;
+  margin: 0.4rem 0 0;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  background: var(--overlay);
+  box-shadow: var(--shadow);
+  min-width: 13rem;
+  & button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 0.65rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    &:hover {
+      background: var(--hover);
+    }
+  }
+}
+
+@media (width <= 800px) {
+  .lyra-actions-runWorkspace {
+    grid-template-columns: 175px minmax(0, 1fr);
+  }
+}
+
+@media (width <= 600px) {
+  .lyra-actions-runWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lyra-actions-jobs {
+    display: none;
+  }
+  .lyra-actions-mobileJobs {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .lyra-actions-logFilters {
+    flex-direction: column;
+  }
+  .lyra-actions-logToolbar {
+    gap: 0.5rem;
+  }
+  .lyra-actions-logToolbar > span:not(:empty) {
+    width: 100%;
+  }
+  .lyra-actions-metadata > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .lyra-actions-logText {
+    font-size: var(--text-xs);
+    padding: 0.8rem;
+  }
+}
