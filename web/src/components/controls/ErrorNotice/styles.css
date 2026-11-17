@@ -1,0 +1,17 @@
+.lyra-controls-notice {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  & h2 {
+    font-size: var(--text-lg);
+  }
+  & p {
+    color: var(--muted);
+    margin: 0.75rem 0 1.5rem;
+  }
+  & button {
+    margin-inline: auto;
+  }
+}

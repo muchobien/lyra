@@ -1,0 +1,16 @@
+.lyra-workspace-field {
+  display: grid;
+  gap: 0.45rem;
+  margin-block: 1rem;
+  font-size: var(--text-sm);
+  & > span {
+    font-weight: var(--weight-semibold);
+  }
+  & small {
+    color: var(--muted);
+  }
+  & textarea {
+    resize: vertical;
+    min-height: 6rem;
+  }
+}

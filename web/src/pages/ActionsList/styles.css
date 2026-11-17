@@ -1,0 +1,85 @@
+.lyra-actions-listWorkspace {
+  display: grid;
+  grid-template-columns: 215px minmax(0, 1fr);
+  gap: 1.7rem;
+  align-items: start;
+}
+
+.lyra-actions-workflows {
+  display: grid;
+  gap: 0.3rem;
+  & > a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.8rem;
+    font-size: var(--text-sm);
+    color: var(--muted);
+    border-radius: var(--radius-md);
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &[aria-current="page"] {
+      color: var(--text);
+      background: var(--accent-surface);
+      font-weight: var(--weight-semibold);
+    }
+  }
+  & p {
+    padding: 0.5rem 0.8rem;
+  }
+}
+
+.lyra-actions-runTimes {
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  & > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+
+.lyra-actions-runs > a {
+  align-items: flex-start;
+  & > :first-child {
+    margin-top: 0.25rem;
+  }
+}
+
+.lyra-actions-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font: var(--text-xs) var(--mono);
+  vertical-align: middle;
+}
+
+@media (width <= 800px) {
+  .lyra-actions-listWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lyra-actions-workflows {
+    display: flex;
+    overflow-x: auto;
+    & > a {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+}
+
+@media (width <= 600px) {
+  .lyra-actions-runTimes {
+    justify-items: start;
+  }
+}

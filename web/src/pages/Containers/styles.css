@@ -1,0 +1,7 @@
+.lyra-releases-pullCommand {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  padding-top: 0.8rem;
+}

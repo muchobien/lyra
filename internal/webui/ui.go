@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-//go:embed dist
+//go:embed all:dist
 var bundle embed.FS
 
 func Assets() http.Handler {

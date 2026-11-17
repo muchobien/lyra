@@ -1,0 +1,71 @@
+.lyra-settings-workspace {
+  display: grid;
+  grid-template-columns: 205px minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+.lyra-settings-navigation {
+  display: grid;
+  gap: 0.3rem;
+  & a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    &:hover {
+      background: var(--hover);
+    }
+    &[aria-current="page"] {
+      color: var(--text);
+      background: var(--accent-surface);
+      font-weight: var(--weight-semibold);
+    }
+  }
+}
+
+.lyra-settings-variableValue {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 8rem;
+  overflow: auto;
+  margin: 0.8rem 0 0;
+  padding: 0.6rem 0.8rem;
+  background: var(--raised);
+  border: 1px solid var(--soft-border);
+  border-radius: var(--radius-md);
+  font: var(--text-xs) / 1.7 var(--mono);
+}
+
+.lyra-settings-labelColor {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.lyra-settings-fingerprint {
+  padding: 1rem 1.25rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (width <= 800px) {
+  .lyra-settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.2rem;
+  }
+  .lyra-settings-navigation {
+    display: flex;
+    overflow-x: auto;
+    & a {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+}

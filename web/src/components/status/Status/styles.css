@@ -1,0 +1,27 @@
+.lyra-workspace-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-transform: capitalize;
+  color: var(--muted);
+  &[data-state="success"],
+  &[data-state="approved"],
+  &[data-state="open"] {
+    color: var(--success);
+  }
+  &[data-state="merged"] {
+    color: var(--done);
+  }
+  &[data-state="failure"],
+  &[data-state="changes_requested"] {
+    color: var(--danger);
+  }
+  &[data-state="running"],
+  &[data-state="pending"],
+  &[data-state="waiting"],
+  &[data-state="blocked"] {
+    color: var(--attention);
+  }
+}

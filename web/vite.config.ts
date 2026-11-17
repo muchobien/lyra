@@ -1,5 +1,6 @@
 import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 export default defineConfig(({ command }) => {
   const backend = {
@@ -9,7 +10,11 @@ export default defineConfig(({ command }) => {
       : undefined,
   };
   return {
-    plugins: [react()],
+    resolve: { tsconfigPaths: true },
+    plugins: [
+      tanstackRouter({ target: "react", autoCodeSplitting: true, quoteStyle: "double" }),
+      react(),
+    ],
     base: command === "build" ? "/static/" : "/",
     build: {
       target: "chrome157",
@@ -27,9 +32,9 @@ export default defineConfig(({ command }) => {
           backend,
       },
     },
-    fmt: { ignorePatterns: ["src/api/generated/**"] },
+    fmt: { ignorePatterns: ["src/api/generated/**", "src/routeTree.gen.ts"] },
     lint: {
-      ignorePatterns: ["src/api/generated/**"],
+      ignorePatterns: ["src/api/generated/**", "src/routeTree.gen.ts"],
       plugins: ["typescript", "react", "jsx-a11y"],
       jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
       rules: {

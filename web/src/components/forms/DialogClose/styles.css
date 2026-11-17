@@ -1,0 +1,17 @@
+.lyra-workspace-close {
+  position: absolute;
+  inset-block-start: 1.3rem;
+  inset-inline-end: 1.3rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: var(--radius-md);
+  &:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+}

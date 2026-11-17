@@ -1,0 +1,9 @@
+.lyra-workspace-checks > a {
+  padding-block: 0.6rem;
+  @media (width <= 600px) {
+    flex-wrap: nowrap;
+    & > .lyra-workspace-link {
+      display: none;
+    }
+  }
+}

@@ -1,0 +1,20 @@
+.lyra-workspace-runState {
+  display: inline-flex;
+}
+
+.lyra-workspace-spinner {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  animation: lyra-workspace-spin 1s linear infinite;
+  & circle {
+    stroke-opacity: 0.3;
+  }
+}
+
+@keyframes lyra-workspace-spin {
+  to {
+    rotate: 360deg;
+  }
+}

@@ -1,0 +1,70 @@
+.lyra-workspace-markdown {
+  padding: 1.25rem;
+  font-size: var(--text-sm);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  & > :first-child {
+    margin-top: 0;
+  }
+  & > :last-child {
+    margin-bottom: 0;
+  }
+  & h1 {
+    font-size: var(--text-xl);
+    margin: 1.2rem 0 0.8rem;
+  }
+  & h2 {
+    font-size: var(--text-lg);
+    margin: 1.2rem 0 0.7rem;
+  }
+  & h3 {
+    font-size: var(--text-md);
+    margin: 1rem 0 0.6rem;
+  }
+  & p {
+    margin-bottom: 0.85rem;
+  }
+  & a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  & img {
+    max-width: 100%;
+    height: auto;
+  }
+  & pre {
+    overflow-x: auto;
+    padding: 1rem;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  & :not(pre) > code {
+    background: var(--raised);
+    border: 1px solid var(--soft-border);
+    padding: 0.1rem 0.3rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85em;
+  }
+  & table {
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+    overflow-wrap: normal;
+  }
+  & th,
+  & td {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.7rem;
+  }
+  & blockquote {
+    margin-inline: 0;
+    padding-inline-start: 1rem;
+    border-inline-start: 3px solid var(--border);
+    color: var(--muted);
+  }
+  & .chroma {
+    background: var(--raised);
+  }
+}

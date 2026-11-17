@@ -1,0 +1,267 @@
+.lyra-app-header {
+  background: var(--inset);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.lyra-app-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  min-height: 4rem;
+  padding: 0.65rem 1.75rem;
+}
+
+.lyra-app-brand {
+  display: flex;
+  flex-shrink: 0;
+  & svg {
+    width: 1.8rem;
+    height: 1.8rem;
+    fill: none;
+    stroke: var(--brand);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  & .lyra-app-stars {
+    fill: var(--brand);
+    stroke: none;
+  }
+}
+
+.lyra-app-context {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-sm);
+  & > a {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & > span {
+    color: var(--muted);
+  }
+  & > a:hover {
+    text-decoration: underline;
+  }
+}
+
+.lyra-app-repositoryTrigger {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0;
+  anchor-name: --repository-trigger;
+  min-width: 0;
+  & strong {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & svg {
+    color: var(--muted);
+  }
+}
+
+.lyra-app-avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  anchor-name: --account-trigger;
+  &:hover {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+
+.lyra-app-navigation {
+  display: flex;
+  align-items: stretch;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding: 0 1.75rem;
+  scrollbar-width: none;
+  & a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.2rem;
+    color: var(--muted);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    font-size: var(--text-sm);
+  }
+  & a:hover {
+    color: var(--text);
+  }
+  & a.lyra-app-selected {
+    border-color: var(--accent);
+    color: var(--text);
+    font-weight: var(--weight-semibold);
+  }
+}
+
+.lyra-app-main {
+  max-width: 1320px;
+  margin: auto;
+  padding: 1.8rem 2.5rem 3rem;
+}
+
+.lyra-app-repositoryPicker {
+  position-anchor: --repository-trigger;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-inline, flip-block;
+  inset: auto;
+  margin: 0.5rem 0 0;
+  min-width: 17rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  & a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.7rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+    &:hover {
+      background: var(--hover);
+    }
+    &:last-child {
+      border-top: 1px solid var(--border);
+      margin-top: 0.35rem;
+    }
+  }
+}
+
+.lyra-app-accountMenu {
+  position-anchor: --account-trigger;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block;
+  inset: auto;
+  margin: 0.5rem 0 0;
+  width: 15rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  & > a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    padding: 0.65rem 0.7rem;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    &:hover {
+      background: var(--hover);
+    }
+  }
+}
+
+.lyra-app-account {
+  display: block;
+  padding: 0 0.7rem 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.lyra-app-themes {
+  margin: 0;
+  padding: 0.25rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  & legend {
+    float: left;
+    width: 100%;
+  }
+  & label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    &:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    &:has(:checked) {
+      color: var(--text);
+      font-weight: var(--weight-semibold);
+    }
+  }
+  & input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  & label:has(:focus-visible) {
+    outline: 2px solid var(--ring);
+  }
+}
+
+.lyra-app-pickerLabel {
+  display: block;
+  padding: 0.4rem 0.7rem;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.lyra-app-skip {
+  position: fixed;
+  top: -10rem;
+  left: 1rem;
+  z-index: 10;
+  padding: 0.65rem 1rem;
+  background: var(--surface);
+  color: var(--accent);
+  &:focus {
+    top: 1rem;
+  }
+}
+
+@media (width <= 600px) {
+  .lyra-app-bar {
+    padding: 0.65rem 1.15rem;
+    gap: 1rem;
+  }
+  .lyra-app-context {
+    gap: 0.6rem;
+    font-size: var(--text-xs);
+  }
+  .lyra-app-navigation {
+    padding-inline: 1.15rem;
+    gap: 1.3rem;
+  }
+  .lyra-app-main {
+    padding: 1.25rem 1.15rem 2rem;
+  }
+}

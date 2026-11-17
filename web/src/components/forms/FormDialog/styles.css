@@ -1,0 +1,64 @@
+.lyra-workspace-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  background: var(--overlay);
+  margin: auto;
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+  overscroll-behavior: contain;
+  opacity: 0;
+  translate: 0 0.5rem;
+  transition:
+    opacity 150ms,
+    translate 150ms,
+    display 150ms allow-discrete,
+    overlay 150ms allow-discrete;
+  &[open] {
+    opacity: 1;
+    translate: 0;
+  }
+  @starting-style {
+    &[open] {
+      opacity: 0;
+      translate: 0 0.5rem;
+    }
+  }
+  &::backdrop {
+    background: var(--backdrop);
+    backdrop-filter: blur(4px);
+  }
+  & h2 {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: -0.02em;
+    margin-bottom: 1.2rem;
+    padding-right: 2rem;
+    overflow-wrap: anywhere;
+  }
+  & fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  & p {
+    font-size: var(--text-sm);
+    line-height: 1.8;
+  }
+}
+
+.lyra-workspace-dialogActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.3rem;
+}
+
+@media (width <= 600px) {
+  .lyra-workspace-dialog {
+    padding: 1.2rem;
+  }
+}
