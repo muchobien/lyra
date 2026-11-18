@@ -1,0 +1,12 @@
+scripts:
+  setup: mise trust --quiet && mise install && mise run ui:build
+
+environmentRecipes:
+  - id: moonbase
+    name: Moonbase
+    create: ./scripts/orca-vm/moonbase-create.sh
+    destroy: ./scripts/orca-vm/moonbase-destroy.sh
+    timeoutSeconds:
+      create: 900
+      destroy: 180
+    passEnv: [GH_TOKEN, GITHUB_TOKEN, 'ORCA_MOONBASE_*']
