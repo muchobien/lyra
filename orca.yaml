@@ -1,0 +1,15 @@
+scripts:
+  setup: mise trust --quiet && mise install && mise run ui:build
+
+environmentRecipes:
+  - id: moonbase
+    name: Moonbase
+    create: ./.orca/workspaces create
+    destroy: ./.orca/workspaces destroy
+    timeoutSeconds:
+      create: 900
+      destroy: 180
+    passEnv:
+      - GH_TOKEN
+      - GITHUB_TOKEN
+      - WORKSPACES_*
