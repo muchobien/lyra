@@ -1,4 +1,0 @@
-[credential "https://github.com"]
-	helper = "!f() { test \"$1\" = get && test -r /run/orca/git/token && printf 'username=x-access-token\\npassword=%s\\n' \"$(cat /run/orca/git/token)\"; }; f"
-[init]
-	defaultBranch = main

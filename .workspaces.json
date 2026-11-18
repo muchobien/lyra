@@ -1,0 +1,20 @@
+{
+  "name": "lyra",
+  "repoUrl": "git@github.com:muchobien/lyra.git",
+  "repoRef": "main",
+  "projectRoot": "/home/dev/lyra",
+  "image": "registry.krosf.com/orbit/workspaces/lyra@sha256:260af9f69c032bee3e13a4deb21a003a7dcbdc2f4ece3daa4abf620584d10eec",
+  "memory": "6Gi",
+  "files": [
+    "mise.toml",
+    "go.mod",
+    "go.sum",
+    "web/package.json",
+    "web/pnpm-workspace.yaml",
+    "web/pnpm-lock.yaml"
+  ],
+  "warm": [
+    "go mod download",
+    "pnpm --dir web fetch"
+  ]
+}

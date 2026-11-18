@@ -4,9 +4,12 @@ scripts:
 environmentRecipes:
   - id: moonbase
     name: Moonbase
-    create: ./scripts/orca-vm/moonbase-create.sh
-    destroy: ./scripts/orca-vm/moonbase-destroy.sh
+    create: ./.orca/workspaces create
+    destroy: ./.orca/workspaces destroy
     timeoutSeconds:
       create: 900
       destroy: 180
-    passEnv: [GH_TOKEN, GITHUB_TOKEN, 'ORCA_MOONBASE_*']
+    passEnv:
+      - GH_TOKEN
+      - GITHUB_TOKEN
+      - WORKSPACES_*
