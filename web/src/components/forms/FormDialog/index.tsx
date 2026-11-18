@@ -2,6 +2,7 @@ import {
   type ChangeEvent,
   type SubmitEventHandler,
   type ReactNode,
+  type SyntheticEvent,
   type ToggleEvent,
   type ToggleEventHandler,
 } from "react";
@@ -44,6 +45,15 @@ export function FormDialog({
     event.currentTarget.dataset.dirty = "";
   }
 
+  function cancelled(event: SyntheticEvent<HTMLDialogElement>) {
+    if (
+      event.currentTarget.querySelector("form[data-dirty]") &&
+      !window.confirm("Discard unsaved form changes?")
+    ) {
+      event.preventDefault();
+    }
+  }
+
   function toggled(event: ToggleEvent<HTMLDialogElement>) {
     if (event.newState === "closed") {
       event.currentTarget.querySelector("form")?.removeAttribute("data-dirty");
@@ -57,6 +67,7 @@ export function FormDialog({
       className="lyra-workspace-dialog"
       closedby="any"
       aria-labelledby={`${id}-title`}
+      onCancel={cancelled}
       onToggle={toggled}
     >
       <form key={formKey} onChange={markDirty} onSubmit={onSubmit}>
@@ -66,7 +77,12 @@ export function FormDialog({
           {children}
           <FormError error={error} />
           <div className="lyra-workspace-dialogActions">
-            <button className="lyra-controls-button" type="button" commandfor={id} command="close">
+            <button
+              className="lyra-controls-button"
+              type="button"
+              commandfor={id}
+              command="request-close"
+            >
               Cancel
             </button>
             <button className="lyra-workspace-primary" type="submit" disabled={submitDisabled}>
