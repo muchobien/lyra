@@ -10,13 +10,14 @@ export type ScrollNavigationProps = {
 export function useLogic({ active }: Pick<ScrollNavigationProps, "active">) {
   const navigation = useRef<HTMLElement>(null);
   useEffect(() => {
-    const element = navigation.current;
-    const selected = element?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!element || !selected || element.scrollWidth <= element.clientWidth) {
-      return;
-    }
-    const offset = selected.getBoundingClientRect().left - element.getBoundingClientRect().left;
-    element.scrollLeft += offset - (element.clientWidth - selected.clientWidth) / 2;
+    const frame = requestAnimationFrame(() => {
+      navigation.current?.querySelector('[aria-current="page"]')?.scrollIntoView({
+        inline: "center",
+        block: "nearest",
+        container: "nearest",
+      } as ScrollIntoViewOptions);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [active]);
 
   return { navigation };

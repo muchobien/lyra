@@ -37,11 +37,30 @@ export function useConnect() {
   });
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("lyra-theme", theme);
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (theme === "light" || theme === "dark") {
+      meta?.setAttribute("content", theme);
+    } else {
+      meta?.setAttribute("content", "light dark");
+    }
   }, [theme]);
 
+  useEffect(() => {
+    function synced(event: StorageEvent) {
+      if (event.key === "lyra-theme") {
+        setTheme(event.newValue || "system");
+      }
+    }
+    window.addEventListener("storage", synced);
+    return () => window.removeEventListener("storage", synced);
+  }, []);
+
   function changeTheme(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.value === "system") {
+      localStorage.removeItem("lyra-theme");
+    } else {
+      localStorage.setItem("lyra-theme", event.target.value);
+    }
     setTheme(event.target.value);
   }
 

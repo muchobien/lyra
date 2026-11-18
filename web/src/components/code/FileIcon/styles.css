@@ -13,7 +13,7 @@
   display: none;
 }
 
-:root[data-theme="light"] {
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
   & .lyra-file-icon-light {
     display: block;
   }
@@ -23,7 +23,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root[data-theme="system"] {
+  :root:has(> head > meta[name="color-scheme"][content="light dark"]) {
     & .lyra-file-icon-light {
       display: block;
     }

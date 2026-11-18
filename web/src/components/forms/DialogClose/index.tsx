@@ -9,7 +9,7 @@ export function DialogClose({ target }: DialogCloseProps) {
       type="button"
       className="lyra-workspace-close"
       commandfor={target}
-      command="close"
+      command="request-close"
       aria-label="Close dialog"
     >
       <XIcon size={16} />
