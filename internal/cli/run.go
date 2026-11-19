@@ -17,14 +17,14 @@ var runFinished = []string{"success", "failure", "cancelled", "skipped"}
 
 func (app *app) runCommand() *cobra.Command {
 	run := &cobra.Command{Use: "run", Short: "Follow and control Actions runs"}
-	run.AddCommand(
+	run.AddCommand(app.repoScoped(
 		app.runListCommand(),
 		app.runViewCommand(),
 		app.runLogsCommand(),
-		app.runWaitCommand(),
+		app.runWatchCommand(),
 		app.runCancelCommand(),
 		app.runRerunCommand(),
-	)
+	)...)
 	return run
 }
 
@@ -36,24 +36,24 @@ func (app *app) fetchRun(cmd *cobra.Command, repo string, number int64) (lyraapi
 func (app *app) runListCommand() *cobra.Command {
 	var limit int64
 	list := &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List runs, newest first, with their jobs",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			params := lyraapi.ListRunsParams{Limit: &limit}
 			return app.show(cmd)(app.client.api.ListRuns(cmd.Context(), owner, repo, &params))
 		},
 	}
-	list.Flags().Int64Var(&limit, "limit", 30, "how many runs, up to 100")
+	list.Flags().Int64VarP(&limit, "limit", "L", 30, "how many runs, up to 100")
 	return list
 }
 
 func (app *app) runViewCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "view <repo> <number>",
+		Use:   "view <number>",
 		Short: "Show a run with its jobs and steps",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {
@@ -69,11 +69,11 @@ func (app *app) runLogsCommand() *cobra.Command {
 	var jobFilter string
 	var follow bool
 	logs := &cobra.Command{
-		Use:   "logs <repo> <number>",
+		Use:   "logs <number>",
 		Short: "Print a run's job logs as plain text",
 		Long: `Print a run's job logs as plain text. With several jobs, each starts with a "== <key>"
 line. --job picks one job by key or id. --follow keeps printing until the jobs finish.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.printRunLogs(cmd, args, jobFilter, follow)
 		},
@@ -148,18 +148,22 @@ func (app *app) copyJobLogs(cmd *cobra.Command, repo string, number, job int64, 
 	}
 }
 
-func (app *app) runWaitCommand() *cobra.Command {
+func (app *app) runWatchCommand() *cobra.Command {
 	var timeout time.Duration
-	wait := &cobra.Command{
-		Use:   "wait <repo> <number>",
-		Short: "Wait for a run to finish; exit 0 if it succeeded, 1 if not, 3 on timeout",
-		Args:  ExactArgs(2),
+	var exitStatus bool
+	watch := &cobra.Command{
+		Use:   "watch <number>",
+		Short: "Wait for a run to finish and print it",
+		Long: `Wait for a run to finish and print it. With --exit-status, exit 1 if it didn't succeed.
+It exits 8 when --timeout passes.`,
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.waitForRun(cmd, args, timeout)
+			return app.waitForRun(cmd, args, timeout, exitStatus)
 		},
 	}
-	wait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: no limit)")
-	return wait
+	addTimeoutFlag(watch, &timeout)
+	watch.Flags().BoolVar(&exitStatus, "exit-status", false, "exit 1 if the run didn't succeed")
+	return watch
 }
 
 func (app *app) latestEvent(cmd *cobra.Command, repo string) (string, error) {
@@ -175,7 +179,7 @@ func (app *app) latestEvent(cmd *cobra.Command, repo string) (string, error) {
 	return "0", nil
 }
 
-func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Duration) error {
+func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Duration, exitStatus bool) error {
 	number, err := parseNumber(args[1])
 	if err != nil {
 		return err
@@ -194,7 +198,7 @@ func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Durat
 			if err := app.emit(cmd, output); err != nil {
 				return err
 			}
-			if info.Status != "success" {
+			if exitStatus && info.Status != "success" {
 				return fmt.Errorf("run #%d finished: %s", info.Number, info.Status)
 			}
 			return nil
@@ -219,9 +223,9 @@ func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Durat
 
 func (app *app) runCancelCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "cancel <repo> <number>",
+		Use:   "cancel <number>",
 		Short: "Cancel a run; running jobs are stopped by their runners",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {
@@ -236,9 +240,9 @@ func (app *app) runCancelCommand() *cobra.Command {
 func (app *app) runRerunCommand() *cobra.Command {
 	var failedOnly bool
 	rerun := &cobra.Command{
-		Use:   "rerun <repo> <number>",
+		Use:   "rerun <number>",
 		Short: "Run a finished run's jobs again",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {

@@ -1266,6 +1266,9 @@ components:
         comment_count:
           format: int64
           type: integer
+        conflicted:
+          description: Head and base conflicted after the last push to either.
+          type: boolean
         created_at:
           format: date-time
           type: string
@@ -1304,6 +1307,7 @@ components:
         - head_sha
         - base_sha
         - merged_at
+        - conflicted
         - number
         - repo
         - kind
@@ -1360,6 +1364,9 @@ components:
           items:
             $ref: "#/components/schemas/Comment"
           type: array
+        conflicted:
+          description: Head and base conflicted after the last push to either.
+          type: boolean
         created_at:
           format: date-time
           type: string
@@ -1409,6 +1416,7 @@ components:
         - head_sha
         - base_sha
         - merged_at
+        - conflicted
         - number
         - repo
         - kind
@@ -1450,6 +1458,9 @@ components:
         comment_count:
           format: int64
           type: integer
+        conflicted:
+          description: Head and base conflicted after the last push to either.
+          type: boolean
         created_at:
           format: date-time
           type: string
@@ -1491,6 +1502,7 @@ components:
         - head_sha
         - base_sha
         - merged_at
+        - conflicted
         - number
         - repo
         - kind
@@ -3523,6 +3535,20 @@ paths:
           schema:
             description: Search the title or an exact issue/pull request number.
             type: string
+        - description: Pull requests from this branch; ignored for issues.
+          explode: false
+          in: query
+          name: head
+          schema:
+            description: Pull requests from this branch; ignored for issues.
+            type: string
+        - description: Pull requests into this branch; ignored for issues.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Pull requests into this branch; ignored for issues.
+            type: string
       responses:
         "200":
           content:
@@ -3899,6 +3925,20 @@ paths:
           name: q
           schema:
             description: Search the title or an exact issue/pull request number.
+            type: string
+        - description: Pull requests from this branch; ignored for issues.
+          explode: false
+          in: query
+          name: head
+          schema:
+            description: Pull requests from this branch; ignored for issues.
+            type: string
+        - description: Pull requests into this branch; ignored for issues.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Pull requests into this branch; ignored for issues.
             type: string
       responses:
         "200":

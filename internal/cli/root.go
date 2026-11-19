@@ -7,6 +7,7 @@ import (
 type app struct {
 	client *client
 	jq     string
+	fields []string
 }
 
 func Root() *cobra.Command {
@@ -15,6 +16,7 @@ func Root() *cobra.Command {
 		Use:   "lyra",
 		Short: "Client for the Lyra forge",
 		Long: `Client for the Lyra forge. Output is JSON on stdout; errors are {"error": "..."} on stderr.
+--json picks fields from it and --jq filters it, --jq last.
 
 Environment:
   LYRA_URL      server URL (required)
@@ -23,6 +25,7 @@ Environment:
                 in Claude Code and codex in Codex
   LYRA_SESSION  session id recorded on writes (Lyra-Session header); defaults to the
                 Claude Code or Codex session id
+  LYRA_REPO     repository as owner/name for commands that act on one
 
 Config file: $XDG_CONFIG_HOME/lyra/config.json (~/.config/lyra/config.json) sets
 "url" and "token" when LYRA_URL and LYRA_TOKEN are unset, such as
@@ -30,11 +33,19 @@ Config file: $XDG_CONFIG_HOME/lyra/config.json (~/.config/lyra/config.json) sets
 readable only by its owner (chmod 600).
 
 Repositories are named <owner>/<name>, such as krosf/lyra; create the owner first with
-lyra owner create.`,
+lyra owner create. Commands that act on a repository take it from --repo (-R), then
+LYRA_REPO, then the git remote of the working directory that points at the Lyra server
+(origin when several point at different repositories).`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	root.PersistentFlags().StringVar(&app.jq, "jq", "", "filter JSON output with a jq expression")
+	root.PersistentFlags().StringVarP(&app.jq, "jq", "q", "", "filter JSON output with a jq expression")
+	root.PersistentFlags().StringSliceVar(
+		&app.fields,
+		"json",
+		nil,
+		"keep only these comma-separated fields of the JSON output, or of each element of a list",
+	)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return UsageError{err}
 	})

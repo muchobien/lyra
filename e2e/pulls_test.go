@@ -32,18 +32,18 @@ func TestPulls(test *testing.T) {
 	pr := func(args ...string) pullResult {
 		test.Helper()
 		var result pullResult
-		lyraJSON(test, srv, token, &result, append([]string{"pr"}, args...)...)
+		lyraJSON(test, srv, token, &result, append([]string{"pr", args[0], "-R"}, args[1:]...)...)
 		return result
 	}
 	issueState := func(number string) string {
 		test.Helper()
-		return runLyra(test, srv, token, "issue", "view", "acme/demo", number, "--jq", ".state").stdout
+		return runLyra(test, srv, token, "issue", "view", "-R", "acme/demo", number, "--jq", ".state").stdout
 	}
 
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
 	commitFile(test, src, "notes.txt", "one\ntwo\nthree\nfour\nfive\n", "Add notes")
 	push("main")
-	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "acme/demo", "--title", "Feature request")
+	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "-R", "acme/demo", "--title", "Feature request")
 	mustGit(test, src, "branch", "stale")
 	push("stale")
 
@@ -58,29 +58,69 @@ func TestPulls(test *testing.T) {
 	mainSHA := mustGit(test, src, "rev-parse", "main")
 	featureSHA := mustGit(test, src, "rev-parse", "feature")
 
-	created := pr("create", "acme/demo", "--head", "feature", "--title", "Add feature", "--body", "Fixes #1", "--assignee", "@me")
+	created := pr("create", "acme/demo", "-H", "feature", "-t", "Add feature", "-b", "Fixes #1", "-a", "@me")
 	if created.Number != 2 || created.Kind != "pr" || created.Base != "main" || created.Head != "feature" || created.HeadSHA != featureSHA || created.BaseSHA != mainSHA || created.EventID == 0 || fmt.Sprint(created.Assignees) != "[e2e-agent]" {
 		test.Errorf("pr create = %+v", created)
 	}
 	for _, args := range [][]string{
-		{"pr", "create", "acme/demo", "--head", "missing", "--title", "Missing branch"},
-		{"pr", "create", "acme/demo", "--head", "main", "--title", "Same branch"},
-		{"pr", "create", "acme/demo", "--head", "feature", "--title", "Duplicate"},
-		{"pr", "create", "acme/demo", "--head", "stale", "--title", "Nothing to merge"},
-		{"pr", "view", "acme/demo", "1"},
-		{"issue", "view", "acme/demo", "2"},
+		{"pr", "create", "-R", "acme/demo", "--head", "missing", "--title", "Missing branch"},
+		{"pr", "create", "-R", "acme/demo", "--head", "main", "--title", "Same branch"},
+		{"pr", "create", "-R", "acme/demo", "--head", "feature", "--title", "Duplicate"},
+		{"pr", "create", "-R", "acme/demo", "--head", "stale", "--title", "Nothing to merge"},
+		{"pr", "view", "-R", "acme/demo", "1"},
+		{"issue", "view", "-R", "acme/demo", "2"},
 	} {
 		if result := runLyra(test, srv, token, args...); result.code != 1 {
 			test.Errorf("lyra %s: exit %d, want 1: %s", strings.Join(args, " "), result.code, result.stderr)
 		}
 	}
-	if result := runLyra(test, srv, token, "pr", "create", "acme/demo", "--title", "No head"); result.code != 2 {
-		test.Errorf("pr create without --head: exit %d, want 2", result.code)
+	inSource := func(args ...string) cliResult {
+		test.Helper()
+		env := []string{"GIT_DIR=" + filepath.Join(src, ".git")}
+		return startLyraWith(test, srv, token, env, append(args, "-R", "acme/demo")...)()
 	}
-	if got := runLyra(test, srv, token, "pr", "list", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`).stdout; got != "2\n" {
+	for _, args := range [][]string{
+		{"pr", "view", "--jq", ".number"},
+		{"pr", "view", "feature", "--jq", ".number"},
+		{"pr", "view", "#2", "--jq", ".number"},
+		{"pr", "diff", "--files", "--jq", "length - 1"},
+	} {
+		if result := inSource(args...); result.stdout != "2\n" {
+			test.Errorf("lyra %s on feature: %+v", strings.Join(args, " "), result)
+		}
+	}
+	if result := inSource("pr", "view"); !strings.HasPrefix(result.stderr, "hint: to wait for this pull request") || !strings.Contains(result.stderr, "lyra pr wait 2 -R acme/demo --timeout 30m") || !strings.HasPrefix(result.stdout, "{") {
+		test.Errorf("pr view hint: %+v", result)
+	}
+	if result := inSource("pr", "view", "stale"); result.code != 1 || !strings.Contains(result.stderr, "no open pull request in acme/demo has head stale") {
+		test.Errorf("pr view for a branch without one: %+v", result)
+	}
+	if result := inSource("pr", "diff", "--json", "number"); result.code != 2 || !strings.Contains(result.stderr, "doesn't print JSON") {
+		test.Errorf("pr diff --json: %+v", result)
+	}
+	if result := inSource("pr", "view", "1", "2"); result.code != 2 {
+		test.Errorf("pr view with two arguments: %+v", result)
+	}
+	for flag, want := range map[string]string{"--head=feature": "[2]", "--head=stale": "[]", "--base=main": "[2]", "--base=stale": "[]"} {
+		if result := inSource("pr", "list", flag, "--jq", "map(.number)", "--state", "all"); compactJSON(test, []byte(result.stdout)) != want {
+			test.Errorf("pr list %s: %+v", flag, result)
+		}
+	}
+	mustGit(test, src, "switch", "-q", "stale")
+	if result := inSource("pr", "create", "--title", "From the current branch"); result.code != 1 || !strings.Contains(result.stderr, "main already contains every commit on stale") {
+		test.Errorf("pr create from the current branch: %+v", result)
+	}
+	mustGit(test, src, "switch", "-q", "--detach")
+	for _, args := range [][]string{{"pr", "view"}, {"pr", "create", "--title", "Detached"}} {
+		if result := inSource(args...); result.code != 2 || !strings.Contains(result.stderr, "not on a git branch") {
+			test.Errorf("lyra %s on a detached HEAD: %+v", strings.Join(args, " "), result)
+		}
+	}
+	mustGit(test, src, "switch", "-q", "feature")
+	if got := runLyra(test, srv, token, "pr", "list", "-R", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`).stdout; got != "2\n" {
 		test.Errorf("pr list %q", got)
 	}
-	if got := runLyra(test, srv, token, "issue", "list", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`).stdout; got != "1\n" {
+	if got := runLyra(test, srv, token, "issue", "list", "-R", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`).stdout; got != "1\n" {
 		test.Errorf("issue list %q", got)
 	}
 	if got := mustGit(test, src, "-c", auth, "ls-remote", remote, "refs/pull/2/head"); !strings.HasPrefix(got, featureSHA) {
@@ -88,12 +128,12 @@ func TestPulls(test *testing.T) {
 	}
 
 	var commits []repos.Commit
-	lyraJSON(test, srv, token, &commits, "pr", "commits", "acme/demo", "2")
+	lyraJSON(test, srv, token, &commits, "pr", "commits", "-R", "acme/demo", "2")
 	if len(commits) != 2 || commits[0].Subject != "Move notes and extend README" || commits[1].Subject != "Add feature" || commits[0].Signature.Status != "unsigned" {
 		test.Errorf("pr commits = %+v", commits)
 	}
 	var files []repos.FileChange
-	lyraJSON(test, srv, token, &files, "pr", "diff", "acme/demo", "2", "--files")
+	lyraJSON(test, srv, token, &files, "pr", "diff", "-R", "acme/demo", "2", "--files")
 	want := []repos.FileChange{
 		{Path: "README.md", Status: "modified", Additions: 2},
 		{Path: "docs/notes.txt", OldPath: "notes.txt", Status: "renamed"},
@@ -102,7 +142,7 @@ func TestPulls(test *testing.T) {
 	if fmt.Sprint(files) != fmt.Sprint(want) {
 		test.Errorf("pr files = %+v, want %+v", files, want)
 	}
-	if diff := runLyra(test, srv, token, "pr", "diff", "acme/demo", "2").stdout; !strings.Contains(diff, "+feature") || !strings.Contains(diff, "rename to docs/notes.txt") {
+	if diff := runLyra(test, srv, token, "pr", "diff", "-R", "acme/demo", "2").stdout; !strings.Contains(diff, "+feature") || !strings.Contains(diff, "rename to docs/notes.txt") {
 		test.Errorf("pr diff:\n%s", diff)
 	}
 
@@ -123,7 +163,7 @@ func TestPulls(test *testing.T) {
 	if viewed := pr("view", "acme/demo", "2"); viewed.HeadSHA != newHead {
 		test.Errorf("head_sha after push = %s, want %s", viewed.HeadSHA, newHead)
 	}
-	lyraJSON(test, srv, token, &struct{}{}, "pr", "comment", "acme/demo", "2", "--body", "Ready to merge")
+	lyraJSON(test, srv, token, &struct{}{}, "pr", "comment", "-R", "acme/demo", "2", "--body", "Ready to merge")
 
 	mustGit(test, src, "switch", "-q", "main")
 	mustGit(test, src, "merge", "-q", "--ff-only", "feature")
@@ -135,18 +175,21 @@ func TestPulls(test *testing.T) {
 	if merged.State != "merged" || merged.MergeSHA != newHead || merged.MergedAt == nil || merged.ClosedAt == nil || merged.BaseSHA != mainSHA || len(merged.Comments) != 1 {
 		test.Errorf("merged pr = %+v", merged)
 	}
+	if result := runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "2"); result.stderr != "" {
+		test.Errorf("pr view of a merged pull request printed a hint: %s", result.stderr)
+	}
 	if state := issueState("1"); state != "closed\n" {
 		test.Errorf("issue 1 after merging a PR with Fixes #1: %q", state)
 	}
-	lyraJSON(test, srv, token, &files, "pr", "diff", "acme/demo", "2", "--files")
+	lyraJSON(test, srv, token, &files, "pr", "diff", "-R", "acme/demo", "2", "--files")
 	if len(files) != 3 {
 		test.Errorf("files of the merged pr = %+v", files)
 	}
-	if result := runLyra(test, srv, token, "pr", "close", "acme/demo", "2"); result.code != 1 || !strings.Contains(result.stderr, "is merged") {
+	if result := runLyra(test, srv, token, "pr", "close", "-R", "acme/demo", "2"); result.code != 1 || !strings.Contains(result.stderr, "is merged") {
 		test.Errorf("closing a merged pr: exit %d %s", result.code, result.stderr)
 	}
 
-	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "acme/demo", "--title", "Crash")
+	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "-R", "acme/demo", "--title", "Crash")
 	commitFile(test, src, "fix.txt", "fixed\n", "Fix the crash\n\nCloses #3, fixes #99 and resolves #2")
 	if output := push("main"); !strings.Contains(output, "lyra: closed issue #3") {
 		test.Errorf("push with Closes #3 printed:\n%s", output)
@@ -183,13 +226,13 @@ func TestPulls(test *testing.T) {
 	pr("create", "acme/demo", "--head", "gone", "--title", "Gone")
 	pr("close", "acme/demo", "5")
 	push("--delete", "gone")
-	if result := runLyra(test, srv, token, "pr", "reopen", "acme/demo", "5"); result.code != 1 || !strings.Contains(result.stderr, "branch gone no longer exists") {
+	if result := runLyra(test, srv, token, "pr", "reopen", "-R", "acme/demo", "5"); result.code != 1 || !strings.Contains(result.stderr, "branch gone no longer exists") {
 		test.Errorf("reopen without its branch: %+v", result)
 	}
 	mustGit(test, src, "switch", "-q", "acme/other")
 
 	push("--delete", "feature")
-	lyraJSON(test, srv, token, &commits, "pr", "commits", "acme/demo", "2")
+	lyraJSON(test, srv, token, &commits, "pr", "commits", "-R", "acme/demo", "2")
 	if len(commits) != 3 {
 		test.Errorf("commits of the merged pr after deleting its branch: %d", len(commits))
 	}
@@ -217,7 +260,7 @@ func TestPulls(test *testing.T) {
 	}
 
 	reader := createToken(test, srv, `{"name":"reader","scope":"read","repos":["acme/demo"]}`)
-	if result := runLyra(test, srv, reader, "pr", "create", "acme/demo", "--head", "acme/other", "--title", "Nope"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
+	if result := runLyra(test, srv, reader, "pr", "create", "-R", "acme/demo", "--head", "acme/other", "--title", "Nope"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
 		test.Errorf("read token pr create: exit %d %s", result.code, result.stderr)
 	}
 }

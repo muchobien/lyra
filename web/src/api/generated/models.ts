@@ -401,6 +401,8 @@ export interface Pull {
   /** @nullable */
   closed_at: string | null;
   comment_count: number;
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   head: string;
   head_sha: string;
@@ -485,6 +487,8 @@ export interface PullWrite {
   /** @nullable */
   closed_at: string | null;
   comment_count: number;
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   event_id?: number;
   head: string;
@@ -522,6 +526,8 @@ export interface PullView {
   closed_at: string | null;
   comment_count: number;
   comments: Comment[];
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   head: string;
   head_sha: string;
@@ -1074,6 +1080,10 @@ export type ListIssuesParams = {
   limit?: number;
   /** Search the title or an exact issue/pull request number. */
   q?: string;
+  /** Pull requests from this branch; ignored for issues. */
+  head?: string;
+  /** Pull requests into this branch; ignored for issues. */
+  base?: string;
 };
 
 export type ListPullsParams = {
@@ -1087,6 +1097,10 @@ export type ListPullsParams = {
   limit?: number;
   /** Search the title or an exact issue/pull request number. */
   q?: string;
+  /** Pull requests from this branch; ignored for issues. */
+  head?: string;
+  /** Pull requests into this branch; ignored for issues. */
+  base?: string;
 };
 
 export type GetRepositoryRawFileParams = {

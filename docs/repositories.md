@@ -13,6 +13,17 @@ Every repository belongs to an owner, a namespace such as `krosf`, and is named
 - Names are 1 to 100 letters, digits, `.`, `_` or `-`, starting with a letter or digit.
   Owners can't be `api`, `static`, `healthz`, `settings` or `v2`, and repositories can't end in `.git`.
 
+## Choosing the repository in the CLI
+
+Commands that act on one repository (`pr`, `issue`, `run`, `release`, `label`, `rule`,
+`secret`, `variable`, `commit`, `tag`, `workflow`, `image list`) take it from, in order:
+
+1. `-R owner/repo` or `--repo owner/repo`;
+2. `LYRA_REPO`;
+3. the git remotes of the working directory whose host is the Lyra server's. HTTPS, `ssh://` and
+   `git@host:owner/repo` URLs all count. When they point at different repositories, `origin` wins;
+   without an `origin` among them, the command asks for `--repo`.
+
 ## Git
 
 ```sh

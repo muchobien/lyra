@@ -28,8 +28,8 @@ func TestReleaseNotes(test *testing.T) {
 		commitFile(test, src, branch+".txt", branch+"\n", title)
 		push(branch)
 		var created pullResult
-		lyraJSON(test, srv, token, &created, "pr", "create", "acme/demo", "--head", branch, "--title", title)
-		if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", fmt.Sprint(created.Number), "--squash"); result.code != 0 {
+		lyraJSON(test, srv, token, &created, "pr", "create", "-R", "acme/demo", "--head", branch, "--title", title)
+		if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", fmt.Sprint(created.Number), "--squash"); result.code != 0 {
 			test.Fatalf("merge #%d: %+v", created.Number, result)
 		}
 		mustGit(test, src, "switch", "-q", "main")
@@ -37,7 +37,7 @@ func TestReleaseNotes(test *testing.T) {
 	}
 	notes := func(args ...string) string {
 		test.Helper()
-		return runLyra(test, srv, token, append([]string{"release", "notes", "acme/demo"}, args...)...).stdout
+		return runLyra(test, srv, token, append([]string{"release", "notes", "-R", "acme/demo"}, args...)...).stdout
 	}
 
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
@@ -57,18 +57,18 @@ func TestReleaseNotes(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "three", "main")
 	commitFile(test, src, "three.txt", "three\n", "Add three")
 	push("three")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "three", "--title", "Add three")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "three", "--title", "Add three")
 	mustGit(test, src, "switch", "-q", "main")
 	mustGit(test, src, "merge", "-q", "--ff-only", "three")
 	push("main")
-	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "acme/demo", "3", "--jq", ".state").stdout); state != "merged" {
+	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "3", "--jq", ".state").stdout); state != "merged" {
 		test.Fatalf("#3 after a push to main: %s", state)
 	}
 
 	mustGit(test, src, "switch", "-q", "-c", "unmerged", "main")
 	commitFile(test, src, "four.txt", "four\n", "Add four")
 	push("unmerged")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "unmerged", "--title", "Not merged")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "unmerged", "--title", "Not merged")
 
 	if text := notes("v2.0.0", "--jq", ".notes"); text != "## Pull requests merged since v1.0.0\n\n- Add two (#2) by e2e-agent\n- Add three (#3) by e2e-agent\n" {
 		test.Fatalf("v2.0.0 notes: %q", text)
@@ -87,7 +87,7 @@ func TestReleaseNotes(test *testing.T) {
 	if err := os.WriteFile(asset, []byte(strings.Repeat("x", 1500)), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", "--asset", asset)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", asset)
 	releaseJSON(test, srv, token, "create", "acme/demo", "v3.0.0", "--draft", "--title", "Secret draft")
 
 	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases", tailnet(), "")
@@ -131,6 +131,6 @@ func TestReleaseNotes(test *testing.T) {
 func releaseJSON(test *testing.T, srv server, token string, args ...string) releaseResult {
 	test.Helper()
 	var result releaseResult
-	lyraJSON(test, srv, token, &result, append([]string{"release"}, args...)...)
+	lyraJSON(test, srv, token, &result, append([]string{"release", args[0], "-R"}, args[1:]...)...)
 	return result
 }

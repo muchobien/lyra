@@ -65,12 +65,12 @@ func TestPullChecks(test *testing.T) {
 	pr := func(args ...string) pullChecks {
 		test.Helper()
 		var result pullChecks
-		lyraJSON(test, srv, token, &result, append([]string{"pr"}, args...)...)
+		lyraJSON(test, srv, token, &result, append([]string{"pr", args[0], "-R"}, args[1:]...)...)
 		return result
 	}
 	waitChecks := func(number string) string {
 		test.Helper()
-		result := runLyra(test, srv, token, "pr", "wait", "acme/demo", number, "--for", "checks", "--timeout", "90s", "--jq", ".data.state")
+		result := runLyra(test, srv, token, "pr", "wait", "-R", "acme/demo", number, "--for", "checks", "--timeout", "90s", "--jq", ".data.state")
 		if result.code != 0 {
 			test.Fatalf("pr wait --for checks: %+v", result)
 		}
@@ -90,7 +90,7 @@ func TestPullChecks(test *testing.T) {
 	if output := push("main"); strings.Contains(output, "queued") {
 		test.Fatalf("a pull_request workflow ran on push: %s", output)
 	}
-	if result := runLyra(test, srv, token, "rule", "set", "acme/demo", "main", "--require-checks"); result.code != 0 || !strings.Contains(result.stdout, `"require_checks": true`) {
+	if result := runLyra(test, srv, token, "rule", "set", "-R", "acme/demo", "main", "--require-checks"); result.code != 0 || !strings.Contains(result.stdout, `"require_checks": true`) {
 		test.Fatalf("rule set --require-checks: %+v", result)
 	}
 
@@ -99,20 +99,26 @@ func TestPullChecks(test *testing.T) {
 	commitFile(test, src, "fail.txt", "fail\n", "Break the check")
 	push("feature")
 	opened := pr("create", "acme/demo", "--head", "feature", "--title", "Feature")
+	if result := runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "1"); !strings.Contains(result.stderr, "lyra pr checks 1 -R acme/demo --watch") {
+		test.Fatalf("pr view hint: %+v", result)
+	}
 	if strings.Join(opened.Actions, "|") != "queued run #1 (PR)|queued run #2 (PR slow)" {
 		test.Fatalf("pr create actions: %v", opened.Actions)
 	}
-	if state := waitChecks("1"); state != "failure" {
-		test.Fatalf("checks after opening: %s", state)
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--jq", ".state"); result.code != 8 || result.stdout != "pending\n" {
+		test.Fatalf("pr checks while they run: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--watch", "--jq", ".state"); result.code != 1 || result.stdout != "failure\n" {
+		test.Fatalf("pr checks --watch: %+v", result)
 	}
 	failed := pr("view", "acme/demo", "1")
 	if failed.Checks.State != "failure" || len(failed.Checks.Jobs) != 2 || failed.Checks.Jobs[0].Event != "pull_request" || !strings.Contains(strings.Join(failed.Merge.Blocked, "|"), "checks failed for") {
 		test.Fatalf("pull request with a failing check: %+v", failed)
 	}
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "checks failed for") {
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", "1", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "checks failed for") {
 		test.Fatalf("merge with failing checks: %+v", result)
 	}
-	logs := runLyra(test, srv, token, "run", "logs", "acme/demo", "1").stdout
+	logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout
 	if !strings.Contains(logs, "event=pull_request action=opened head=feature base=main number=1 ref=refs/pull/1/head") {
 		test.Fatalf("pull request run log:\n%s", logs)
 	}
@@ -125,13 +131,16 @@ func TestPullChecks(test *testing.T) {
 	if state := waitChecks("1"); state != "success" {
 		test.Fatalf("checks after the fix: %s", state)
 	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--jq", ".jobs | length"); result.code != 0 || result.stdout != "2\n" {
+		test.Fatalf("pr checks after the fix: %+v", result)
+	}
 	if fixed := pr("view", "acme/demo", "1"); fixed.Checks.State != "success" || len(fixed.Checks.Jobs) != 2 || fixed.Checks.Jobs[0].Run != 3 || len(fixed.Merge.Blocked) != 0 {
 		test.Fatalf("pull request after the fix: %+v", fixed)
 	}
-	if logs := runLyra(test, srv, token, "run", "logs", "acme/demo", "3").stdout; !strings.Contains(logs, "action=synchronize") {
+	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "3").stdout; !strings.Contains(logs, "action=synchronize") {
 		test.Fatalf("synchronize run log:\n%s", logs)
 	}
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--squash"); result.code != 0 {
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", "1", "--squash"); result.code != 0 {
 		test.Fatalf("merge with passing checks: %+v", result)
 	}
 
@@ -147,6 +156,9 @@ func TestPullChecks(test *testing.T) {
 	}
 	if state := waitChecks("2"); state != "none" {
 		test.Fatalf("pr wait --for checks on a pull request where nothing runs: %s", state)
+	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "2"); result.code != 1 || !strings.Contains(result.stderr, "no checks ran on") {
+		test.Fatalf("pr checks where nothing runs: %+v", result)
 	}
 	if viewed := pr("view", "acme/demo", "2"); viewed.Checks.State != "none" || !strings.Contains(strings.Join(viewed.Merge.Blocked, "|"), "no checks ran for") {
 		test.Fatalf("docs pull request: %+v", viewed)
@@ -203,11 +215,11 @@ func TestChecksFromPushWorkflows(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "feature")
 	commitFile(test, src, "feature.txt", "one\n", "Feature")
 	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "feature", "--title", "Feature")
 	cursor := strings.TrimSpace(runLyra(test, srv, token, "event", "list", "--repo", "acme/demo", "--limit", "1", "--jq", ".[0].id").stdout)
 	commitFile(test, src, "feature.txt", "two\n", "More feature")
 	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
-	result := runLyra(test, srv, token, "pr", "wait", "acme/demo", "1", "--for", "checks", "--since", cursor, "--timeout", "60s", "--jq", ".data.state")
+	result := runLyra(test, srv, token, "pr", "wait", "-R", "acme/demo", "1", "--for", "checks", "--since", cursor, "--timeout", "60s", "--jq", ".data.state")
 	if result.code != 0 || strings.TrimSpace(result.stdout) != "success" {
 		test.Fatalf("first pr.checks after a push to a pull request with push workflows: %+v", result)
 	}

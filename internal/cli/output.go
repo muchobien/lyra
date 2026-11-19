@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
@@ -17,6 +22,13 @@ var escaped = json.JoinOptions(
 )
 
 func (app *app) emit(cmd *cobra.Command, output []byte) error {
+	if len(app.fields) > 0 {
+		projected, err := project(output, app.fields)
+		if err != nil {
+			return err
+		}
+		output = projected
+	}
 	if app.jq == "" {
 		_, err := cmd.OutOrStdout().Write(output)
 		return err
@@ -30,6 +42,54 @@ func (app *app) emitIndented(cmd *cobra.Command, value any) error {
 		return err
 	}
 	return app.emit(cmd, append(encoded, '\n'))
+}
+
+func project(output []byte, fields []string) ([]byte, error) {
+	var value any
+	if err := json.Unmarshal(output, &value); err != nil {
+		return nil, UsageError{errors.New("--json: this command doesn't print JSON")}
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		picked, err := pick(typed, fields)
+		if err != nil {
+			return nil, err
+		}
+		value = picked
+	case []any:
+		for index, element := range typed {
+			object, isObject := element.(map[string]any)
+			if !isObject {
+				continue
+			}
+			picked, err := pick(object, fields)
+			if err != nil {
+				return nil, err
+			}
+			typed[index] = picked
+		}
+	}
+	encoded, err := json.Marshal(value, escaped, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Contains(bytes.TrimSpace(output), []byte("\n")) {
+		err = (*jsontext.Value)(&encoded).Indent(jsontext.WithIndent("  "))
+	}
+	return append(encoded, '\n'), err
+}
+
+func pick(object map[string]any, fields []string) (map[string]any, error) {
+	picked := map[string]any{}
+	for _, field := range fields {
+		value, found := object[field]
+		if !found {
+			available := strings.Join(slices.Sorted(maps.Keys(object)), ", ")
+			return nil, UsageError{fmt.Errorf("--json: unknown field %s; available fields: %s", field, available)}
+		}
+		picked[field] = value
+	}
+	return picked, nil
 }
 
 func filter(out io.Writer, output []byte, expression string) error {

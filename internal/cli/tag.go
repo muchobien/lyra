@@ -6,15 +6,15 @@ import (
 
 func (app *app) tagCommand() *cobra.Command {
 	tag := &cobra.Command{Use: "tag", Short: "Read tags and their signature status"}
-	tag.AddCommand(app.tagListCommand())
+	tag.AddCommand(app.repoScoped(app.tagListCommand())...)
 	return tag
 }
 
 func (app *app) tagListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List tags, verified with git verify-tag",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListTags(cmd.Context(), owner, repo))

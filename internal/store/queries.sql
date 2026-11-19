@@ -150,6 +150,9 @@ ORDER BY items.number DESC;
 -- name: UpdatePullHead :exec
 UPDATE pulls SET head_sha = ?, base_sha = ? WHERE item_id = ?;
 
+-- name: SetPullConflicted :exec
+UPDATE pulls SET conflicted = ? WHERE item_id = ?;
+
 -- name: MergePull :exec
 UPDATE pulls SET merge_sha = ?, base_sha = ?, merged_at = ? WHERE item_id = ?;
 

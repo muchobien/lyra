@@ -39,7 +39,7 @@ func TestRules(test *testing.T) {
 	plan := func(number string) planView {
 		test.Helper()
 		var view planView
-		lyraJSON(test, srv, token, &view, "pr", "view", "acme/demo", number)
+		lyraJSON(test, srv, token, &view, "pr", "view", "-R", "acme/demo", number)
 		return view
 	}
 
@@ -49,11 +49,11 @@ func TestRules(test *testing.T) {
 	}
 
 	var rule store.Rule
-	lyraJSON(test, srv, token, &rule, "rule", "set", "acme/demo", "main", "--require-signed", "--merge-methods", "squash")
+	lyraJSON(test, srv, token, &rule, "rule", "set", "-R", "acme/demo", "main", "--require-signed", "--merge-methods", "squash")
 	if rule.Pattern != "main" || !rule.RequireSigned || strings.Join(rule.MergeMethods, ",") != "squash" {
 		test.Errorf("rule set = %+v", rule)
 	}
-	lyraJSON(test, srv, token, &rule, "rule", "set", "acme/demo", "release/*", "--require-signed")
+	lyraJSON(test, srv, token, &rule, "rule", "set", "-R", "acme/demo", "release/*", "--require-signed")
 	if strings.Join(rule.MergeMethods, ",") != "ff,squash" {
 		test.Errorf("default merge methods = %v", rule.MergeMethods)
 	}
@@ -63,16 +63,16 @@ func TestRules(test *testing.T) {
 		args  []string
 		want  string
 	}{
-		{token, []string{"rule", "set", "acme/demo", "["}, "pattern must be"},
-		{token, []string{"rule", "set", "acme/demo", "dev", "--merge-methods", "rebase"}, `one of \"ff, squash\"`},
-		{token, []string{"rule", "delete", "acme/demo", "missing"}, "no rule for missing"},
-		{writer, []string{"rule", "set", "acme/demo", "dev"}, "lacks admin"},
+		{token, []string{"rule", "set", "-R", "acme/demo", "["}, "pattern must be"},
+		{token, []string{"rule", "set", "-R", "acme/demo", "dev", "--merge-methods", "rebase"}, `one of \"ff, squash\"`},
+		{token, []string{"rule", "delete", "-R", "acme/demo", "missing"}, "no rule for missing"},
+		{writer, []string{"rule", "set", "-R", "acme/demo", "dev"}, "lacks admin"},
 	} {
 		if result := runLyra(test, srv, check.token, check.args...); result.code != 1 || !strings.Contains(result.stderr, check.want) {
 			test.Errorf("lyra %s: exit %d %s", strings.Join(check.args, " "), result.code, result.stderr)
 		}
 	}
-	if got := runLyra(test, srv, writer, "rule", "list", "acme/demo", "--jq", `[.[].pattern] | join(",")`).stdout; got != "main,release/*\n" {
+	if got := runLyra(test, srv, writer, "rule", "list", "-R", "acme/demo", "--jq", `[.[].pattern] | join(",")`).stdout; got != "main,release/*\n" {
 		test.Errorf("rule list %q", got)
 	}
 
@@ -112,11 +112,11 @@ func TestRules(test *testing.T) {
 	if output, err := push("feature"); err != nil {
 		test.Fatalf("push to a branch without rules: %v\n%s", err, output)
 	}
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "feature", "--title", "Feature")
 	if view := plan("1"); view.Merge == nil || strings.Join(view.Merge.Methods, ",") != "squash" || len(view.Merge.Blocked) != 1 || !strings.Contains(view.Merge.Blocked[0], "(Unsigned feature) is unsigned") {
 		test.Errorf("plan with an unsigned commit = %+v", view.Merge)
 	}
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") || !strings.Contains(result.stderr, "requires verified signatures") {
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", "1", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") || !strings.Contains(result.stderr, "requires verified signatures") {
 		test.Errorf("squash of an unsigned commit: exit %d %s", result.code, result.stderr)
 	}
 	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/pulls/1/view", tailnet(), "")
@@ -132,18 +132,18 @@ func TestRules(test *testing.T) {
 	if view := plan("1"); view.Merge == nil || len(view.Merge.Blocked) != 0 {
 		test.Errorf("plan with signed commits = %+v", view.Merge)
 	}
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--ff"); result.code != 1 || !strings.Contains(result.stderr, "allow only squash") {
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", "1", "--ff"); result.code != 1 || !strings.Contains(result.stderr, "allow only squash") {
 		test.Errorf("ff merge where only squash is allowed: exit %d %s", result.code, result.stderr)
 	}
 	var merged pullResult
-	lyraJSON(test, srv, token, &merged, "pr", "merge", "acme/demo", "1", "--squash")
+	lyraJSON(test, srv, token, &merged, "pr", "merge", "-R", "acme/demo", "1", "--squash")
 	var commits []repos.Commit
-	lyraJSON(test, srv, token, &commits, "commit", "list", "acme/demo", "--limit", "1")
+	lyraJSON(test, srv, token, &commits, "commit", "list", "-R", "acme/demo", "--limit", "1")
 	if merged.State != "merged" || commits[0].SHA != merged.MergeSHA || commits[0].Signature.Status != "verified" || commits[0].Signature.KeyUser != "lyra" {
 		test.Errorf("squash under the rule: %+v, commit %+v", merged.State, commits[0].Signature)
 	}
 
-	if result := runLyra(test, srv, token, "rule", "delete", "acme/demo", "release/*"); result.code != 0 {
+	if result := runLyra(test, srv, token, "rule", "delete", "-R", "acme/demo", "release/*"); result.code != 0 {
 		test.Fatalf("rule delete: %s", result.stderr)
 	}
 	if output, err := push("main:refs/heads/release/1"); err != nil {
@@ -157,7 +157,7 @@ func TestRules(test *testing.T) {
 	if output, err := push("guarded"); err != nil {
 		test.Fatalf("push guarded: %v: %s", err, output)
 	}
-	if result := runLyra(test, srv, token, "rule", "set", "acme/demo", "guarded"); result.code != 0 || !strings.Contains(result.stdout, `"allow_force_push": false`) {
+	if result := runLyra(test, srv, token, "rule", "set", "-R", "acme/demo", "guarded"); result.code != 0 || !strings.Contains(result.stdout, `"allow_force_push": false`) {
 		test.Fatalf("rule set guarded: %+v", result)
 	}
 	commitFile(test, src, "guarded.txt", "one\n", "Fast-forward")
@@ -172,7 +172,7 @@ func TestRules(test *testing.T) {
 	if output, err := push("--delete", "guarded"); err == nil || !strings.Contains(output, "protects guarded from deletion") {
 		test.Errorf("deleting a protected branch: %v: %s", err, output)
 	}
-	if result := runLyra(test, srv, token, "rule", "set", "acme/demo", "guarded", "--allow-force-push", "--allow-deletion"); result.code != 0 {
+	if result := runLyra(test, srv, token, "rule", "set", "-R", "acme/demo", "guarded", "--allow-force-push", "--allow-deletion"); result.code != 0 {
 		test.Fatalf("rule set with allows: %+v", result)
 	}
 	if output, err := push("+guarded"); err != nil {
@@ -187,13 +187,13 @@ func TestRules(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "keep", "target")
 	commitFile(test, src, "keep.txt", "keep\n", "Keep me")
 	push("keep")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "keep", "--base", "target", "--title", "Keep")
-	runLyra(test, srv, token, "rule", "set", "acme/demo", "keep")
-	number := strings.TrimSpace(runLyra(test, srv, token, "pr", "list", "acme/demo", "--jq", `.[] | select(.head == "keep") | .number`).stdout)
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", number, "--squash", "--delete-branch"); result.code != 1 || !strings.Contains(result.stderr, "protects keep from deletion") {
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "keep", "--base", "target", "--title", "Keep")
+	runLyra(test, srv, token, "rule", "set", "-R", "acme/demo", "keep")
+	number := strings.TrimSpace(runLyra(test, srv, token, "pr", "list", "-R", "acme/demo", "--jq", `.[] | select(.head == "keep") | .number`).stdout)
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", number, "--squash", "--delete-branch"); result.code != 1 || !strings.Contains(result.stderr, "protects keep from deletion") {
 		test.Errorf("merge deleting a protected head: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", number, "--squash"); result.code != 0 {
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", number, "--squash"); result.code != 0 {
 		test.Errorf("merge keeping the protected head: %+v", result)
 	}
 }

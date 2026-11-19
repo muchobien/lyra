@@ -688,18 +688,21 @@ type Pull struct {
 	Body         string     `json:"body"`
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // PullPatch defines model for PullPatch.
@@ -719,21 +722,24 @@ type PullView struct {
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
 	Comments     []Comment  `json:"comments"`
-	CreatedAt    time.Time  `json:"created_at"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	Merge        *MergePlan `json:"merge,omitempty"`
-	MergeError   *string    `json:"merge_error,omitempty"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	Reviews      []Review   `json:"reviews"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	Merge      *MergePlan `json:"merge,omitempty"`
+	MergeError *string    `json:"merge_error,omitempty"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	Reviews    []Review   `json:"reviews"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // PullWrite defines model for PullWrite.
@@ -746,19 +752,22 @@ type PullWrite struct {
 	Body         string     `json:"body"`
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	EventId      *int64     `json:"event_id,omitempty"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	EventId    *int64     `json:"event_id,omitempty"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // ReadOnlyRequest defines model for ReadOnlyRequest.
@@ -1288,6 +1297,12 @@ type ListIssuesParams struct {
 
 	// Q Search the title or an exact issue/pull request number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Head Pull requests from this branch; ignored for issues.
+	Head *string `form:"head,omitempty" json:"head,omitempty"`
+
+	// Base Pull requests into this branch; ignored for issues.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
 }
 
 // ListPullsParams defines parameters for ListPulls.
@@ -1306,6 +1321,12 @@ type ListPullsParams struct {
 
 	// Q Search the title or an exact issue/pull request number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Head Pull requests from this branch; ignored for issues.
+	Head *string `form:"head,omitempty" json:"head,omitempty"`
+
+	// Base Pull requests into this branch; ignored for issues.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
 }
 
 // GetRepositoryRawFileParams defines parameters for GetRepositoryRawFile.
@@ -5726,6 +5747,30 @@ func NewListIssuesRequest(server string, owner string, repo string, params *List
 
 		}
 
+		if params.Head != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", *params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -6248,6 +6293,30 @@ func NewListPullsRequest(server string, owner string, repo string, params *ListP
 		if params.Q != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Head != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", *params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

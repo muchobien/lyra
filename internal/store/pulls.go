@@ -11,12 +11,13 @@ import (
 
 type Pull struct {
 	Item
-	Base     string     `json:"base"`
-	Head     string     `json:"head"`
-	HeadSHA  string     `json:"head_sha"`
-	BaseSHA  string     `json:"base_sha"`
-	MergeSHA string     `json:"merge_sha,omitempty"`
-	MergedAt *time.Time `json:"merged_at"`
+	Base       string     `json:"base"`
+	Head       string     `json:"head"`
+	HeadSHA    string     `json:"head_sha"`
+	BaseSHA    string     `json:"base_sha"`
+	MergeSHA   string     `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Conflicted bool       `json:"conflicted" doc:"Head and base conflicted after the last push to either."`
 }
 
 type pullOpenedEvent struct {
@@ -35,6 +36,13 @@ type pullSynchronizedEvent struct {
 	Number int64  `json:"number"`
 }
 
+type pullConflictedEvent struct {
+	BaseSHA   string   `json:"base_sha"`
+	Conflicts []string `json:"conflicts"`
+	HeadSHA   string   `json:"head_sha"`
+	Number    int64    `json:"number"`
+}
+
 type pullMergedEvent struct {
 	Base   string `json:"base"`
 	Method string `json:"method"`
@@ -45,12 +53,13 @@ type pullMergedEvent struct {
 func loadPull(ctx context.Context, q *queries.Queries, item queries.Item, pull queries.Pull) (Pull, error) {
 	loaded, err := loadItem(ctx, q, item)
 	result := Pull{
-		Item:     loaded,
-		Base:     pull.Base,
-		Head:     pull.Head,
-		HeadSHA:  pull.HeadSha,
-		BaseSHA:  pull.BaseSha,
-		MergeSHA: pull.MergeSha,
+		Item:       loaded,
+		Base:       pull.Base,
+		Head:       pull.Head,
+		HeadSHA:    pull.HeadSha,
+		BaseSHA:    pull.BaseSha,
+		MergeSHA:   pull.MergeSha,
+		Conflicted: pull.Conflicted,
 	}
 	if pull.MergedAt.Valid {
 		result.MergedAt = &pull.MergedAt.Time
@@ -174,6 +183,40 @@ func (s *Store) SyncPull(
 		return err
 	})
 	return eventID, err
+}
+
+func (s *Store) SetPullConflicts(
+	ctx context.Context,
+	repo string,
+	number int64,
+	actor Actor,
+	headSHA, baseSHA string,
+	conflicts []string,
+) error {
+	return s.inTx(ctx, func(q *queries.Queries) error {
+		row, err := getPull(ctx, q, repo, number)
+		if err != nil {
+			return err
+		}
+		conflicted := len(conflicts) > 0
+		if conflicted == row.Pull.Conflicted {
+			return nil
+		}
+		update := queries.SetPullConflictedParams{Conflicted: conflicted, ItemID: row.Item.ID}
+		if err := q.SetPullConflicted(ctx, update); err != nil {
+			return err
+		}
+		if !conflicted {
+			return nil
+		}
+		_, err = addEvent(ctx, q, "pr.conflicted", repo, number, actor, pullConflictedEvent{
+			BaseSHA:   baseSHA,
+			Conflicts: conflicts,
+			HeadSHA:   headSHA,
+			Number:    number,
+		})
+		return err
+	})
 }
 
 func (s *Store) MarkPullMerged(

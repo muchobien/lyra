@@ -142,13 +142,14 @@ type Owner struct {
 }
 
 type Pull struct {
-	ItemID   int64        `json:"item_id"`
-	Base     string       `json:"base"`
-	Head     string       `json:"head"`
-	HeadSha  string       `json:"head_sha"`
-	BaseSha  string       `json:"base_sha"`
-	MergeSha string       `json:"merge_sha"`
-	MergedAt sql.NullTime `json:"merged_at"`
+	ItemID     int64        `json:"item_id"`
+	Base       string       `json:"base"`
+	Head       string       `json:"head"`
+	HeadSha    string       `json:"head_sha"`
+	BaseSha    string       `json:"base_sha"`
+	MergeSha   string       `json:"merge_sha"`
+	MergedAt   sql.NullTime `json:"merged_at"`
+	Conflicted bool         `json:"conflicted"`
 }
 
 type Release struct {

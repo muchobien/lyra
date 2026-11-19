@@ -19,6 +19,10 @@ changed files as JSON.
 - A push to an open pull request's head branch updates it (`pr.synchronized`).
 - When an open pull request's head commit becomes part of its base branch, it is marked
   merged (`pr.merged`, method `push`).
+- A push to an open pull request's head or base branch checks whether they still merge
+  cleanly. When they stop, Lyra records `pr.conflicted` with the conflicting files, sets
+  `conflicted` on the pull request, and the push prints them. It records it again only after
+  a later push merges cleanly.
 - Commits pushed to the default branch close the issues they reference with `close`,
   `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed
   by `#<number>`. So does merging a pull request whose title or body references them.
@@ -36,8 +40,8 @@ changed files as JSON.
   - The committer is `Lyra <lyra@<host>>`.
   - The message is the title with `(#<number>)`, then the body.
 - **Safety:** the base branch is updated only if it hasn't moved since Lyra read it.
-  `--head SHA` refuses the merge if the head branch is no longer at the commit you
-  reviewed. Conflicts and moved branches return HTTP 409.
+  `--match-head-commit SHA` refuses the merge if the head branch is no longer at the commit
+  you reviewed. Conflicts and moved branches return HTTP 409.
 - **Afterwards:** a merge records the same events as a push, and closes issues referenced
   in the pull request or the squash message.
 

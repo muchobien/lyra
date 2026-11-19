@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -13,7 +14,7 @@ func (app *app) repoCommand() *cobra.Command {
 	repo.AddCommand(
 		app.repoCreateCommand(),
 		app.repoListCommand(),
-		app.repoGetCommand(),
+		app.repoViewCommand(),
 		app.repoDeleteCommand(),
 	)
 	return repo
@@ -45,13 +46,26 @@ func (app *app) repoListCommand() *cobra.Command {
 	}
 }
 
-func (app *app) repoGetCommand() *cobra.Command {
+func (app *app) repoViewCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <name>",
+		Use:   "view [<owner>/<name>]",
 		Short: "Show a repository with its branches and clone URL",
-		Args:  ExactArgs(1),
+		Long: `Show a repository with its branches and clone URL. Without a name, it shows the
+repository LYRA_REPO or the git remote points at.`,
+		Args: MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			owner, repo := splitRepo(args[0])
+			name := os.Getenv("LYRA_REPO")
+			if len(args) > 0 {
+				name = args[0]
+			}
+			if name == "" {
+				resolved, err := app.client.remoteRepository(cmd)
+				if err != nil {
+					return err
+				}
+				name = resolved
+			}
+			owner, repo := splitRepo(name)
 			return app.show(cmd)(app.client.api.GetRepo(cmd.Context(), owner, repo))
 		},
 	}
@@ -72,6 +86,6 @@ func (app *app) repoDeleteCommand() *cobra.Command {
 			return app.show(cmd)(app.client.api.DeleteRepo(cmd.Context(), owner, repo))
 		},
 	}
-	remove.Flags().BoolVar(&yes, "yes", false, "confirm permanent deletion")
+	remove.Flags().BoolVarP(&yes, "yes", "y", false, "confirm permanent deletion")
 	return remove
 }

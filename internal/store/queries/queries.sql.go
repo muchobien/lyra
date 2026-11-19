@@ -1289,7 +1289,7 @@ func (q *Queries) GetOwner(ctx context.Context, name string) (Owner, error) {
 }
 
 const getPullItem = `-- name: GetPullItem :one
-SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at FROM items
+SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at, pulls.conflicted FROM items
 JOIN pulls ON pulls.item_id = items.id
 WHERE items.repo = ? AND items.number = ?
 `
@@ -1329,6 +1329,7 @@ func (q *Queries) GetPullItem(ctx context.Context, arg GetPullItemParams) (GetPu
 		&i.Pull.BaseSha,
 		&i.Pull.MergeSha,
 		&i.Pull.MergedAt,
+		&i.Pull.Conflicted,
 	)
 	return i, err
 }
@@ -2339,7 +2340,7 @@ func (q *Queries) ListOwners(ctx context.Context) ([]Owner, error) {
 }
 
 const listPullItems = `-- name: ListPullItems :many
-SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at FROM items
+SELECT items.id, items.repo, items.number, items.kind, items.title, items.body, items.state, items.user, items.via, items.agent, items.session, items.created_at, items.updated_at, items.closed_at, pulls.item_id, pulls.base, pulls.head, pulls.head_sha, pulls.base_sha, pulls.merge_sha, pulls.merged_at, pulls.conflicted FROM items
 JOIN pulls ON pulls.item_id = items.id
 WHERE items.repo = ?1 AND (?2 = 'all' OR items.state = ?2)
 ORDER BY items.number DESC
@@ -2386,6 +2387,7 @@ func (q *Queries) ListPullItems(ctx context.Context, arg ListPullItemsParams) ([
 			&i.Pull.BaseSha,
 			&i.Pull.MergeSha,
 			&i.Pull.MergedAt,
+			&i.Pull.Conflicted,
 		); err != nil {
 			return nil, err
 		}
@@ -3290,6 +3292,20 @@ func (q *Queries) SetImageTag(ctx context.Context, arg SetImageTagParams) (Image
 		&i.PushedAt,
 	)
 	return i, err
+}
+
+const setPullConflicted = `-- name: SetPullConflicted :exec
+UPDATE pulls SET conflicted = ? WHERE item_id = ?
+`
+
+type SetPullConflictedParams struct {
+	Conflicted bool  `json:"conflicted"`
+	ItemID     int64 `json:"item_id"`
+}
+
+func (q *Queries) SetPullConflicted(ctx context.Context, arg SetPullConflictedParams) error {
+	_, err := q.db.ExecContext(ctx, setPullConflicted, arg.Conflicted, arg.ItemID)
+	return err
 }
 
 const setRule = `-- name: SetRule :one

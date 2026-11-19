@@ -96,7 +96,8 @@ func (s *Server) handleListPulls(r *http.Request, input *listItemsInput) (*body[
 	}
 	matching := []store.Pull{}
 	for _, pull := range pulls {
-		if len(matching) < query.limit && query.matches(pull.Item) {
+		branches := (input.Head == "" || pull.Head == input.Head) && (input.Base == "" || pull.Base == input.Base)
+		if len(matching) < query.limit && query.matches(pull.Item) && branches {
 			matching = append(matching, pull)
 		}
 	}

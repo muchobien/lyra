@@ -66,8 +66,9 @@ exist.
 
 ## Checks
 
-`lyra pr view` includes `checks`: the jobs of the latest run of each workflow and event for
-the pull request's head commit, with a `state` of `none`, `pending`, `success` or `failure`.
+`lyra pr view` includes `checks`, and `lyra pr checks` prints them alone: the jobs of the
+latest run of each workflow and event for the pull request's head commit, with a `state` of
+`none`, `pending`, `success` or `failure`.
 
 - When a run finishes and none is left pending for that commit, Lyra records `pr.checks` on
   the pull request, so `lyra pr wait --for checks` returns.

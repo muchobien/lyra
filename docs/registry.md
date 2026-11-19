@@ -9,7 +9,7 @@ exist is refused with `NAME_UNKNOWN`.
 ```sh
 docker login registry.example.com -u lyra --password-stdin <<< "$LYRA_TOKEN"
 docker push registry.example.com/krosf/lyra:v1
-lyra image list <repo>
+lyra image list -R <owner>/<repo>
 lyra image delete <name>:<tag>|<name>@<digest> --yes
 ```
 

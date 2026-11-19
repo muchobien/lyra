@@ -112,7 +112,7 @@ api_bind_addr = "[::]:3900"
 	if err := os.WriteFile(assetPath, asset, 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--asset", assetPath)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", assetPath)
 	if count := objects(); count != 1 {
 		test.Fatalf("%d objects after the upload, expected 1", count)
 	}
@@ -151,7 +151,7 @@ api_bind_addr = "[::]:3900"
 	}
 
 	before := objects()
-	if result := runLyra(test, srv, token, "release", "delete", "acme/demo", "v1.0.0", "--yes"); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "delete", "-R", "acme/demo", "v1.0.0", "--yes"); result.code != 0 {
 		test.Fatalf("release delete: %+v", result)
 	}
 	if after := objects(); after != before-1 {

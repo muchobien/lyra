@@ -8,7 +8,7 @@ import (
 
 func (app *app) commitCommand() *cobra.Command {
 	commit := &cobra.Command{Use: "commit", Short: "Read commits and their signature status"}
-	commit.AddCommand(app.commitListCommand(), app.commitShowCommand())
+	commit.AddCommand(app.repoScoped(app.commitListCommand(), app.commitShowCommand())...)
 	return commit
 }
 
@@ -16,9 +16,9 @@ func (app *app) commitListCommand() *cobra.Command {
 	var ref string
 	var limit int64
 	list := &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List commits with signature status",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			params := lyraapi.ListCommitsParams{Limit: &limit}
 			if ref != "" {
@@ -29,15 +29,15 @@ func (app *app) commitListCommand() *cobra.Command {
 		},
 	}
 	list.Flags().StringVar(&ref, "ref", "", "branch, tag or commit (default: the default branch)")
-	list.Flags().Int64Var(&limit, "limit", 30, "maximum number of commits")
+	list.Flags().Int64VarP(&limit, "limit", "L", 30, "maximum number of commits")
 	return list
 }
 
 func (app *app) commitShowCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <repo> <rev>",
+		Use:   "show <rev>",
 		Short: "Show one commit, verified with git verify-commit",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.GetCommit(cmd.Context(), owner, repo, args[1]))

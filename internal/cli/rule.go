@@ -8,7 +8,7 @@ import (
 
 func (app *app) ruleCommand() *cobra.Command {
 	rule := &cobra.Command{Use: "rule", Short: "Manage branch rules"}
-	rule.AddCommand(app.ruleSetCommand(), app.ruleListCommand(), app.ruleDeleteCommand())
+	rule.AddCommand(app.repoScoped(app.ruleSetCommand(), app.ruleListCommand(), app.ruleDeleteCommand())...)
 	return rule
 }
 
@@ -16,7 +16,7 @@ func (app *app) ruleSetCommand() *cobra.Command {
 	var requireSigned, requireApproval, requireChecks, allowForcePush, allowDeletion bool
 	var methods []string
 	set := &cobra.Command{
-		Use:   "set <repo> <pattern>",
+		Use:   "set <pattern>",
 		Short: "Create or replace the rule for branches matching a pattern",
 		Long: `Create or replace the rule for branches matching a pattern, such as main or release/*.
 
@@ -29,7 +29,7 @@ head commit have all succeeded. A matching branch can't be deleted or force-push
 every matching rule allows it with --allow-deletion or --allow-force-push.
 --merge-methods limits how pull requests into a matching branch can be merged. Rules apply
 to admins as well. Setting a pattern again replaces its rule.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mergeMethods := []lyraapi.SetRuleRequestMergeMethods{}
 			for _, method := range methods {
@@ -80,9 +80,9 @@ to admins as well. Setting a pattern again replaces its rule.`,
 
 func (app *app) ruleListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List branch rules",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListRules(cmd.Context(), owner, repo))
@@ -92,9 +92,9 @@ func (app *app) ruleListCommand() *cobra.Command {
 
 func (app *app) ruleDeleteCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <repo> <pattern>",
+		Use:   "delete <pattern>",
 		Short: "Delete the rule for a pattern",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			params := lyraapi.DeleteRuleParams{Pattern: args[1]}

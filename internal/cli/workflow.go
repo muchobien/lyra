@@ -11,27 +11,27 @@ import (
 
 func (app *app) workflowCommand() *cobra.Command {
 	workflow := &cobra.Command{Use: "workflow", Short: "Start Actions workflows"}
-	workflow.AddCommand(app.workflowRunCommand())
+	workflow.AddCommand(app.repoScoped(app.workflowRunCommand())...)
 	return workflow
 }
 
 func (app *app) workflowRunCommand() *cobra.Command {
 	var ref string
-	var inputs []string
+	var fields, rawFields []string
 	run := &cobra.Command{
-		Use:   "run <repo> <workflow>",
+		Use:   "run <workflow>",
 		Short: "Start a workflow that has a workflow_dispatch trigger",
 		Long: `Start a workflow that has a workflow_dispatch trigger, from the workflow file at --ref
 (default: the default branch). <workflow> is the file name, such as deploy.yml, or its
 path. Inputs are checked against the workflow's: unknown ones are refused, missing ones
 take their default, and required ones without a default must be given. Prints the run.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			values := map[string]string{}
-			for _, input := range inputs {
+			for _, input := range append(fields, rawFields...) {
 				name, value, found := strings.Cut(input, "=")
 				if !found || name == "" {
-					return UsageError{fmt.Errorf("--input %q: want name=value", input)}
+					return UsageError{fmt.Errorf("--field %q: want name=value", input)}
 				}
 				values[name] = value
 			}
@@ -41,6 +41,7 @@ take their default, and required ones without a default must be given. Prints th
 		},
 	}
 	run.Flags().StringVar(&ref, "ref", "", "branch or tag to run the workflow from (default: the default branch)")
-	run.Flags().StringArrayVar(&inputs, "input", nil, "input as name=value (repeatable)")
+	run.Flags().StringArrayVarP(&fields, "field", "F", nil, "input as name=value (repeatable)")
+	run.Flags().StringArrayVarP(&rawFields, "raw-field", "f", nil, "input as name=value (repeatable)")
 	return run
 }

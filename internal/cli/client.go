@@ -11,10 +11,14 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,11 +28,17 @@ import (
 	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
-var ErrTimeout = errors.New("timeout")
+var (
+	ErrTimeout = errors.New("timeout")
+	ErrPending = errors.New("pending")
+)
+
+const streamIdle = 75 * time.Second
 
 type client struct {
 	api       *lyraapi.Client
 	streaming *lyraapi.Client
+	baseURL   string
 }
 
 func newClient() *client {
@@ -84,12 +94,100 @@ func newClient() *client {
 	})
 	api, _ := lyraapi.NewClient(baseURL, lyraapi.WithHTTPClient(&http.Client{Timeout: 60 * time.Second}), headers)
 	streaming, _ := lyraapi.NewClient(baseURL, lyraapi.WithHTTPClient(http.DefaultClient), headers)
-	return &client{api: api, streaming: streaming}
+	return &client{api: api, streaming: streaming, baseURL: baseURL}
 }
 
 func splitRepo(name string) (string, string) {
 	owner, repo, _ := strings.Cut(name, "/")
 	return owner, repo
+}
+
+func (app *app) repoScoped(commands ...*cobra.Command) []*cobra.Command {
+	for _, command := range commands {
+		command.Flags().StringP("repo", "R", "", "repository as owner/name (default: $LYRA_REPO, then the git remote)")
+		run := command.RunE
+		command.RunE = func(cmd *cobra.Command, args []string) error {
+			repo, err := app.client.repository(cmd)
+			if err != nil {
+				return err
+			}
+			return run(cmd, append([]string{repo}, args...))
+		}
+	}
+	return commands
+}
+
+func (client *client) repository(cmd *cobra.Command) (string, error) {
+	name, _ := cmd.Flags().GetString("repo")
+	name = cmp.Or(name, os.Getenv("LYRA_REPO"))
+	if name == "" {
+		return client.remoteRepository(cmd)
+	}
+	owner, repo, found := strings.Cut(name, "/")
+	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") {
+		return "", UsageError{fmt.Errorf("--repo %q: want owner/name", name)}
+	}
+	return name, nil
+}
+
+func (client *client) remoteRepository(cmd *cobra.Command) (string, error) {
+	server, err := url.Parse(client.baseURL)
+	if err != nil || server.Hostname() == "" {
+		return "", UsageError{errors.New("pass --repo owner/name")}
+	}
+	output, err := exec.CommandContext(cmd.Context(), "git", "remote", "-v").Output()
+	if err != nil {
+		return "", UsageError{errors.New("not in a git repository; pass --repo owner/name")}
+	}
+	remotes := map[string]string{}
+	for line := range strings.Lines(string(output)) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		if repo, found := remoteRepo(fields[1], server.Hostname()); found {
+			remotes[fields[0]] = repo
+		}
+	}
+	names := slices.Sorted(maps.Keys(remotes))
+	repos := slices.Compact(slices.Sorted(maps.Values(remotes)))
+	switch {
+	case len(repos) == 1:
+		return repos[0], nil
+	case remotes["origin"] != "":
+		return remotes["origin"], nil
+	case len(repos) == 0:
+		return "", UsageError{fmt.Errorf("no git remote points at %s; pass --repo owner/name", server.Hostname())}
+	}
+	return "", UsageError{fmt.Errorf("git remotes %s point at different repositories; pass --repo owner/name",
+		strings.Join(names, ", "))}
+}
+
+func currentBranch(cmd *cobra.Command) (string, error) {
+	output, err := exec.CommandContext(cmd.Context(), "git", "branch", "--show-current").Output()
+	branch := strings.TrimSpace(string(output))
+	if err != nil || branch == "" {
+		return "", UsageError{errors.New("not on a git branch; pass a branch or pull request number")}
+	}
+	return branch, nil
+}
+
+func remoteRepo(remote, host string) (string, bool) {
+	remoteHost, path := "", ""
+	if parsed, err := url.Parse(remote); err == nil && parsed.Host != "" {
+		remoteHost, path = parsed.Hostname(), parsed.Path
+	} else if address, scpPath, found := strings.Cut(remote, ":"); found && !strings.Contains(address, "/") {
+		remoteHost, path = address[strings.LastIndex(address, "@")+1:], scpPath
+	}
+	if !strings.EqualFold(remoteHost, host) {
+		return "", false
+	}
+	name := strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	owner, repo, found := strings.Cut(name, "/")
+	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") {
+		return "", false
+	}
+	return name, true
 }
 
 func parseNumber(value string) (int64, error) {
@@ -156,11 +254,12 @@ func responseError(response *http.Response) error {
 	return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
 }
 
-func (client *client) waitForEvent(
+func (client *client) streamEvents(
 	ctx context.Context,
 	params lyraapi.StreamEventsParams,
 	timeout time.Duration,
-) ([]byte, error) {
+	handle func([]byte) (bool, error),
+) error {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -179,24 +278,39 @@ func (client *client) waitForEvent(
 		if err == nil {
 			if response.StatusCode >= 400 && response.StatusCode < 500 {
 				defer response.Body.Close()
-				return nil, responseError(response)
+				return responseError(response)
 			}
-			var data []byte
-			data, lastID = readEvent(response, lastID)
+			var done bool
+			lastID, done, err = readEvents(response, lastID, handle)
 			response.Body.Close()
-			if len(data) > 0 {
-				return data, nil
+			if err != nil || done {
+				return err
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ErrTimeout
+			return ErrTimeout
 		case <-time.After(time.Second):
 		}
 	}
 }
 
-func readEvent(response *http.Response, lastID string) ([]byte, string) {
+func (client *client) waitForEvent(
+	ctx context.Context,
+	params lyraapi.StreamEventsParams,
+	timeout time.Duration,
+) ([]byte, error) {
+	var event []byte
+	err := client.streamEvents(ctx, params, timeout, func(data []byte) (bool, error) {
+		event = data
+		return true, nil
+	})
+	return event, err
+}
+
+func readEvents(response *http.Response, lastID string, handle func([]byte) (bool, error)) (string, bool, error) {
+	idle := time.AfterFunc(streamIdle, func() { response.Body.Close() })
+	defer idle.Stop()
 	reader := bufio.NewReader(response.Body)
 	data := []byte{}
 	for response.StatusCode == http.StatusOK {
@@ -204,16 +318,21 @@ func readEvent(response *http.Response, lastID string) ([]byte, string) {
 		if err != nil {
 			break
 		}
+		idle.Reset(streamIdle)
 		line = strings.TrimRight(line, "\r\n")
 		if value, found := strings.CutPrefix(line, "id:"); found {
 			lastID = strings.TrimSpace(value)
 		} else if value, found := strings.CutPrefix(line, "data:"); found {
 			data = append(data, strings.TrimPrefix(value, " ")...)
 		} else if line == "" && len(data) > 0 {
-			return data, lastID
+			done, err := handle(data)
+			if err != nil || done {
+				return lastID, done, err
+			}
+			data = []byte{}
 		}
 	}
-	return nil, lastID
+	return lastID, false, nil
 }
 
 func (client *client) uploadAsset(
