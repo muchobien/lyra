@@ -30,7 +30,7 @@ func TestRegistry(test *testing.T) {
 	images := func() map[string]store.Image {
 		test.Helper()
 		var list []store.Image
-		lyraJSON(test, srv, token, &list, "image", "list", "acme/demo")
+		lyraJSON(test, srv, token, &list, "image", "list", "-R", "acme/demo")
 		found := map[string]store.Image{}
 		for _, image := range list {
 			found[image.Name+":"+image.Tag] = image

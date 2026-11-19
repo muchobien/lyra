@@ -30,7 +30,7 @@ type downloadedAsset struct {
 
 func (app *app) releaseCommand() *cobra.Command {
 	release := &cobra.Command{Use: "release", Short: "Manage releases and their assets"}
-	release.AddCommand(
+	release.AddCommand(app.repoScoped(
 		app.releaseCreateCommand(),
 		app.releaseNotesCommand(),
 		app.releaseListCommand(),
@@ -41,7 +41,7 @@ func (app *app) releaseCommand() *cobra.Command {
 		app.releaseUploadCommand(),
 		app.releaseDownloadCommand(),
 		app.releaseDeleteAssetCommand(),
-	)
+	)...)
 	return release
 }
 
@@ -58,7 +58,7 @@ func (app *app) findRelease(cmd *cobra.Command, repo, tag string) (lyraapi.Relea
 func (app *app) releaseCreateCommand() *cobra.Command {
 	var options releaseCreateOptions
 	create := &cobra.Command{
-		Use:   "create <repo> <tag>",
+		Use:   "create <tag>",
 		Short: "Create a release, uploading its assets before it's published",
 		Long: `Create a release for a tag. If the tag doesn't exist, publishing creates it at --target
 (default: the default branch). A draft doesn't create the tag until it's published.
@@ -66,7 +66,7 @@ func (app *app) releaseCreateCommand() *cobra.Command {
 With --asset, the release is created as a draft, the assets are uploaded, and then it is
 published, so release.published fires once with every asset present. If an upload fails,
 the release stays a draft; finish it with lyra release upload and lyra release publish.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.createRelease(cmd, args, options)
 		},
@@ -141,13 +141,13 @@ func (app *app) releaseNotesCommand() *cobra.Command {
 	var target string
 	var prerelease bool
 	notes := &cobra.Command{
-		Use:   "notes <repo> <tag>",
+		Use:   "notes <tag>",
 		Short: "Preview the notes --generate-notes would write",
 		Long: `Preview the notes --generate-notes would write: the pull requests whose merge commit
 is reachable from the tag (or --target, if the tag doesn't exist yet) but not from the
 previous release. The previous release is the most recently published one whose commit
 is an ancestor; prereleases count only with --prerelease.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			params := lyraapi.PreviewReleaseNotesParams{Tag: &args[1], Target: &target, Prerelease: &prerelease}
@@ -172,9 +172,9 @@ is an ancestor; prereleases count only with --prerelease.`,
 
 func (app *app) releaseListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List releases, drafts first (drafts need write access)",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListReleases(cmd.Context(), owner, repo))
@@ -184,9 +184,9 @@ func (app *app) releaseListCommand() *cobra.Command {
 
 func (app *app) releaseViewCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "view <repo> <tag|latest>",
+		Use:   "view <tag|latest>",
 		Short: "Show a release with its assets and download URLs",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
@@ -202,9 +202,9 @@ func (app *app) releaseEditCommand() *cobra.Command {
 	var title, target string
 	var prerelease bool
 	edit := &cobra.Command{
-		Use:   "edit <repo> <tag>",
+		Use:   "edit <tag>",
 		Short: "Change a release's title, notes or prerelease flag, or a draft's target",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var changes lyraapi.EditReleaseRequest
 			if cmd.Flags().Changed("title") {
@@ -245,9 +245,9 @@ func (app *app) releaseEditCommand() *cobra.Command {
 
 func (app *app) releasePublishCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "publish <repo> <tag>",
+		Use:   "publish <tag>",
 		Short: "Publish a draft, creating its tag if needed",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {
@@ -263,9 +263,9 @@ func (app *app) releasePublishCommand() *cobra.Command {
 func (app *app) releaseDeleteCommand() *cobra.Command {
 	var cleanupTag, yes bool
 	remove := &cobra.Command{
-		Use:   "delete <repo> <tag>",
+		Use:   "delete <tag>",
 		Short: "Delete a release and its assets; the tag stays unless --cleanup-tag",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
 				message := "release delete removes its assets permanently; pass --yes"
@@ -288,12 +288,12 @@ func (app *app) releaseDeleteCommand() *cobra.Command {
 func (app *app) releaseUploadCommand() *cobra.Command {
 	var clobber bool
 	upload := &cobra.Command{
-		Use:   "upload <repo> <tag> <file>...",
+		Use:   "upload <tag> <file>...",
 		Short: "Upload files as assets of a release, named after the file",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) < 3 {
+			if len(args) < 2 {
 				path := cmd.CommandPath()
-				message := "%s takes a repo, a tag and at least one file; see %s --help"
+				message := "%s takes a tag and at least one file; see %s --help"
 				return UsageError{fmt.Errorf(message, path, path)}
 			}
 			return nil
@@ -321,9 +321,9 @@ func (app *app) releaseUploadCommand() *cobra.Command {
 func (app *app) releaseDownloadCommand() *cobra.Command {
 	var pattern, dir string
 	download := &cobra.Command{
-		Use:   "download <repo> <tag|latest>",
+		Use:   "download <tag|latest>",
 		Short: "Download a release's assets and check their sha256",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.downloadRelease(cmd, args, pattern, dir)
 		},
@@ -365,9 +365,9 @@ func (app *app) downloadRelease(cmd *cobra.Command, args []string, pattern, dir 
 
 func (app *app) releaseDeleteAssetCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete-asset <repo> <tag> <name>",
+		Use:   "delete-asset <tag> <name>",
 		Short: "Delete one asset of a release",
-		Args:  ExactArgs(3),
+		Args:  ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			found, err := app.findRelease(cmd, args[0], args[1])
 			if err != nil {

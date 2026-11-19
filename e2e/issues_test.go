@@ -33,35 +33,35 @@ func TestIssues(test *testing.T) {
 	issue := func(args ...string) issueResult {
 		test.Helper()
 		var result issueResult
-		lyraJSON(test, srv, token, &result, append([]string{"issue"}, args...)...)
+		lyraJSON(test, srv, token, &result, append([]string{"issue", args[0], "-R"}, args[1:]...)...)
 		return result
 	}
 	numbers := func(args ...string) string {
 		test.Helper()
-		return runLyra(test, srv, token, append([]string{"issue", "list", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`}, args...)...).stdout
+		return runLyra(test, srv, token, append([]string{"issue", "list", "-R", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`}, args...)...).stdout
 	}
 
 	var label store.Label
-	lyraJSON(test, srv, token, &label, "label", "create", "acme/demo", "bug", "--color", "#D73A4A", "--description", "Something is broken")
+	lyraJSON(test, srv, token, &label, "label", "create", "-R", "acme/demo", "bug", "--color", "#D73A4A", "--description", "Something is broken")
 	if label.Name != "bug" || label.Color != "d73a4a" {
 		test.Errorf("label create = %+v", label)
 	}
 	for _, args := range [][]string{
-		{"label", "create", "acme/demo", "bug"},
-		{"label", "create", "acme/demo", "a,b"},
-		{"label", "create", "acme/demo", "docs", "--color", "red"},
-		{"issue", "create", "acme/demo", "--title", "Unknown label", "--label", "nope"},
-		{"issue", "view", "acme/demo", "99"},
+		{"label", "create", "-R", "acme/demo", "bug"},
+		{"label", "create", "-R", "acme/demo", "a,b"},
+		{"label", "create", "-R", "acme/demo", "docs", "--color", "red"},
+		{"issue", "create", "-R", "acme/demo", "--title", "Unknown label", "--label", "nope"},
+		{"issue", "view", "-R", "acme/demo", "99"},
 	} {
 		if result := runLyra(test, srv, token, args...); result.code != 1 {
 			test.Errorf("lyra %s: exit %d, want 1: %s", strings.Join(args, " "), result.code, result.stderr)
 		}
 	}
 	for _, args := range [][]string{
-		{"issue", "create", "acme/demo"},
-		{"issue", "edit", "acme/demo", "1"},
-		{"issue", "comment", "acme/demo", "1"},
-		{"issue", "comment", "acme/demo", "1", "--body", "x", "--body-file", "-"},
+		{"issue", "create", "-R", "acme/demo"},
+		{"issue", "edit", "-R", "acme/demo", "1"},
+		{"issue", "comment", "-R", "acme/demo", "1"},
+		{"issue", "comment", "-R", "acme/demo", "1", "--body", "x", "--body-file", "-"},
 	} {
 		if result := runLyra(test, srv, token, args...); result.code != 2 {
 			test.Errorf("lyra %s: exit %d, want 2: %s", strings.Join(args, " "), result.code, result.stderr)
@@ -92,7 +92,7 @@ func TestIssues(test *testing.T) {
 		store.Comment
 		EventID int64 `json:"event_id"`
 	}
-	lyraJSON(test, srv, token, &comment, "issue", "comment", "acme/demo", "1", "--body", "Looking into it")
+	lyraJSON(test, srv, token, &comment, "issue", "comment", "-R", "acme/demo", "1", "--body", "Looking into it")
 	var commented store.Event
 	lyraJSON(test, srv, token, &commented, "event", "wait", "--repo", "acme/demo", "--action", "issue.comment", "--since", fmt.Sprint(crash.EventID), "--timeout", "5s")
 	if commented.ID != comment.EventID || commented.Item != 1 || !strings.Contains(string(commented.Data), "Looking into it") {
@@ -129,9 +129,9 @@ func TestIssues(test *testing.T) {
 		test.Errorf("issue reopen = %+v", reopened)
 	}
 
-	lyraJSON(test, srv, token, &label, "label", "create", "acme/demo", "docs")
+	lyraJSON(test, srv, token, &label, "label", "create", "-R", "acme/demo", "docs")
 	issue("edit", "acme/demo", "2", "--add-label", "docs")
-	if result := runLyra(test, srv, token, "label", "delete", "acme/demo", "docs"); result.code != 0 {
+	if result := runLyra(test, srv, token, "label", "delete", "-R", "acme/demo", "docs"); result.code != 0 {
 		test.Fatalf("label delete: %s", result.stderr)
 	}
 	if labels := issue("view", "acme/demo", "2").Labels; len(labels) != 0 {
@@ -139,10 +139,10 @@ func TestIssues(test *testing.T) {
 	}
 
 	reader := createToken(test, srv, `{"name":"reader","scope":"read","repos":["acme/demo"]}`)
-	if result := runLyra(test, srv, reader, "issue", "create", "acme/demo", "--title", "Nope"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
+	if result := runLyra(test, srv, reader, "issue", "create", "-R", "acme/demo", "--title", "Nope"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
 		test.Errorf("read token issue create: exit %d stderr %s", result.code, result.stderr)
 	}
-	if result := runLyra(test, srv, reader, "issue", "list", "acme/demo", "--jq", "length"); result.stdout != "2\n" {
+	if result := runLyra(test, srv, reader, "issue", "list", "-R", "acme/demo", "--jq", "length"); result.stdout != "2\n" {
 		test.Errorf("read token issue list %q %s", result.stdout, result.stderr)
 	}
 
@@ -160,7 +160,7 @@ func TestIssues(test *testing.T) {
 	if status, body := browserCall(test, http.MethodPost, issues+"/3/comments", `{"body":"From the *browser*"}`, sameOrigin); status != http.StatusCreated {
 		test.Errorf("UI comment: HTTP %d %s", status, body)
 	}
-	lyraJSON(test, srv, token, &label, "label", "create", "acme/demo", "ui")
+	lyraJSON(test, srv, token, &label, "label", "create", "-R", "acme/demo", "ui")
 	if status, body := browserCall(test, http.MethodPatch, issues+"/3", `{"add_labels":["ui"],"add_assignees":["@me","claude"]}`, sameOrigin); status != http.StatusOK {
 		test.Errorf("UI edit: HTTP %d %s", status, body)
 	}
@@ -200,7 +200,7 @@ func TestIssues(test *testing.T) {
 		test.Errorf("first issue in recreated repo = %+v", recreated)
 	}
 	var labels []store.Label
-	lyraJSON(test, srv, token, &labels, "label", "list", "acme/demo")
+	lyraJSON(test, srv, token, &labels, "label", "list", "-R", "acme/demo")
 	if len(labels) != 0 || slices.ContainsFunc(labels, func(label store.Label) bool { return label.Name == "bug" }) {
 		test.Errorf("labels after recreating the repo: %+v", labels)
 	}

@@ -151,7 +151,7 @@ api_bind_addr = "[::]:3900"
 	}
 
 	before := objects()
-	if result := runLyra(test, srv, token, "release", "delete", "acme/demo", "v1.0.0", "--yes"); result.code != 0 {
+	if result := runLyra(test, srv, token, "release", "delete", "-R", "acme/demo", "v1.0.0", "--yes"); result.code != 0 {
 		test.Fatalf("release delete: %+v", result)
 	}
 	if after := objects(); after != before-1 {

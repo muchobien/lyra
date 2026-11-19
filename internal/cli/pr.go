@@ -38,12 +38,12 @@ func (app *app) prCommand() *cobra.Command {
 		actions:        append([]string{"review", "checks", "merged", "push"}, itemActions...),
 		defaultActions: []string{"review", "comment", "checks", "merged", "closed"},
 	})
-	pr.AddCommand(
+	pr.AddCommand(app.repoScoped(
 		app.prCommitsCommand(),
 		app.prDiffCommand(),
 		app.prMergeCommand(),
 		app.prReviewCommand(),
-	)
+	)...)
 	return pr
 }
 
@@ -66,9 +66,9 @@ func (app *app) missingChecks(cmd *cobra.Command, repo string, number int64) (*c
 
 func (app *app) prCommitsCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "commits <repo> <number>",
+		Use:   "commits <number>",
 		Short: "List a pull request's commits with signature status",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {
@@ -83,9 +83,9 @@ func (app *app) prCommitsCommand() *cobra.Command {
 func (app *app) prDiffCommand() *cobra.Command {
 	var filesOnly bool
 	diff := &cobra.Command{
-		Use:   "diff <repo> <number>",
+		Use:   "diff <number>",
 		Short: "Print a pull request's diff, or its changed files with --files",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {
@@ -106,7 +106,7 @@ func (app *app) prMergeCommand() *cobra.Command {
 	var squash, fastForward, deleteBranch bool
 	var title, head string
 	merge := &cobra.Command{
-		Use:   "merge <repo> <number>",
+		Use:   "merge <number>",
 		Short: "Merge a pull request by squashing or fast-forwarding",
 		Long: `Merge a pull request into its base branch.
 
@@ -114,7 +114,7 @@ func (app *app) prMergeCommand() *cobra.Command {
 (see lyra signing-key). --ff moves the base branch to the head commit, keeping its
 commits and their signatures. Pass --head with the commit you reviewed to refuse the
 merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squash == fastForward {
 				return UsageError{errors.New("pr merge needs exactly one of --squash or --ff")}
@@ -155,7 +155,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 func (app *app) prReviewCommand() *cobra.Command {
 	var options reviewOptions
 	review := &cobra.Command{
-		Use:   "review <repo> <number>",
+		Use:   "review <number>",
 		Short: "Approve a pull request, request changes, or comment on it",
 		Long: `Submit a review of the pull request's current head commit.
 
@@ -163,7 +163,7 @@ func (app *app) prReviewCommand() *cobra.Command {
 the author can't use them on their own pull request. --request-changes needs a body.
 --comments-file reads line comments as JSON: [{"path": "main.go", "line": 12, "side":
 "new", "body": "..."}], with lines as numbered in the diff (side defaults to new).`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.submitReview(cmd, args, options)
 		},

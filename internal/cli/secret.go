@@ -11,18 +11,18 @@ import (
 
 func (app *app) secretCommand() *cobra.Command {
 	secret := &cobra.Command{Use: "secret", Short: "Manage Actions secrets of a repository (admin)"}
-	secret.AddCommand(app.secretSetCommand(), app.secretListCommand(), app.secretDeleteCommand())
+	secret.AddCommand(app.repoScoped(app.secretSetCommand(), app.secretListCommand(), app.secretDeleteCommand())...)
 	return secret
 }
 
 func (app *app) secretSetCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set <repo> <NAME>",
+		Use:   "set <NAME>",
 		Short: "Set a secret from stdin; one trailing newline is dropped",
 		Long: `Set a secret from stdin, so the value stays out of shell history: for example
-lyra secret set krosf/lyra DEPLOY_KEY < key.txt. One trailing newline is dropped. Names are
+lyra secret set DEPLOY_KEY < key.txt. One trailing newline is dropped. Names are
 upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			value, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {
@@ -37,9 +37,9 @@ upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
 
 func (app *app) secretListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List secret names, never their values",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListSecrets(cmd.Context(), owner, repo))
@@ -49,9 +49,9 @@ func (app *app) secretListCommand() *cobra.Command {
 
 func (app *app) secretDeleteCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <repo> <NAME>",
+		Use:   "delete <NAME>",
 		Short: "Delete a secret",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.DeleteSecret(cmd.Context(), owner, repo, args[1]))

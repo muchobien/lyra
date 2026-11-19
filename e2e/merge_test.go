@@ -51,12 +51,12 @@ func TestMerge(test *testing.T) {
 	view := func(number string) mergeView {
 		test.Helper()
 		var result mergeView
-		lyraJSON(test, srv, token, &result, "pr", "view", "acme/demo", number)
+		lyraJSON(test, srv, token, &result, "pr", "view", "-R", "acme/demo", number)
 		return result
 	}
 	merge := func(args ...string) cliResult {
 		test.Helper()
-		return runLyra(test, srv, token, append([]string{"pr", "merge", "acme/demo"}, args...)...)
+		return runLyra(test, srv, token, append([]string{"pr", "merge", "-R", "acme/demo"}, args...)...)
 	}
 	remoteSHA := func(ref string) string {
 		test.Helper()
@@ -76,13 +76,13 @@ func TestMerge(test *testing.T) {
 	commitFile(test, src, "README.md", "# Demo\n", "First commit")
 	commitFile(test, src, "shared.txt", "shared\n", "Add shared file")
 	push("main")
-	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "acme/demo", "--title", "Squash me")
+	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "-R", "acme/demo", "--title", "Squash me")
 
 	mustGit(test, src, "switch", "-q", "-c", "squashme")
 	commitAs("Ana <ana@example.com>", "ana.txt", "ana\n", "Ana's part")
 	squashHead := commitAs("Bob <bob@example.com>", "bob.txt", "bob\n", "Bob's part")
 	push("squashme")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "squashme", "--title", "Squash two authors", "--body", "Fixes #1")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "squashme", "--title", "Squash two authors", "--body", "Fixes #1")
 	mustGit(test, src, "switch", "-q", "main")
 	mainTip := commitAs("Test Agent <agent@example.com>", "main.txt", "main\n", "Main moves on")
 	push("main")
@@ -102,12 +102,12 @@ func TestMerge(test *testing.T) {
 		test.Errorf("squash with the wrong --head: exit %d %s", result.code, result.stderr)
 	}
 	reader := createToken(test, srv, `{"name":"reader","scope":"read","repos":["acme/demo"]}`)
-	if result := runLyra(test, srv, reader, "pr", "merge", "acme/demo", "2", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
+	if result := runLyra(test, srv, reader, "pr", "merge", "-R", "acme/demo", "2", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "lacks write") {
 		test.Errorf("read token merge: exit %d %s", result.code, result.stderr)
 	}
 
 	var merged mergeView
-	lyraJSON(test, srv, token, &merged, "pr", "merge", "acme/demo", "2", "--squash", "--head", squashHead, "--delete-branch")
+	lyraJSON(test, srv, token, &merged, "pr", "merge", "-R", "acme/demo", "2", "--squash", "--head", squashHead, "--delete-branch")
 	squashSHA := remoteSHA("refs/heads/main")
 	if merged.State != "merged" || merged.MergeSHA != squashSHA || merged.EventID == 0 || merged.Merge != nil {
 		test.Errorf("squash merge = %+v, main at %s", merged, squashSHA)
@@ -126,7 +126,7 @@ func TestMerge(test *testing.T) {
 		test.Errorf("squash message:\n%s", message)
 	}
 	var commits []repos.Commit
-	lyraJSON(test, srv, token, &commits, "commit", "list", "acme/demo", "--limit", "1")
+	lyraJSON(test, srv, token, &commits, "commit", "list", "-R", "acme/demo", "--limit", "1")
 	if signature := commits[0].Signature; signature.Status != "verified" || signature.KeyUser != "lyra" || signature.Fingerprint != key.Fingerprint {
 		test.Errorf("squash commit signature = %+v", signature)
 	}
@@ -137,7 +137,7 @@ func TestMerge(test *testing.T) {
 	if output, err := gitCommand(src, nil, "-c", "gpg.ssh.allowedSignersFile="+allowedSigners, "verify-commit", "FETCH_HEAD"); err != nil {
 		test.Errorf("git verify-commit of the squash commit: %v\n%s", err, output)
 	}
-	if state := runLyra(test, srv, token, "issue", "view", "acme/demo", "1", "--jq", ".state").stdout; state != "closed\n" {
+	if state := runLyra(test, srv, token, "issue", "view", "-R", "acme/demo", "1", "--jq", ".state").stdout; state != "closed\n" {
 		test.Errorf("issue 1 after squash with Fixes #1: %q", state)
 	}
 	if remoteSHA("refs/heads/squashme") != "none" || remoteSHA("refs/pull/2/head") != squashHead {
@@ -154,11 +154,11 @@ func TestMerge(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "fast")
 	fastHead := commitAs("Test Agent <agent@example.com>", "fast.txt", "fast\n", "Fast change")
 	push("fast")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "fast", "--title", "Fast-forward")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "fast", "--title", "Fast-forward")
 	if plan := view("3").Merge; plan == nil || !plan.FastForward {
 		test.Errorf("merge plan for #3 = %+v", plan)
 	}
-	lyraJSON(test, srv, token, &merged, "pr", "merge", "acme/demo", "3", "--ff")
+	lyraJSON(test, srv, token, &merged, "pr", "merge", "-R", "acme/demo", "3", "--ff")
 	if merged.State != "merged" || merged.MergeSHA != fastHead || remoteSHA("refs/heads/main") != fastHead || remoteSHA("refs/heads/fast") != fastHead {
 		test.Errorf("ff merge = %+v, main at %s", merged, remoteSHA("refs/heads/main"))
 	}
@@ -174,7 +174,7 @@ func TestMerge(test *testing.T) {
 	push("HEAD:refs/heads/main")
 	commitAs("Test Agent <agent@example.com>", "shared.txt", "main\n", "Change shared on main")
 	push("HEAD:refs/heads/main")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "clash", "--title", "Clashing change")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "clash", "--title", "Clashing change")
 	if plan := view("4").Merge; plan == nil || fmt.Sprint(plan.Conflicts) != "[shared.txt]" {
 		test.Errorf("merge plan for #4 = %+v", plan)
 	}
@@ -186,7 +186,7 @@ func TestMerge(test *testing.T) {
 		test.Errorf("conflicting pr page: HTTP %d", status)
 	}
 
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "ui", "--title", "Merge from the UI")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "ui", "--title", "Merge from the UI")
 	uiHead := remoteSHA("refs/heads/ui")
 	status, page = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/pulls/5/view", tailnet(), "")
 	if status != http.StatusOK || !strings.Contains(compactJSON(test, page), `"head_sha":"`+uiHead+`"`) {
@@ -213,7 +213,7 @@ func TestMerge(test *testing.T) {
 	if again.Fingerprint != fingerprint(test, rotated) {
 		test.Errorf("fingerprint with --signing-key-file %s, want %s", again.Fingerprint, fingerprint(test, rotated))
 	}
-	lyraJSON(test, restarted, token, &commits, "commit", "list", "acme/demo", "--ref", squashSHA, "--limit", "1")
+	lyraJSON(test, restarted, token, &commits, "commit", "list", "-R", "acme/demo", "--ref", squashSHA, "--limit", "1")
 	if commits[0].Signature.Status != "verified" {
 		test.Errorf("squash commit after rotating the key: %+v", commits[0].Signature)
 	}

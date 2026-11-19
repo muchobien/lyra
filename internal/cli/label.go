@@ -8,16 +8,16 @@ import (
 
 func (app *app) labelCommand() *cobra.Command {
 	label := &cobra.Command{Use: "label", Short: "Manage a repository's labels"}
-	label.AddCommand(app.labelCreateCommand(), app.labelListCommand(), app.labelDeleteCommand())
+	label.AddCommand(app.repoScoped(app.labelCreateCommand(), app.labelListCommand(), app.labelDeleteCommand())...)
 	return label
 }
 
 func (app *app) labelCreateCommand() *cobra.Command {
 	var color, description string
 	create := &cobra.Command{
-		Use:   "create <repo> <name>",
+		Use:   "create <name>",
 		Short: "Create a label",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			body := lyraapi.CreateLabelRequest{Name: args[1], Color: &color, Description: &description}
@@ -31,9 +31,9 @@ func (app *app) labelCreateCommand() *cobra.Command {
 
 func (app *app) labelListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List labels",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListLabels(cmd.Context(), owner, repo))
@@ -43,9 +43,9 @@ func (app *app) labelListCommand() *cobra.Command {
 
 func (app *app) labelDeleteCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <repo> <name>",
+		Use:   "delete <name>",
 		Short: "Delete a label and remove it from every issue",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.DeleteLabel(cmd.Context(), owner, repo, args[1]))

@@ -32,7 +32,7 @@ func (app *app) eventListCommand() *cobra.Command {
 			return app.show(cmd)(app.client.api.ListEvents(cmd.Context(), &params))
 		},
 	}
-	list.Flags().StringVar(&repo, "repo", "", "only events for this repository")
+	list.Flags().StringVarP(&repo, "repo", "R", "", "only events for this repository")
 	list.Flags().Int64Var(&limit, "limit", 50, "maximum number of events")
 	return list
 }
@@ -67,7 +67,7 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 		},
 	}
 	flags := wait.Flags()
-	flags.StringVar(&repo, "repo", "", "only events for this repository")
+	flags.StringVarP(&repo, "repo", "R", "", "only events for this repository")
 	flags.StringArrayVar(
 		&actions,
 		"action",

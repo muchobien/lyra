@@ -11,7 +11,7 @@ import (
 
 func (app *app) workflowCommand() *cobra.Command {
 	workflow := &cobra.Command{Use: "workflow", Short: "Start Actions workflows"}
-	workflow.AddCommand(app.workflowRunCommand())
+	workflow.AddCommand(app.repoScoped(app.workflowRunCommand())...)
 	return workflow
 }
 
@@ -19,13 +19,13 @@ func (app *app) workflowRunCommand() *cobra.Command {
 	var ref string
 	var inputs []string
 	run := &cobra.Command{
-		Use:   "run <repo> <workflow>",
+		Use:   "run <workflow>",
 		Short: "Start a workflow that has a workflow_dispatch trigger",
 		Long: `Start a workflow that has a workflow_dispatch trigger, from the workflow file at --ref
 (default: the default branch). <workflow> is the file name, such as deploy.yml, or its
 path. Inputs are checked against the workflow's: unknown ones are refused, missing ones
 take their default, and required ones without a default must be given. Prints the run.`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			values := map[string]string{}
 			for _, input := range inputs {

@@ -99,7 +99,7 @@ func TestActionsUI(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "feature")
 	commitFile(test, src, "feature.txt", "feature\n", "Add feature")
 	mustGit(test, src, "-c", auth, "push", "-q", remote, "feature")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "feature", "--title", "Feature")
 	var pull struct {
 		Checks store.Checks `json:"checks"`
 	}

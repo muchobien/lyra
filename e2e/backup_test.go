@@ -74,8 +74,8 @@ func TestBackupRestore(test *testing.T) {
 	mustGit(test, src, "switch", "-q", "-c", "feature")
 	commitFile(test, src, "feature.txt", "feature\n", "Add feature")
 	push(src, "feature")
-	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "acme/demo", "--head", "feature", "--title", "Feature")
-	if result := runLyra(test, srv, token, "pr", "merge", "acme/demo", "1", "--squash"); result.code != 0 {
+	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "feature", "--title", "Feature")
+	if result := runLyra(test, srv, token, "pr", "merge", "-R", "acme/demo", "1", "--squash"); result.code != 0 {
 		test.Fatalf("merge: %+v", result)
 	}
 	asset := filepath.Join(test.TempDir(), "asset.bin")
@@ -83,7 +83,7 @@ func TestBackupRestore(test *testing.T) {
 		test.Fatal(err)
 	}
 	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--asset", asset)
-	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "acme/demo", "--title", "Kept across a restore")
+	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "-R", "acme/demo", "--title", "Kept across a restore")
 	if status, body := call(test, http.MethodPut, srv.url+"/api/repos/acme/demo/secrets/KEY", bearer(token), `{"value":"hello"}`); status != http.StatusOK {
 		test.Fatalf("secret: HTTP %d: %s", status, body)
 	}
@@ -201,11 +201,11 @@ func TestBackupRestore(test *testing.T) {
 			KeyUser string `json:"key_user"`
 		} `json:"signature"`
 	}
-	lyraJSON(test, srv, token, &merged, "commit", "list", "acme/demo", "--limit", "1")
+	lyraJSON(test, srv, token, &merged, "commit", "list", "-R", "acme/demo", "--limit", "1")
 	if merged[0].Signature.Status != "verified" || merged[0].Signature.KeyUser != "lyra" {
 		test.Fatalf("squash merge after restore: %+v", merged)
 	}
-	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "acme/demo", "1", "--jq", ".state").stdout); state != "merged" {
+	if state := strings.TrimSpace(runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "1", "--jq", ".state").stdout); state != "merged" {
 		test.Fatalf("pull request after restore: %s", state)
 	}
 	if status, body := call(test, http.MethodGet, srv.url+"/acme/demo/releases/latest/download/asset.bin", bearer(token), ""); status != http.StatusOK || len(body) != 4*4096 {
@@ -217,7 +217,7 @@ func TestBackupRestore(test *testing.T) {
 	var issue struct {
 		Number int64 `json:"number"`
 	}
-	lyraJSON(test, srv, token, &issue, "issue", "create", "acme/demo", "--title", "After the restore")
+	lyraJSON(test, srv, token, &issue, "issue", "create", "-R", "acme/demo", "--title", "After the restore")
 	if issue.Number != 3 {
 		test.Fatalf("the next item number after restore is %d, want 3", issue.Number)
 	}
@@ -226,13 +226,13 @@ func TestBackupRestore(test *testing.T) {
 	}
 
 	hostRunner(test, srv, token)
-	if result := runLyra(test, srv, token, "workflow", "run", "acme/demo", "manual.yml"); result.code != 0 {
+	if result := runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "manual.yml"); result.code != 0 {
 		test.Fatalf("dispatch after restore: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("run after restore: %+v", result)
 	}
-	if logs := runLyra(test, srv, token, "run", "logs", "acme/demo", "1").stdout; !strings.Contains(logs, "length=5") {
+	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout; !strings.Contains(logs, "length=5") {
 		test.Fatalf("the secret didn't decrypt after restore:\n%s", logs)
 	}
 
@@ -269,7 +269,7 @@ func TestReadOnly(test *testing.T) {
 	if output, err := gitCommand(src, nil, "-c", auth, "push", remote, "main"); err == nil || !strings.Contains(output, "503") {
 		test.Fatalf("push while read-only: %v: %s", err, output)
 	}
-	if result := runLyra(test, srv, token, "issue", "create", "acme/demo", "--title", "x"); result.code != 1 || !strings.Contains(result.stderr, "read-only for maintenance") {
+	if result := runLyra(test, srv, token, "issue", "create", "-R", "acme/demo", "--title", "x"); result.code != 1 || !strings.Contains(result.stderr, "read-only for maintenance") {
 		test.Fatalf("API write while read-only: %+v", result)
 	}
 	if status, _ := browserCall(test, http.MethodPost, srv.url+"/api/repos/acme/demo/issues", `{"title":"x"}`, nil); status != http.StatusServiceUnavailable {

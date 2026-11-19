@@ -13,15 +13,16 @@ import (
 
 func (app *app) imageCommand() *cobra.Command {
 	image := &cobra.Command{Use: "image", Short: "List and delete container images"}
-	image.AddCommand(app.imageListCommand(), app.imageDeleteCommand())
+	image.AddCommand(app.imageDeleteCommand())
+	image.AddCommand(app.repoScoped(app.imageListCommand())...)
 	return image
 }
 
 func (app *app) imageListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List a repository's image tags with their digests and pull references",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			return app.show(cmd)(app.client.api.ListImages(cmd.Context(), owner, repo))

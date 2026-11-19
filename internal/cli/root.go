@@ -23,6 +23,7 @@ Environment:
                 in Claude Code and codex in Codex
   LYRA_SESSION  session id recorded on writes (Lyra-Session header); defaults to the
                 Claude Code or Codex session id
+  LYRA_REPO     repository as owner/name for commands that act on one
 
 Config file: $XDG_CONFIG_HOME/lyra/config.json (~/.config/lyra/config.json) sets
 "url" and "token" when LYRA_URL and LYRA_TOKEN are unset, such as
@@ -30,7 +31,9 @@ Config file: $XDG_CONFIG_HOME/lyra/config.json (~/.config/lyra/config.json) sets
 readable only by its owner (chmod 600).
 
 Repositories are named <owner>/<name>, such as krosf/lyra; create the owner first with
-lyra owner create.`,
+lyra owner create. Commands that act on a repository take it from --repo (-R), then
+LYRA_REPO, then the git remote of the working directory that points at the Lyra server
+(origin when several point at different repositories).`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}

@@ -49,16 +49,16 @@ func (app *app) issueCommand() *cobra.Command {
 
 func (app *app) itemCommand(kind itemKind) *cobra.Command {
 	parent := &cobra.Command{Use: kind.use, Short: "Manage " + kind.noun + "s"}
-	parent.AddCommand(
-		app.itemStateCommand(kind, "close <repo> <number>", "Close a "+kind.noun, lyraapi.Closed),
-		app.itemStateCommand(kind, "reopen <repo> <number>", "Reopen a closed "+kind.noun, lyraapi.Open),
+	parent.AddCommand(app.repoScoped(
+		app.itemStateCommand(kind, "close <number>", "Close a "+kind.noun, lyraapi.Closed),
+		app.itemStateCommand(kind, "reopen <number>", "Reopen a closed "+kind.noun, lyraapi.Open),
 		app.itemCreateCommand(kind),
 		app.itemListCommand(kind),
 		app.itemViewCommand(kind),
 		app.itemCommentCommand(kind),
 		app.itemEditCommand(kind),
 		app.itemWaitCommand(kind),
-	)
+	)...)
 	return parent
 }
 
@@ -66,9 +66,9 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 	var title, head, base string
 	var labels, assignees []string
 	create := &cobra.Command{
-		Use:   "create <repo>",
+		Use:   "create",
 		Short: "Open a new " + kind.noun,
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if title == "" {
 				return UsageError{errors.New(kind.use + " create needs --title")}
@@ -113,9 +113,9 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 	var labels, assignees []string
 	var limit int64
 	list := &cobra.Command{
-		Use:   "list <repo>",
+		Use:   "list",
 		Short: "List " + kind.noun + "s, newest first",
-		Args:  ExactArgs(1),
+		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			if kind.isPull() {
@@ -141,9 +141,9 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 
 func (app *app) itemViewCommand(kind itemKind) *cobra.Command {
 	return &cobra.Command{
-		Use:   "view <repo> <number>",
+		Use:   "view <number>",
 		Short: "Show a " + kind.noun + " with its comments",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			number, err := parseNumber(args[1])
 			if err != nil {
@@ -162,9 +162,9 @@ func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 	var path, side string
 	var line int64
 	comment := &cobra.Command{
-		Use:   "comment <repo> <number>",
+		Use:   "comment <number>",
 		Short: "Comment on a " + kind.noun,
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text, set, err := readText(cmd, "body")
 			if err != nil {
@@ -216,9 +216,9 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 	var title string
 	var addLabels, removeLabels, addAssignees, removeAssignees []string
 	edit := &cobra.Command{
-		Use:   "edit <repo> <number>",
+		Use:   "edit <number>",
 		Short: "Change a " + kind.noun + "'s title, body, labels or assignees",
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := lyraapi.EditItemRequest{
 				AddLabels:       &addLabels,
@@ -264,7 +264,7 @@ func (app *app) itemStateCommand(kind itemKind, use, short string, state lyraapi
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
-		Args:  ExactArgs(2),
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.editItem(cmd, kind, args, lyraapi.EditItemRequest{State: &state})
 		},
@@ -275,7 +275,7 @@ func (app *app) itemWaitCommand(kind itemKind) *cobra.Command {
 	var chosen []string
 	var timeout time.Duration
 	wait := &cobra.Command{
-		Use:   "wait <repo> <number>",
+		Use:   "wait <number>",
 		Short: "Wait until someone else acts on a " + kind.noun,
 		Long: `Wait until someone other than you acts on the ` + kind.noun + `, then print that event as JSON,
 with the comment or review it carries.
@@ -293,7 +293,7 @@ with state none.
 
 --for chooses the actions, from ` + strings.Join(kind.actions, ", ") +
 			` (default: ` + strings.Join(kind.defaultActions, ", ") + `).`,
-		Args: ExactArgs(2),
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.waitForItem(cmd, kind, args, chosen, timeout)
 		},

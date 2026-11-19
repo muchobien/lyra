@@ -59,7 +59,7 @@ func TestImagesInReleases(test *testing.T) {
 	if _, err := crane.Pull(host+"/acme/demo:v1.0.0", auth...); err == nil || !strings.Contains(err.Error(), "MANIFEST_UNKNOWN") {
 		test.Fatalf("pull from a recreated repo: %v", err)
 	}
-	if result := runLyra(test, srv, token, "image", "list", "acme/demo"); strings.TrimSpace(result.stdout) != "[]" {
+	if result := runLyra(test, srv, token, "image", "list", "-R", "acme/demo"); strings.TrimSpace(result.stdout) != "[]" {
 		test.Fatalf("images of a recreated repo: %+v", result)
 	}
 	if err := crane.Push(image, host+"/acme/demo:again", auth...); err != nil {
