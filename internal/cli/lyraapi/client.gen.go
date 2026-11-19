@@ -164,6 +164,18 @@ type AssetWrite struct {
 	Uploader    Actor     `json:"uploader"`
 }
 
+// Attachment defines model for Attachment.
+type Attachment struct {
+	ContentType string    `json:"content_type"`
+	CreatedAt   time.Time `json:"created_at"`
+	Id          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Sha256      string    `json:"sha256"`
+	Size        int64     `json:"size"`
+	Uploader    Actor     `json:"uploader"`
+	Url         string    `json:"url"`
+}
+
 // BlobResponse defines model for BlobResponse.
 type BlobResponse struct {
 	Binary bool   `json:"binary"`
@@ -1254,6 +1266,12 @@ type StreamEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// UploadAttachmentParams defines parameters for UploadAttachment.
+type UploadAttachmentParams struct {
+	// Name File name, shown in the attachment's URL.
+	Name string `form:"name" json:"name"`
+}
+
 // GetRepositoryBlobParams defines parameters for GetRepositoryBlob.
 type GetRepositoryBlobParams struct {
 	// Ref Branch, tag, or commit; defaults to the repository's default branch.
@@ -1746,6 +1764,15 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo} (the `GetRepo` operationId).
 	GetRepo(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadAttachmentWithBody Upload an image or video
+	//
+	// Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
+	UploadAttachmentWithBody(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetRepositoryBlob Read highlighted source or binary/large-file metadata
 	//
@@ -2416,6 +2443,13 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeToken(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DownloadAttachment Download an attachment
+	//
+	// Scope: read. Supports range requests.
+	//
+	// Corresponds with GET /{owner}/{repo}/attachments/{id}/{name} (the `DownloadAttachment` operationId).
+	DownloadAttachment(ctx context.Context, owner string, repo string, id string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DownloadAssetByTag Download an asset by tag
 	//
 	// Scope: read. A stable URL with range support; the tag may contain slashes.
@@ -2883,6 +2917,25 @@ func (c *Client) DeleteRepo(ctx context.Context, owner string, repo string, reqE
 // Corresponds with GET /api/repos/{owner}/{repo} (the `GetRepo` operationId).
 func (c *Client) GetRepo(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRepoRequest(c.Server, owner, repo)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UploadAttachmentWithBody Upload an image or video
+//
+// Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
+func (c *Client) UploadAttachmentWithBody(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadAttachmentRequestWithBody(c.Server, owner, repo, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4412,6 +4465,23 @@ func (c *Client) RevokeToken(ctx context.Context, id int64, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
+// DownloadAttachment Download an attachment
+//
+// Scope: read. Supports range requests.
+//
+// Corresponds with GET /{owner}/{repo}/attachments/{id}/{name} (the `DownloadAttachment` operationId).
+func (c *Client) DownloadAttachment(ctx context.Context, owner string, repo string, id string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadAttachmentRequest(c.Server, owner, repo, id, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // DownloadAssetByTag Download an asset by tag
 //
 // Scope: read. A stable URL with range support; the tag may contain slashes.
@@ -5264,6 +5334,72 @@ func NewGetRepoRequest(server string, owner string, repo string) (*http.Request,
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewUploadAttachmentRequestWithBody constructs an http.Request for the UploadAttachment method, with any body, and a specified content type
+func NewUploadAttachmentRequestWithBody(server string, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/repos/%s/%s/attachments", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -9026,6 +9162,61 @@ func NewRevokeTokenRequest(server string, id int64) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDownloadAttachmentRequest constructs an http.Request for the DownloadAttachment method
+func NewDownloadAttachmentRequest(server string, owner string, repo string, id string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/%s/%s/attachments/%s/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDownloadAssetByTagRequest constructs an http.Request for the DownloadAssetByTag method
 func NewDownloadAssetByTagRequest(server string, owner string, repo string, tag string, name string) (*http.Request, error) {
 	var err error
@@ -9406,6 +9597,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo} (the `GetRepo` operationId).
 	GetRepoWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*GetRepoResponse, error)
+
+	// UploadAttachmentWithBodyWithResponse Upload an image or video
+	//
+	// Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
+	UploadAttachmentWithBodyWithResponse(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadAttachmentResponse, error)
 
 	// GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
 	//
@@ -10171,6 +10371,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeTokenWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*RevokeTokenResponse, error)
+
+	// DownloadAttachmentWithResponse Download an attachment
+	//
+	// Scope: read. Supports range requests.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /{owner}/{repo}/attachments/{id}/{name} (the `DownloadAttachment` operationId).
+	DownloadAttachmentWithResponse(ctx context.Context, owner string, repo string, id string, name string, reqEditors ...RequestEditorFn) (*DownloadAttachmentResponse, error)
 
 	// DownloadAssetByTagWithResponse Download an asset by tag
 	//
@@ -11172,6 +11381,54 @@ func (r GetRepoResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetRepoResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UploadAttachmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Attachment
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r UploadAttachmentResponse) GetJSON201() *Attachment {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UploadAttachmentResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UploadAttachmentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadAttachmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadAttachmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UploadAttachmentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14375,6 +14632,47 @@ func (r RevokeTokenResponse) ContentType() string {
 	return ""
 }
 
+type DownloadAttachmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DownloadAttachmentResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DownloadAttachmentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadAttachmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadAttachmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DownloadAttachmentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DownloadAssetByTagResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14845,6 +15143,21 @@ func (c *ClientWithResponses) GetRepoWithResponse(ctx context.Context, owner str
 		return nil, err
 	}
 	return ParseGetRepoResponse(rsp)
+}
+
+// UploadAttachmentWithBodyWithResponse Upload an image or video
+//
+// Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
+func (c *ClientWithResponses) UploadAttachmentWithBodyWithResponse(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadAttachmentResponse, error) {
+	rsp, err := c.UploadAttachmentWithBody(ctx, owner, repo, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadAttachmentResponse(rsp)
 }
 
 // GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
@@ -16122,6 +16435,21 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, id in
 	return ParseRevokeTokenResponse(rsp)
 }
 
+// DownloadAttachmentWithResponse Download an attachment
+//
+// Scope: read. Supports range requests.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /{owner}/{repo}/attachments/{id}/{name} (the `DownloadAttachment` operationId).
+func (c *ClientWithResponses) DownloadAttachmentWithResponse(ctx context.Context, owner string, repo string, id string, name string, reqEditors ...RequestEditorFn) (*DownloadAttachmentResponse, error) {
+	rsp, err := c.DownloadAttachment(ctx, owner, repo, id, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadAttachmentResponse(rsp)
+}
+
 // DownloadAssetByTagWithResponse Download an asset by tag
 //
 // Scope: read. A stable URL with range support; the tag may contain slashes.
@@ -16811,6 +17139,39 @@ func ParseGetRepoResponse(rsp *http.Response) (*GetRepoResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadAttachmentResponse parses an HTTP response from a UploadAttachmentWithResponse call
+func ParseUploadAttachmentResponse(rsp *http.Response) (*UploadAttachmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadAttachmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Attachment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody
@@ -19028,6 +19389,32 @@ func ParseRevokeTokenResponse(rsp *http.Response) (*RevokeTokenResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadAttachmentResponse parses an HTTP response from a DownloadAttachmentWithResponse call
+func ParseDownloadAttachmentResponse(rsp *http.Response) (*DownloadAttachmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadAttachmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

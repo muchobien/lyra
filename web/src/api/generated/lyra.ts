@@ -19,6 +19,7 @@ import type {
 
 import type {
   AssetWrite,
+  Attachment,
   BlobResponse,
   CommentRequest,
   CommentWrite,
@@ -106,6 +107,7 @@ import type {
   TokenCreated,
   TreeResponse,
   UploadAssetParams,
+  UploadAttachmentParams,
   ValueRequest,
   Variable,
   VariableSet,
@@ -2083,6 +2085,108 @@ export function useGetRepo<TData = Awaited<ReturnType<typeof getRepo>>, TError =
 
 
 
+
+export const getUploadAttachmentUrl = (owner: string,
+    repo: string,
+    params: UploadAttachmentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/attachments?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/attachments`
+}
+
+/**
+ * Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+ * @summary Upload an image or video
+ */
+export const uploadAttachment = async (owner: string,
+    repo: string,
+    uploadAttachmentBody: Blob,
+    params: UploadAttachmentParams, options?: Parameters<typeof orvalFetch>[1]): Promise<Attachment> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return orvalFetch<Attachment>(getUploadAttachmentUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', ...getHeaders(options?.headers) },
+    body: uploadAttachmentBody
+  }
+);}
+
+
+
+
+
+export const getUploadAttachmentMutationKey = () => ['uploadAttachment'] as const;
+
+export const getUploadAttachmentMutationOptions = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,UploadAttachmentMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,UploadAttachmentMutationVariables, TContext> => {
+
+const mutationKey = getUploadAttachmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadAttachment>>, UploadAttachmentMutationVariables> = (props) => {
+          const {owner,repo,data,params} = props ?? {};
+
+          return  uploadAttachment(owner,repo,data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadAttachmentMutationResult = NonNullable<Awaited<ReturnType<typeof uploadAttachment>>>
+    export type UploadAttachmentMutationBody = Blob
+    export type UploadAttachmentMutationError = ErrorType<ErrorBody>
+    export type UploadAttachmentMutationVariables = {owner: string;repo: string;data: Blob;params: UploadAttachmentParams}
+
+    /**
+ * Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player.
+ * @summary Upload an image or video
+ */
+export const useUploadAttachment = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,UploadAttachmentMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof uploadAttachment>>,
+        TError,
+        UploadAttachmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUploadAttachmentMutationOptions(options), queryClient);
+    }
 
 export const getGetRepositoryBlobUrl = (owner: string,
     repo: string,
@@ -9516,6 +9620,144 @@ export const useRevokeToken = <TError = ErrorType<ErrorBody>,
       > => {
       return useMutation(getRevokeTokenMutationOptions(options), queryClient);
     }
+
+export const getDownloadAttachmentUrl = (owner: string,
+    repo: string,
+    id: string,
+    name: string,) => {
+
+
+
+
+  return `/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/attachments/${encodeURIComponent(String(id))}/${encodeURIComponent(String(name))}`
+}
+
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an attachment
+ */
+export const downloadAttachment = async (owner: string,
+    repo: string,
+    id: string,
+    name: string, options?: Parameters<typeof orvalFetch>[1]): Promise<Blob> => {
+
+  return orvalFetch<Blob>(getDownloadAttachmentUrl(owner,repo,id,name),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadAttachmentQueryKey = (owner: string,
+    repo: string,
+    id: string,
+    name: string,) => {
+    return [
+    `/${owner}/${repo}/attachments/${id}/${name}`
+    ] as const;
+    }
+
+
+export const getDownloadAttachmentQueryOptions = <TData = Awaited<ReturnType<typeof downloadAttachment>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    id: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadAttachmentQueryKey(owner,repo,id,name);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadAttachment>>> = ({ signal }) => downloadAttachment(owner,repo,id,name, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined && id !== null && id !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadAttachmentQueryResult = NonNullable<Awaited<ReturnType<typeof downloadAttachment>>>
+export type DownloadAttachmentQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an attachment
+ */
+export function useDownloadAttachment<TData = Awaited<ReturnType<typeof downloadAttachment>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    id: string,
+    name: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadAttachment>>,
+          TError,
+          Awaited<ReturnType<typeof downloadAttachment>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an attachment
+ */
+export function useDownloadAttachment<TData = Awaited<ReturnType<typeof downloadAttachment>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    id: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadAttachment>>,
+          TError,
+          Awaited<ReturnType<typeof downloadAttachment>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an attachment
+ */
+export function useDownloadAttachment<TData = Awaited<ReturnType<typeof downloadAttachment>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    id: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an attachment
+ */
+export function useDownloadAttachment<TData = Awaited<ReturnType<typeof downloadAttachment>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    id: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadAttachment>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadAttachmentQueryOptions(owner,repo,id,name,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDownloadAssetByTagUrl = (owner: string,
     repo: string,

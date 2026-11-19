@@ -364,6 +364,36 @@ func (client *client) uploadAsset(
 	return read(client.streaming.UploadAssetWithBody(ctx, owner, name, id, &params, contentType, handle, length))
 }
 
+func (client *client) uploadAttachment(ctx context.Context, repo, file string) (lyraapi.Attachment, error) {
+	handle, err := os.Open(file)
+	if err != nil {
+		return lyraapi.Attachment{}, err
+	}
+	defer handle.Close()
+	info, err := handle.Stat()
+	if err != nil {
+		return lyraapi.Attachment{}, err
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(file))
+	if contentType == "" {
+		head := make([]byte, 512)
+		count, _ := io.ReadFull(handle, head)
+		contentType = http.DetectContentType(head[:count])
+		if _, err := handle.Seek(0, io.SeekStart); err != nil {
+			return lyraapi.Attachment{}, err
+		}
+	}
+	length := lyraapi.RequestEditorFn(func(_ context.Context, req *http.Request) error {
+		req.ContentLength = info.Size()
+		return nil
+	})
+	owner, name := splitRepo(repo)
+	params := lyraapi.UploadAttachmentParams{Name: filepath.Base(file)}
+	response, err := client.streaming.UploadAttachmentWithBody(ctx, owner, name, &params, contentType, handle, length)
+	attachment, _, err := decode[lyraapi.Attachment](response, err)
+	return attachment, err
+}
+
 func (client *client) downloadAsset(
 	ctx context.Context,
 	repo string,

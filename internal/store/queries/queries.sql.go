@@ -183,6 +183,58 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Relea
 	return i, err
 }
 
+const createAttachment = `-- name: CreateAttachment :one
+INSERT INTO attachments (repo, name, object, size, sha256, content_type, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, repo, name, object, size, sha256, content_type, user, via, agent, session, created_at
+`
+
+type CreateAttachmentParams struct {
+	Repo        string    `json:"repo"`
+	Name        string    `json:"name"`
+	Object      string    `json:"object"`
+	Size        int64     `json:"size"`
+	Sha256      string    `json:"sha256"`
+	ContentType string    `json:"content_type"`
+	User        string    `json:"user"`
+	Via         string    `json:"via"`
+	Agent       string    `json:"agent"`
+	Session     string    `json:"session"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (Attachment, error) {
+	row := q.db.QueryRowContext(ctx, createAttachment,
+		arg.Repo,
+		arg.Name,
+		arg.Object,
+		arg.Size,
+		arg.Sha256,
+		arg.ContentType,
+		arg.User,
+		arg.Via,
+		arg.Agent,
+		arg.Session,
+		arg.CreatedAt,
+	)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.ContentType,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createComment = `-- name: CreateComment :one
 INSERT INTO comments (item_id, body, user, via, agent, session, created_at, review_id, commit_sha, path, side, line)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1194,6 +1246,35 @@ func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (ReleaseAsse
 	return i, err
 }
 
+const getAttachment = `-- name: GetAttachment :one
+SELECT id, repo, name, object, size, sha256, content_type, user, via, agent, session, created_at FROM attachments WHERE repo = ? AND id = ?
+`
+
+type GetAttachmentParams struct {
+	Repo string `json:"repo"`
+	ID   int64  `json:"id"`
+}
+
+func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (Attachment, error) {
+	row := q.db.QueryRowContext(ctx, getAttachment, arg.Repo, arg.ID)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.Repo,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.ContentType,
+		&i.User,
+		&i.Via,
+		&i.Agent,
+		&i.Session,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getItem = `-- name: GetItem :one
 SELECT id, repo, number, kind, title, body, state, user, via, agent, session, created_at, updated_at, closed_at FROM items WHERE repo = ? AND number = ?
 `
@@ -1688,6 +1769,46 @@ func (q *Queries) ListAllAssets(ctx context.Context) ([]ListAllAssetsRow, error)
 			&i.Object,
 			&i.Size,
 			&i.Sha256,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllAttachments = `-- name: ListAllAttachments :many
+SELECT id, repo, name, object, size, sha256, content_type, user, via, agent, session, created_at FROM attachments ORDER BY repo, id
+`
+
+func (q *Queries) ListAllAttachments(ctx context.Context) ([]Attachment, error) {
+	rows, err := q.db.QueryContext(ctx, listAllAttachments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Attachment
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.Repo,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+			&i.ContentType,
+			&i.User,
+			&i.Via,
+			&i.Agent,
+			&i.Session,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

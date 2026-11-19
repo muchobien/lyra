@@ -3,6 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +24,16 @@ type itemKind struct {
 	actions        []string
 	defaultActions []string
 }
+
+const attachHelp = `--attach uploads an image or video and links it from the body. A reference to the file
+already in the body, such as ![alt](./login.png), is rewritten to point at the upload; other
+attachments are appended to the body. Paths in a --body-file are relative to its directory,
+then to the working directory. Alt text follows the path after #, as in
+--attach './login.png#The login error state', and defaults to the file name; a video renders
+as a player and has no alt text. Up to 50 files. If some uploads fail, the command goes ahead
+with the rest, prints its result and exits 1.`
+
+var markdownDestination = regexp.MustCompile(`(\]\(\s*<?)([^)\s>]+)`)
 
 var itemActions = []string{
 	"comment",
@@ -80,10 +93,11 @@ func (app *app) itemCommand(kind itemKind) *cobra.Command {
 
 func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 	var title, head, base string
-	var labels, assignees []string
+	var labels, assignees, attachments []string
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Open a new " + kind.noun,
+		Long:  "Open a new " + kind.noun + ".\n\n" + attachHelp,
 		Args:  ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if title == "" {
@@ -93,10 +107,15 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			text, attachErr := app.attach(cmd, args[0], text, attachments)
+			if _, usage := errors.AsType[UsageError](attachErr); usage {
+				return attachErr
+			}
 			owner, repo := splitRepo(args[0])
 			if !kind.isPull() {
 				body := lyraapi.CreateIssueRequest{Title: title, Body: &text, Labels: &labels, Assignees: &assignees}
-				return app.show(cmd)(app.client.api.CreateIssue(cmd.Context(), owner, repo, body))
+				response, err := app.client.api.CreateIssue(cmd.Context(), owner, repo, body)
+				return errors.Join(app.show(cmd)(response, err), attachErr)
 			}
 			if head == "" {
 				if head, err = currentBranch(cmd); err != nil {
@@ -113,13 +132,13 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 			}
 			created, output, err := decode[lyraapi.Pull](app.client.api.CreatePull(cmd.Context(), owner, repo, body))
 			if err != nil {
-				return err
+				return errors.Join(err, attachErr)
 			}
 			if err := app.emit(cmd, output); err != nil {
 				return err
 			}
 			printWaitHint(cmd, args[0], created.Number)
-			return nil
+			return attachErr
 		},
 	}
 	flags := create.Flags()
@@ -131,6 +150,7 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 	addTextFlags(create, "body", "body text in Markdown")
 	flags.StringArrayVarP(&labels, "label", "l", nil, "add this label, which must exist (repeatable)")
 	flags.StringArrayVarP(&assignees, "assignee", "a", nil, "assign a login or agent name, or @me (repeatable)")
+	flags.StringArrayVar(&attachments, "attach", nil, "attach an image or video, as <file>#<alt text> (repeatable)")
 	return create
 }
 
@@ -210,37 +230,51 @@ func (app *app) itemViewCommand(kind itemKind) *cobra.Command {
 func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 	var path, side string
 	var line int64
+	var attachments []string
 	comment := &cobra.Command{
 		Use:   "comment " + kind.target,
 		Short: "Comment on a " + kind.noun,
+		Long:  "Comment on a " + kind.noun + ".\n\n" + attachHelp,
 		Args:  kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text, set, err := readText(cmd, "body")
 			if err != nil {
 				return err
 			}
-			if !set {
-				return UsageError{errors.New(kind.use + " comment needs --body or --body-file")}
+			if !set && len(attachments) == 0 {
+				return UsageError{errors.New(kind.use + " comment needs --body, --body-file or --attach")}
 			}
 			number, err := app.itemNumber(cmd, kind, args)
 			if err != nil {
 				return err
 			}
+			text, attachErr := app.attach(cmd, args[0], text, attachments)
+			if _, usage := errors.AsType[UsageError](attachErr); usage {
+				return attachErr
+			}
 			owner, repo := splitRepo(args[0])
 			body := lyraapi.CommentRequest{Body: text}
 			if !kind.isPull() {
-				return app.show(cmd)(app.client.api.CommentIssue(cmd.Context(), owner, repo, number, body))
+				response, err := app.client.api.CommentIssue(cmd.Context(), owner, repo, number, body)
+				return errors.Join(app.show(cmd)(response, err), attachErr)
 			}
 			if path != "" || line != 0 {
 				lineSide := lyraapi.CommentRequestSide(side)
 				body.Path, body.Line, body.Side = &path, &line, &lineSide
 			}
-			return app.show(cmd)(app.client.api.CommentPull(cmd.Context(), owner, repo, number, body))
+			response, err := app.client.api.CommentPull(cmd.Context(), owner, repo, number, body)
+			return errors.Join(app.show(cmd)(response, err), attachErr)
 		},
 	}
 	addTextFlags(comment, "body", "body text in Markdown")
+	comment.Flags().StringArrayVar(
+		&attachments,
+		"attach",
+		nil,
+		"attach an image or video, as <file>#<alt text> (repeatable)",
+	)
 	if kind.isPull() {
-		comment.Long = "Comment on a pull request, or with --path and --line on one line of its diff."
+		comment.Long = "Comment on a pull request, or with --path and --line on one line of its diff.\n\n" + attachHelp
 		flags := comment.Flags()
 		flags.StringVar(&path, "path", "", "file the comment is on")
 		flags.Int64Var(&line, "line", 0, "line number in the file, as shown in the diff")
@@ -263,11 +297,13 @@ func (app *app) editItem(cmd *cobra.Command, kind itemKind, args []string, body 
 
 func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 	var title string
-	var addLabels, removeLabels, addAssignees, removeAssignees []string
+	var addLabels, removeLabels, addAssignees, removeAssignees, attachments []string
 	edit := &cobra.Command{
 		Use:   "edit " + kind.target,
 		Short: "Change a " + kind.noun + "'s title, body, labels or assignees",
-		Args:  kind.targetArgs(),
+		Long: "Change a " + kind.noun + "'s title, body, labels or assignees.\n\n" + attachHelp +
+			"\n\nWithout --body or --body-file, --attach appends to the current body.",
+		Args: kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := lyraapi.EditItemRequest{
 				AddLabels:       &addLabels,
@@ -287,11 +323,24 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 			}
 			labels := len(addLabels) + len(removeLabels)
 			assignees := len(addAssignees) + len(removeAssignees)
-			if body.Title == nil && body.Body == nil && labels+assignees == 0 {
+			if body.Title == nil && body.Body == nil && labels+assignees+len(attachments) == 0 {
 				help := "lyra " + kind.use + " edit --help"
 				return UsageError{errors.New(kind.use + " edit needs at least one change; see " + help)}
 			}
-			return app.editItem(cmd, kind, args, body)
+			if len(attachments) == 0 {
+				return app.editItem(cmd, kind, args, body)
+			}
+			if !set {
+				if text, err = app.itemBody(cmd, kind, args); err != nil {
+					return err
+				}
+			}
+			text, attachErr := app.attach(cmd, args[0], text, attachments)
+			if _, usage := errors.AsType[UsageError](attachErr); usage {
+				return attachErr
+			}
+			body.Body = &text
+			return errors.Join(app.editItem(cmd, kind, args, body), attachErr)
 		},
 	}
 	flags := edit.Flags()
@@ -306,7 +355,70 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 		nil,
 		"unassign a login or agent name, or @me (repeatable)",
 	)
+	flags.StringArrayVar(&attachments, "attach", nil, "attach an image or video, as <file>#<alt text> (repeatable)")
 	return edit
+}
+
+func (app *app) itemBody(cmd *cobra.Command, kind itemKind, args []string) (string, error) {
+	number, err := app.itemNumber(cmd, kind, args)
+	if err != nil {
+		return "", err
+	}
+	owner, repo := splitRepo(args[0])
+	if kind.isPull() {
+		pull, _, err := decode[lyraapi.PullView](app.client.api.GetPull(cmd.Context(), owner, repo, number))
+		return pull.Body, err
+	}
+	issue, _, err := decode[lyraapi.ItemView](app.client.api.GetIssue(cmd.Context(), owner, repo, number))
+	return issue.Body, err
+}
+
+func (app *app) attach(cmd *cobra.Command, repo, text string, files []string) (string, error) {
+	if len(files) > 50 {
+		return text, UsageError{fmt.Errorf("--attach takes at most 50 files, got %d", len(files))}
+	}
+	bases := []string{"."}
+	if bodyFile, _ := cmd.Flags().GetString("body-file"); bodyFile != "" && bodyFile != "-" {
+		bases = []string{filepath.Dir(bodyFile), "."}
+	}
+	failures := []error{}
+	for _, value := range files {
+		file, alt, _ := strings.Cut(value, "#")
+		attachment, err := app.client.uploadAttachment(cmd.Context(), repo, file)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("attach %s: %w", file, err))
+			continue
+		}
+		attached, _ := os.Stat(file)
+		referenced := false
+		text = markdownDestination.ReplaceAllStringFunc(text, func(match string) string {
+			parts := markdownDestination.FindStringSubmatch(match)
+			for _, base := range bases {
+				target := parts[2]
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(base, target)
+				}
+				if info, err := os.Stat(target); err == nil && os.SameFile(info, attached) {
+					referenced = true
+					return parts[1] + attachment.Url
+				}
+			}
+			return match
+		})
+		if referenced {
+			continue
+		}
+		if strings.HasPrefix(attachment.ContentType, "video/") {
+			alt = ""
+		} else if alt == "" {
+			alt = filepath.Base(file)
+		}
+		if text != "" {
+			text = strings.TrimRight(text, "\n") + "\n\n"
+		}
+		text += "![" + strings.NewReplacer("[", `\[`, "]", `\]`).Replace(alt) + "](" + attachment.Url + ")"
+	}
+	return text, errors.Join(failures...)
 }
 
 func (app *app) itemStateCommand(kind itemKind, use, short string, state lyraapi.EditItemRequestState) *cobra.Command {

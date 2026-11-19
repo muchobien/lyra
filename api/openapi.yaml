@@ -81,6 +81,38 @@ components:
         - uploader
         - created_at
       type: object
+    Attachment:
+      additionalProperties: false
+      properties:
+        content_type:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        sha256:
+          type: string
+        size:
+          format: int64
+          type: integer
+        uploader:
+          $ref: "#/components/schemas/Actor"
+        url:
+          type: string
+      required:
+        - id
+        - name
+        - size
+        - sha256
+        - content_type
+        - uploader
+        - created_at
+        - url
+      type: object
     BlobResponse:
       additionalProperties: false
       properties:
@@ -3235,6 +3267,53 @@ paths:
       summary: Get a repository
       tags:
         - Repositories
+  /api/repos/{owner}/{repo}/attachments:
+    post:
+      description: "Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown as ![alt](url); a video renders as a player."
+      operationId: uploadAttachment
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: File name, shown in the attachment's URL.
+          explode: false
+          in: query
+          name: name
+          required: true
+          schema:
+            description: File name, shown in the attachment's URL.
+            type: string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              contentMediaType: application/octet-stream
+              format: binary
+              type: string
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+          description: Created
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Upload an image or video
+      tags:
+        - Attachments
   /api/repos/{owner}/{repo}/blob:
     get:
       description: "Scope: read."
@@ -5860,6 +5939,47 @@ paths:
       summary: Revoke a token
       tags:
         - Account
+  /{owner}/{repo}/attachments/{id}/{name}:
+    get:
+      description: "Scope: read. Supports range requests."
+      operationId: downloadAttachment
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+          description: The file; its ETag is its sha256
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Download an attachment
+      tags:
+        - Attachments
   /{owner}/{repo}/releases/download/{tag}/{name}:
     get:
       description: "Scope: read. A stable URL with range support; the tag may contain slashes."

@@ -31,8 +31,8 @@ The data directory (`--data`, `/data` in the image) holds:
 
 ## Storage
 
-Release assets, job logs and registry layers are stored in `<data>/blobs` by default. To
-store them in S3 (Garage, for example), pass
+Release assets, issue and pull request attachments, job logs and registry layers are stored in
+`<data>/blobs` by default. To store them in S3 (Garage, for example), pass
 `--storage s3 --s3-endpoint http://garage:3900 --s3-bucket lyra`, with credentials in
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (`--s3-region` defaults to `garage`). Lyra
 uses path-style requests and serves every download itself, so the bucket doesn't need to be

@@ -154,6 +154,17 @@ export interface DeletedName {
   deleted: string;
 }
 
+export interface Attachment {
+  content_type: string;
+  created_at: string;
+  id: number;
+  name: string;
+  sha256: string;
+  size: number;
+  uploader: Actor;
+  url: string;
+}
+
 export interface BlobResponse {
   binary: boolean;
   code: string;
@@ -1046,6 +1057,11 @@ export type ListEventsParams = {
   repo?: string;
   /** 1 to 1000; defaults to 50. */
   limit?: number;
+};
+
+export type UploadAttachmentParams = {
+  /** File name, shown in the attachment's URL. */
+  name: string;
 };
 
 export type GetRepositoryBlobParams = {
