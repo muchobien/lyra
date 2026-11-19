@@ -229,7 +229,7 @@ func TestBackupRestore(test *testing.T) {
 	if result := runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "manual.yml"); result.code != 0 {
 		test.Fatalf("dispatch after restore: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("run after restore: %+v", result)
 	}
 	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout; !strings.Contains(logs, "length=5") {

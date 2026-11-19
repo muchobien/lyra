@@ -102,8 +102,11 @@ func TestPullChecks(test *testing.T) {
 	if strings.Join(opened.Actions, "|") != "queued run #1 (PR)|queued run #2 (PR slow)" {
 		test.Fatalf("pr create actions: %v", opened.Actions)
 	}
-	if state := waitChecks("1"); state != "failure" {
-		test.Fatalf("checks after opening: %s", state)
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--jq", ".state"); result.code != 8 || result.stdout != "pending\n" {
+		test.Fatalf("pr checks while they run: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--watch", "--jq", ".state"); result.code != 1 || result.stdout != "failure\n" {
+		test.Fatalf("pr checks --watch: %+v", result)
 	}
 	failed := pr("view", "acme/demo", "1")
 	if failed.Checks.State != "failure" || len(failed.Checks.Jobs) != 2 || failed.Checks.Jobs[0].Event != "pull_request" || !strings.Contains(strings.Join(failed.Merge.Blocked, "|"), "checks failed for") {
@@ -124,6 +127,9 @@ func TestPullChecks(test *testing.T) {
 	}
 	if state := waitChecks("1"); state != "success" {
 		test.Fatalf("checks after the fix: %s", state)
+	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "1", "--jq", ".jobs | length"); result.code != 0 || result.stdout != "2\n" {
+		test.Fatalf("pr checks after the fix: %+v", result)
 	}
 	if fixed := pr("view", "acme/demo", "1"); fixed.Checks.State != "success" || len(fixed.Checks.Jobs) != 2 || fixed.Checks.Jobs[0].Run != 3 || len(fixed.Merge.Blocked) != 0 {
 		test.Fatalf("pull request after the fix: %+v", fixed)
@@ -147,6 +153,9 @@ func TestPullChecks(test *testing.T) {
 	}
 	if state := waitChecks("2"); state != "none" {
 		test.Fatalf("pr wait --for checks on a pull request where nothing runs: %s", state)
+	}
+	if result := runLyra(test, srv, token, "pr", "checks", "-R", "acme/demo", "2"); result.code != 1 || !strings.Contains(result.stderr, "no checks ran on") {
+		test.Fatalf("pr checks where nothing runs: %+v", result)
 	}
 	if viewed := pr("view", "acme/demo", "2"); viewed.Checks.State != "none" || !strings.Contains(strings.Join(viewed.Merge.Blocked, "|"), "no checks ran for") {
 		test.Fatalf("docs pull request: %+v", viewed)

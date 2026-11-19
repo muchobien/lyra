@@ -269,7 +269,7 @@ func TestEphemeralRunner(test *testing.T) {
 	runner.start(test, "one-job", "--wait")
 
 	runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "once.yml")
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("run on the ephemeral runner: %+v\nrunner log:\n%s", result, runner.logs.String())
 	}
 	eventually(test, "the ephemeral runner to be deleted after its job", func() bool {

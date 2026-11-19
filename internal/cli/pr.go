@@ -46,6 +46,7 @@ func (app *app) prCommand() *cobra.Command {
 Commands that act on one pull request take its number or its head branch. Without
 either, they act on the open pull request whose head is the current git branch.`
 	pr.AddCommand(app.repoScoped(
+		app.prChecksCommand(),
 		app.prCommitsCommand(),
 		app.prDiffCommand(),
 		app.prMergeCommand(),
@@ -97,6 +98,60 @@ func (app *app) missingChecks(cmd *cobra.Command, repo string, number int64) (*c
 		Item:   pull.Number,
 		Repo:   repo,
 	}, nil
+}
+
+func (app *app) prChecksCommand() *cobra.Command {
+	var watch bool
+	checks := &cobra.Command{
+		Use:   "checks [<number> | <branch>]",
+		Short: "Show the Actions checks of a pull request's head",
+		Long: `Show the Actions checks of a pull request's head commit: its state (success, failure,
+pending or none) and its jobs. Exit 0 when they passed, 1 when one failed or none ran,
+and 8 while they're pending. --watch waits until they finish.`,
+		Args: MaximumArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			number, err := app.pullNumber(cmd, args)
+			if err != nil {
+				return err
+			}
+			return app.showChecks(cmd, args[0], number, watch)
+		},
+	}
+	checks.Flags().BoolVar(&watch, "watch", false, "wait until the checks finish")
+	return checks
+}
+
+func (app *app) showChecks(cmd *cobra.Command, repo string, number int64, watch bool) error {
+	owner, name := splitRepo(repo)
+	for {
+		cursor, err := app.latestEvent(cmd, repo)
+		if err != nil {
+			return err
+		}
+		pull, _, err := decode[lyraapi.PullView](app.client.api.GetPull(cmd.Context(), owner, name, number))
+		if err != nil {
+			return err
+		}
+		if !watch || pull.Checks.State != "pending" {
+			if err := app.emitIndented(cmd, pull.Checks); err != nil {
+				return err
+			}
+			switch pull.Checks.State {
+			case "success":
+				return nil
+			case "pending":
+				return ErrPending
+			case "none":
+				return fmt.Errorf("no checks ran on %s", pull.Checks.Sha)
+			}
+			return fmt.Errorf("checks failed on %s", pull.Checks.Sha)
+		}
+		actions := []string{"pr.checks", "pr.synchronized"}
+		params := lyraapi.StreamEventsParams{Repo: &repo, Item: &number, Action: &actions, Since: &cursor}
+		if _, err := app.client.waitForEvent(cmd.Context(), params, 0); err != nil {
+			return err
+		}
+	}
 }
 
 func (app *app) prCommitsCommand() *cobra.Command {

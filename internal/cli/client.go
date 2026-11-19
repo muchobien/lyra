@@ -28,7 +28,10 @@ import (
 	"github.com/muchobien/lyra/internal/cli/lyraapi"
 )
 
-var ErrTimeout = errors.New("timeout")
+var (
+	ErrTimeout = errors.New("timeout")
+	ErrPending = errors.New("pending")
+)
 
 type client struct {
 	api       *lyraapi.Client

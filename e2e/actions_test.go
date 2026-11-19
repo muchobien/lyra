@@ -144,7 +144,7 @@ func TestActions(test *testing.T) {
 		test.Fatalf("push output: %s", output)
 	}
 
-	result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "120s")
+	result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "120s")
 	if result.code != 1 || !strings.Contains(result.stderr, "run #1 finished: failure") {
 		test.Fatalf("run wait: %+v\nrunner log:\n%s", result, runner.logs.String())
 	}
@@ -199,7 +199,7 @@ func TestActions(test *testing.T) {
 	if output := push("v1.0.0"); !strings.Contains(output, "lyra: queued run #3 (Tags)") || strings.Contains(output, "(CI)") {
 		test.Fatalf("tag push output: %s", output)
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "3", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "3", "--exit-status", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("run #3: %+v", result)
 	}
 	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "3").stdout; !strings.Contains(logs, "releasing v1.0.0 (tag)") {
@@ -216,7 +216,7 @@ func TestActions(test *testing.T) {
 	if result := runLyra(test, srv, token, "run", "cancel", "-R", "acme/demo", "4"); result.code != 0 {
 		test.Fatalf("cancel: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "4", "--timeout", "30s"); result.code != 1 || !strings.Contains(result.stderr, "cancelled") {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "4", "--exit-status", "--timeout", "30s"); result.code != 1 || !strings.Contains(result.stderr, "cancelled") {
 		test.Fatalf("wait for the cancelled run: %+v", result)
 	}
 	eventually(test, "the runner to stop the cancelled job", func() bool {
@@ -233,7 +233,7 @@ func TestActions(test *testing.T) {
 	for _, job := range rerun.Jobs {
 		attempts[job.Name] = job.Attempt
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "120s"); result.code != 1 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "120s"); result.code != 1 {
 		test.Fatalf("wait for the rerun: %+v", result)
 	}
 	again := view("1")
@@ -295,7 +295,7 @@ func TestJobMaintenance(test *testing.T) {
 	runner := hostRunner(test, srv, token)
 
 	runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "quick.yml")
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("quick run: %+v", result)
 	}
 	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout; !strings.Contains(logs, "retention=0") {
@@ -307,7 +307,7 @@ func TestJobMaintenance(test *testing.T) {
 	}
 
 	runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "steady.yml")
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "2", "--timeout", "60s"); result.code != 0 {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "2", "--exit-status", "--timeout", "60s"); result.code != 0 {
 		test.Fatalf("a job longer than --job-stale-after with a live runner: %+v", result)
 	}
 	runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "slow.yml")
@@ -315,7 +315,7 @@ func TestJobMaintenance(test *testing.T) {
 		return strings.Contains(runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "3").stdout, "started")
 	})
 	runner.kill()
-	result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "3", "--timeout", "30s")
+	result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "3", "--exit-status", "--timeout", "30s")
 	if result.code != 1 || !strings.Contains(result.stderr, "failure") {
 		test.Fatalf("run whose runner died: %+v", result)
 	}

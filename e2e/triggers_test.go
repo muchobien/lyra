@@ -96,7 +96,7 @@ func TestTriggers(test *testing.T) {
 	logsOf := func(name string) string {
 		test.Helper()
 		number, _ := runOf(name)
-		if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", itoa(number), "--timeout", "60s"); result.code != 0 {
+		if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", itoa(number), "--exit-status", "--timeout", "60s"); result.code != 0 {
 			test.Fatalf("run %s #%d: %+v", name, number, result)
 		}
 		return runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", itoa(number)).stdout
@@ -277,8 +277,11 @@ func TestSecretsKeyChange(test *testing.T) {
 	if result := runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "manual.yml"); result.code != 0 {
 		test.Fatalf("workflow run: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "run", "wait", "-R", "acme/demo", "1", "--timeout", "30s"); result.code != 1 || !strings.Contains(result.stderr, "failure") {
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--exit-status", "--timeout", "30s"); result.code != 1 || !strings.Contains(result.stderr, "failure") {
 		test.Fatalf("run with an undecryptable secret: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "run", "watch", "-R", "acme/demo", "1", "--jq", ".status"); result.code != 0 || result.stdout != "failure\n" {
+		test.Fatalf("run watch without --exit-status: %+v", result)
 	}
 	if logs := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout; !strings.Contains(logs, "lyra: the job couldn't start: secret KEY:") {
 		test.Fatalf("log of a job that couldn't start:\n%s", logs)

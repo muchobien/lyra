@@ -21,7 +21,7 @@ func (app *app) runCommand() *cobra.Command {
 		app.runListCommand(),
 		app.runViewCommand(),
 		app.runLogsCommand(),
-		app.runWaitCommand(),
+		app.runWatchCommand(),
 		app.runCancelCommand(),
 		app.runRerunCommand(),
 	)...)
@@ -148,18 +148,22 @@ func (app *app) copyJobLogs(cmd *cobra.Command, repo string, number, job int64, 
 	}
 }
 
-func (app *app) runWaitCommand() *cobra.Command {
+func (app *app) runWatchCommand() *cobra.Command {
 	var timeout time.Duration
-	wait := &cobra.Command{
-		Use:   "wait <number>",
-		Short: "Wait for a run to finish; exit 0 if it succeeded, 1 if not, 3 on timeout",
-		Args:  ExactArgs(1),
+	var exitStatus bool
+	watch := &cobra.Command{
+		Use:   "watch <number>",
+		Short: "Wait for a run to finish and print it",
+		Long: `Wait for a run to finish and print it. With --exit-status, exit 1 if it didn't succeed.
+It exits 3 when --timeout passes.`,
+		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.waitForRun(cmd, args, timeout)
+			return app.waitForRun(cmd, args, timeout, exitStatus)
 		},
 	}
-	wait.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: no limit)")
-	return wait
+	watch.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: no limit)")
+	watch.Flags().BoolVar(&exitStatus, "exit-status", false, "exit 1 if the run didn't succeed")
+	return watch
 }
 
 func (app *app) latestEvent(cmd *cobra.Command, repo string) (string, error) {
@@ -175,7 +179,7 @@ func (app *app) latestEvent(cmd *cobra.Command, repo string) (string, error) {
 	return "0", nil
 }
 
-func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Duration) error {
+func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Duration, exitStatus bool) error {
 	number, err := parseNumber(args[1])
 	if err != nil {
 		return err
@@ -194,7 +198,7 @@ func (app *app) waitForRun(cmd *cobra.Command, args []string, timeout time.Durat
 			if err := app.emit(cmd, output); err != nil {
 				return err
 			}
-			if info.Status != "success" {
+			if exitStatus && info.Status != "success" {
 				return fmt.Errorf("run #%d finished: %s", info.Number, info.Status)
 			}
 			return nil
