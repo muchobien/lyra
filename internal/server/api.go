@@ -171,7 +171,11 @@ func (s *Server) handleDeleteRepo(r *http.Request, input *RepoPath) (*body[delet
 	if err := os.RemoveAll(s.repoDir(repo.Name)); err != nil {
 		return nil, err
 	}
-	for _, prefix := range []string{releasesPath(repo.Name), registryRepositories + repo.Name} {
+	for _, prefix := range []string{
+		releasesPath(repo.Name),
+		attachmentsPath(repo.Name),
+		registryRepositories + repo.Name,
+	} {
 		err := s.storage.Delete(ctx, prefix)
 		if _, absent := errors.AsType[driver.PathNotFoundError](err); err != nil && !absent {
 			return nil, err

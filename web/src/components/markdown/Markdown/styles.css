@@ -29,7 +29,8 @@
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  & img {
+  & img,
+  & video {
     max-width: 100%;
     height: auto;
   }

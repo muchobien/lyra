@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+type Attachment struct {
+	ID          int64     `json:"id"`
+	Repo        string    `json:"repo"`
+	Name        string    `json:"name"`
+	Object      string    `json:"object"`
+	Size        int64     `json:"size"`
+	Sha256      string    `json:"sha256"`
+	ContentType string    `json:"content_type"`
+	User        string    `json:"user"`
+	Via         string    `json:"via"`
+	Agent       string    `json:"agent"`
+	Session     string    `json:"session"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type BranchRule struct {
 	ID              int64     `json:"id"`
 	Repo            string    `json:"repo"`

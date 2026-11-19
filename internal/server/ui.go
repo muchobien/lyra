@@ -2,9 +2,12 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
+	"path"
+	"slices"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -13,7 +16,13 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
+	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
+	goldmarktext "github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 
 	"github.com/muchobien/lyra/internal/store"
 	"github.com/muchobien/lyra/internal/webui"
@@ -22,7 +31,64 @@ import (
 var markdown = goldmark.New(goldmark.WithExtensions(
 	extension.GFM,
 	highlighting.NewHighlighting(highlighting.WithFormatOptions(chromahtml.WithClasses(true))),
+	videos{},
 ))
+
+var kindVideo = ast.NewNodeKind("Video")
+
+type video struct {
+	ast.BaseInline
+	destination []byte
+}
+
+func (node *video) Kind() ast.NodeKind {
+	return kindVideo
+}
+
+func (node *video) Dump(source []byte, level int) {
+	ast.DumpHelper(node, source, level, map[string]string{"Destination": string(node.destination)}, nil)
+}
+
+type videos struct{}
+
+func (extension videos) Extend(md goldmark.Markdown) {
+	md.Parser().AddOptions(parser.WithASTTransformers(util.Prioritized(extension, 999)))
+	md.Renderer().AddOptions(renderer.WithNodeRenderers(util.Prioritized(extension, 999)))
+}
+
+func (videos) Transform(document *ast.Document, _ goldmarktext.Reader, _ parser.Context) {
+	found := []*ast.Image{}
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if image, isImage := node.(*ast.Image); entering && isImage {
+			address, err := url.Parse(string(image.Destination))
+			extension := ""
+			if err == nil {
+				extension = strings.ToLower(path.Ext(address.Path))
+			}
+			if slices.Contains([]string{".mp4", ".webm", ".mov"}, extension) {
+				found = append(found, image)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	for _, image := range found {
+		image.Parent().ReplaceChild(image.Parent(), image, &video{destination: image.Destination})
+	}
+}
+
+func (extension videos) RegisterFuncs(registry renderer.NodeRendererFuncRegisterer) {
+	registry.Register(kindVideo, extension.render)
+}
+
+func (videos) render(writer util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	destination := node.(*video).destination
+	if !entering || goldmarkhtml.IsDangerousURL(destination) {
+		return ast.WalkSkipChildren, nil
+	}
+	escaped := util.EscapeHTML(util.URLEscape(destination, true))
+	_, err := fmt.Fprintf(writer, `<video controls src="%s"></video>`, escaped)
+	return ast.WalkSkipChildren, err
+}
 
 var codeFormatter = chromahtml.New(
 	chromahtml.WithClasses(true),

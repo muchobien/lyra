@@ -235,6 +235,14 @@ SELECT * FROM release_assets WHERE release_id = ? ORDER BY name;
 -- name: DeleteAsset :execrows
 DELETE FROM release_assets WHERE id = ?;
 
+-- name: CreateAttachment :one
+INSERT INTO attachments (repo, name, object, size, sha256, content_type, user, via, agent, session, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetAttachment :one
+SELECT * FROM attachments WHERE repo = ? AND id = ?;
+
 -- name: SetImageTag :one
 INSERT INTO images (repo, name, tag, digest, media_type, user, via, agent, session, pushed_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -400,6 +408,9 @@ DELETE FROM variables WHERE repo = ? AND name = ?;
 SELECT releases.repo, releases.tag, release_assets.name, release_assets.object, release_assets.size, release_assets.sha256
 FROM release_assets JOIN releases ON releases.id = release_assets.release_id
 ORDER BY releases.repo, releases.tag, release_assets.name;
+
+-- name: ListAllAttachments :many
+SELECT * FROM attachments ORDER BY repo, id;
 
 -- name: ListLogObjects :many
 SELECT runs.repo, tasks.id, tasks.log_object

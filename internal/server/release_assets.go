@@ -98,26 +98,26 @@ func (s *Server) deleteObject(ctx context.Context, repo string, asset store.Asse
 	}
 }
 
-func (s *Server) storeObject(ctx context.Context, repo string, asset *store.Asset, content io.Reader) error {
-	writer, err := s.storage.Writer(ctx, assetPath(repo, *asset), false)
+func (s *Server) storeObject(ctx context.Context, path string, content io.Reader) (int64, string, error) {
+	writer, err := s.storage.Writer(ctx, path, false)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	hash := sha256.New()
-	if asset.Size, err = io.Copy(io.MultiWriter(writer, hash), content); err != nil {
+	size, err := io.Copy(io.MultiWriter(writer, hash), content)
+	if err != nil {
 		writer.Cancel(ctx)
 		writer.Close()
-		return badRequest("upload: " + err.Error())
+		return 0, "", badRequest("upload: " + err.Error())
 	}
 	if err := writer.Commit(ctx); err != nil {
 		writer.Close()
-		return err
+		return 0, "", err
 	}
 	if err := writer.Close(); err != nil {
-		return err
+		return 0, "", err
 	}
-	asset.SHA256 = hex.EncodeToString(hash.Sum(nil))
-	return nil
+	return size, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, input *uploadAssetInput) error {
@@ -135,7 +135,7 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, input
 		contentType = "application/octet-stream"
 	}
 	asset := store.Asset{Name: name, ContentType: contentType, Object: randomHex(16)}
-	if err := s.storeObject(ctx, repo.Name, &asset, r.Body); err != nil {
+	if asset.Size, asset.SHA256, err = s.storeObject(ctx, assetPath(repo.Name, asset), r.Body); err != nil {
 		return err
 	}
 	created, replaced, eventID, err := s.store.AddAsset(ctx, identityFrom(r).actor, release, asset, input.Clobber)

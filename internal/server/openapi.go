@@ -401,6 +401,28 @@ func (s *Server) registerReleaseFiles(api huma.API) {
 		Parameters: pathParams("owner", "repo", "name"), Responses: file,
 	})
 	register(api, huma.Operation{
+		OperationID: "uploadAttachment", Method: http.MethodPost, Path: "/api/repos/{owner}/{repo}/attachments",
+		Tags: []string{"Attachments"}, DefaultStatus: http.StatusCreated, Summary: "Upload an image or video",
+		Description: "Scope: write. The request body is the file: a PNG, JPEG, GIF, WebP or AVIF image, " +
+			"or an MP4, WebM or QuickTime video, with that Content-Type. Link the returned url from Markdown " +
+			"as ![alt](url); a video renders as a player.",
+		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
+			"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+		}},
+		Responses: map[string]*huma.Response{"201": {
+			Description: "Created",
+			Content: map[string]*huma.MediaType{"application/json": {
+				Schema: api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[store.Attachment](), true, ""),
+			}},
+		}},
+	}, stream[uploadAttachmentInput](s.handleUploadAttachment))
+	api.OpenAPI().AddOperation(&huma.Operation{
+		OperationID: "downloadAttachment", Method: http.MethodGet,
+		Path: "/{owner}/{repo}/attachments/{id}/{name}", Tags: []string{"Attachments"},
+		Summary: "Download an attachment", Description: "Scope: read. Supports range requests.",
+		Parameters: pathParams("owner", "repo", "id", "name"), Responses: file,
+	})
+	register(api, huma.Operation{
 		OperationID: "listImages", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/images",
 		Tags: []string{"Images"}, Summary: "List container image tags",
 		Description: "Scope: read. Images are pushed and pulled through the OCI distribution API at /v2/.",
