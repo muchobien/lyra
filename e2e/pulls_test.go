@@ -92,6 +92,9 @@ func TestPulls(test *testing.T) {
 	if result := inSource("pr", "view", "stale"); result.code != 1 || !strings.Contains(result.stderr, "no open pull request in acme/demo has head stale") {
 		test.Errorf("pr view for a branch without one: %+v", result)
 	}
+	if result := inSource("pr", "diff", "--json", "number"); result.code != 2 || !strings.Contains(result.stderr, "doesn't print JSON") {
+		test.Errorf("pr diff --json: %+v", result)
+	}
 	if result := inSource("pr", "view", "1", "2"); result.code != 2 {
 		test.Errorf("pr view with two arguments: %+v", result)
 	}

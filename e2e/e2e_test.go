@@ -424,6 +424,15 @@ func TestCLI(test *testing.T) {
 	if result := runLyra(test, srv, token, "repo", "list", "--jq", ".[].name"); result.stdout != "acme/demo\nbeta/tool\n" {
 		test.Errorf("--jq output %q", result.stdout)
 	}
+	if result := runLyra(test, srv, token, "repo", "list", "--json", "name"); compactJSON(test, []byte(result.stdout)) != `[{"name":"acme/demo"},{"name":"beta/tool"}]` {
+		test.Errorf("repo list --json name: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "owner", "view", "acme", "--json", "name,description", "-q", ".description"); result.stdout != "Owner acme\n" {
+		test.Errorf("owner view --json with -q: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "owner", "view", "acme", "--json", "nope"); result.code != 2 || !strings.Contains(result.stderr, "unknown field nope; available fields: ") || !strings.Contains(result.stderr, "description") {
+		test.Errorf("owner view --json nope: %+v", result)
+	}
 	if result := runLyra(test, srv, token, "me", "--jq", ".actor.via"); result.stdout != "token:admin\n" {
 		test.Errorf("me via %q", result.stdout)
 	}

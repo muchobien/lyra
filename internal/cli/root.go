@@ -7,6 +7,7 @@ import (
 type app struct {
 	client *client
 	jq     string
+	fields []string
 }
 
 func Root() *cobra.Command {
@@ -15,6 +16,7 @@ func Root() *cobra.Command {
 		Use:   "lyra",
 		Short: "Client for the Lyra forge",
 		Long: `Client for the Lyra forge. Output is JSON on stdout; errors are {"error": "..."} on stderr.
+--json picks fields from it and --jq filters it, --jq last.
 
 Environment:
   LYRA_URL      server URL (required)
@@ -37,7 +39,13 @@ LYRA_REPO, then the git remote of the working directory that points at the Lyra 
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	root.PersistentFlags().StringVar(&app.jq, "jq", "", "filter JSON output with a jq expression")
+	root.PersistentFlags().StringVarP(&app.jq, "jq", "q", "", "filter JSON output with a jq expression")
+	root.PersistentFlags().StringSliceVar(
+		&app.fields,
+		"json",
+		nil,
+		"keep only these comma-separated fields of the JSON output, or of each element of a list",
+	)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return UsageError{err}
 	})
