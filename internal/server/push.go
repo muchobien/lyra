@@ -168,6 +168,46 @@ func (work push) mergePulls(ctx context.Context, defaultBranch string) ([]string
 	return messages, nil
 }
 
+func (work push) checkConflicts(ctx context.Context) ([]string, error) {
+	messages := []string{}
+	tips := work.branchTips()
+	open, err := work.db.Pulls(ctx, work.repo, stateOpen)
+	if err != nil {
+		return messages, err
+	}
+	for _, pull := range open {
+		touched := slices.ContainsFunc(tips, func(tip branchUpdate) bool {
+			return tip.branch == pull.Head || tip.branch == pull.Base
+		})
+		if !touched {
+			continue
+		}
+		headSHA, headErr := work.git.ResolveCommit(ctx, work.dir, "refs/heads/"+pull.Head)
+		baseSHA, baseErr := work.git.ResolveCommit(ctx, work.dir, "refs/heads/"+pull.Base)
+		if headErr != nil || baseErr != nil {
+			continue
+		}
+		_, conflicts, err := work.git.MergeTree(ctx, work.dir, baseSHA, headSHA)
+		if err != nil {
+			return messages, err
+		}
+		err = work.db.SetPullConflicts(ctx, work.repo, pull.Number, work.actor, headSHA, baseSHA, conflicts)
+		if err != nil {
+			return messages, err
+		}
+		if len(conflicts) > 0 && !pull.Conflicted {
+			message := fmt.Sprintf(
+				"pull request #%d conflicts with %s in %s",
+				pull.Number,
+				pull.Base,
+				strings.Join(conflicts, ", "),
+			)
+			messages = append(messages, message)
+		}
+	}
+	return messages, nil
+}
+
 func (work push) closeFromCommits(ctx context.Context, defaultBranch string) ([]string, error) {
 	messages := []string{}
 	for _, update := range work.updates {
@@ -211,6 +251,11 @@ func ProcessPush(
 	}
 	merged, err := work.mergePulls(ctx, defaultBranch)
 	messages = append(messages, merged...)
+	if err != nil {
+		return messages, err
+	}
+	conflicted, err := work.checkConflicts(ctx)
+	messages = append(messages, conflicted...)
 	if err != nil {
 		return messages, err
 	}

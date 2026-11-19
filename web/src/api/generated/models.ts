@@ -401,6 +401,8 @@ export interface Pull {
   /** @nullable */
   closed_at: string | null;
   comment_count: number;
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   head: string;
   head_sha: string;
@@ -485,6 +487,8 @@ export interface PullWrite {
   /** @nullable */
   closed_at: string | null;
   comment_count: number;
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   event_id?: number;
   head: string;
@@ -522,6 +526,8 @@ export interface PullView {
   closed_at: string | null;
   comment_count: number;
   comments: Comment[];
+  /** Head and base conflicted after the last push to either. */
+  conflicted: boolean;
   created_at: string;
   head: string;
   head_sha: string;

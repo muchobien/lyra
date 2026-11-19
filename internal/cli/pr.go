@@ -38,8 +38,8 @@ func (app *app) prCommand() *cobra.Command {
 		target:         "[<number> | <branch>]",
 		states:         "open, closed, merged or all",
 		prefix:         "pr.",
-		actions:        append([]string{"review", "checks", "merged", "push"}, itemActions...),
-		defaultActions: []string{"review", "comment", "checks", "merged", "closed"},
+		actions:        append([]string{"review", "checks", "merged", "push", "conflicted"}, itemActions...),
+		defaultActions: []string{"review", "comment", "checks", "merged", "closed", "conflicted"},
 	})
 	pr.Long = `Manage pull requests.
 

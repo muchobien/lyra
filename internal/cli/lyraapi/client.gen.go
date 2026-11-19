@@ -688,18 +688,21 @@ type Pull struct {
 	Body         string     `json:"body"`
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // PullPatch defines model for PullPatch.
@@ -719,21 +722,24 @@ type PullView struct {
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
 	Comments     []Comment  `json:"comments"`
-	CreatedAt    time.Time  `json:"created_at"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	Merge        *MergePlan `json:"merge,omitempty"`
-	MergeError   *string    `json:"merge_error,omitempty"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	Reviews      []Review   `json:"reviews"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	Merge      *MergePlan `json:"merge,omitempty"`
+	MergeError *string    `json:"merge_error,omitempty"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	Reviews    []Review   `json:"reviews"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // PullWrite defines model for PullWrite.
@@ -746,19 +752,22 @@ type PullWrite struct {
 	Body         string     `json:"body"`
 	ClosedAt     *time.Time `json:"closed_at"`
 	CommentCount int64      `json:"comment_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	EventId      *int64     `json:"event_id,omitempty"`
-	Head         string     `json:"head"`
-	HeadSha      string     `json:"head_sha"`
-	Kind         string     `json:"kind"`
-	Labels       []string   `json:"labels"`
-	MergeSha     *string    `json:"merge_sha,omitempty"`
-	MergedAt     *time.Time `json:"merged_at"`
-	Number       int64      `json:"number"`
-	Repo         string     `json:"repo"`
-	State        string     `json:"state"`
-	Title        string     `json:"title"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Conflicted Head and base conflicted after the last push to either.
+	Conflicted bool       `json:"conflicted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	EventId    *int64     `json:"event_id,omitempty"`
+	Head       string     `json:"head"`
+	HeadSha    string     `json:"head_sha"`
+	Kind       string     `json:"kind"`
+	Labels     []string   `json:"labels"`
+	MergeSha   *string    `json:"merge_sha,omitempty"`
+	MergedAt   *time.Time `json:"merged_at"`
+	Number     int64      `json:"number"`
+	Repo       string     `json:"repo"`
+	State      string     `json:"state"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // ReadOnlyRequest defines model for ReadOnlyRequest.

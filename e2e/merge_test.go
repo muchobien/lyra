@@ -172,10 +172,33 @@ func TestMerge(test *testing.T) {
 	push("ui")
 	mustGit(test, src, "switch", "-q", "--detach", fastHead)
 	push("HEAD:refs/heads/main")
-	commitAs("Test Agent <agent@example.com>", "shared.txt", "main\n", "Change shared on main")
-	push("HEAD:refs/heads/main")
 	lyraJSON(test, srv, token, &pullResult{}, "pr", "create", "-R", "acme/demo", "--head", "clash", "--title", "Clashing change")
-	if plan := view("4").Merge; plan == nil || fmt.Sprint(plan.Conflicts) != "[shared.txt]" {
+	if clean := view("4"); clean.Conflicted {
+		test.Errorf("pr #4 before main conflicts = %+v", clean)
+	}
+	cursor := strings.TrimSpace(runLyra(test, srv, token, "event", "list", "--limit", "1", "--jq", ".[0].id").stdout)
+	commitAs("Test Agent <agent@example.com>", "shared.txt", "main\n", "Change shared on main")
+	if output := mustGit(test, src, "-c", auth, "push", remote, "HEAD:refs/heads/main"); !strings.Contains(output, "lyra: pull request #4 conflicts with main in shared.txt") {
+		test.Errorf("push that makes #4 conflict printed:\n%s", output)
+	}
+	var conflicted store.Event
+	lyraJSON(test, srv, token, &conflicted, "event", "wait", "--since", cursor, "--action", "pr.conflicted", "--timeout", "5")
+	if conflicted.Item != 4 || !strings.Contains(compactJSON(test, conflicted.Data), `"conflicts":["shared.txt"]`) {
+		test.Errorf("pr.conflicted = %+v %s", conflicted, conflicted.Data)
+	}
+	conflictingMain := remoteSHA("refs/heads/main")
+	mustGit(test, src, "switch", "-q", "clash")
+	commitAs("Test Agent <agent@example.com>", "extra.txt", "extra\n", "Still clashing")
+	push("clash")
+	mustGit(test, src, "switch", "-q", "--detach", conflictingMain)
+	countConflicts := `map(select(.action == "pr.conflicted")) | length`
+	if count := runLyra(test, srv, token, "event", "list", "--repo", "acme/demo", "--jq", countConflicts).stdout; count != "1\n" {
+		test.Errorf("pr.conflicted events after a second push that still conflicts: %s", count)
+	}
+	if result := runLyra(test, srv, token, "pr", "wait", "-R", "acme/demo", "4", "--for", "conflicted", "--timeout", "5", "--jq", ".action"); result.stdout != "pr.conflicted\n" {
+		test.Errorf("pr wait --for conflicted: %+v", result)
+	}
+	if plan := view("4"); !plan.Conflicted || plan.Merge == nil || fmt.Sprint(plan.Merge.Conflicts) != "[shared.txt]" {
 		test.Errorf("merge plan for #4 = %+v", plan)
 	}
 	if result := merge("4", "--squash"); result.code != 1 || !strings.Contains(result.stderr, "conflicts in shared.txt") {
