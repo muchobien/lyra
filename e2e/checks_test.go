@@ -99,6 +99,9 @@ func TestPullChecks(test *testing.T) {
 	commitFile(test, src, "fail.txt", "fail\n", "Break the check")
 	push("feature")
 	opened := pr("create", "acme/demo", "--head", "feature", "--title", "Feature")
+	if result := runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "1"); !strings.Contains(result.stderr, "lyra pr checks 1 -R acme/demo --watch") {
+		test.Fatalf("pr view hint: %+v", result)
+	}
 	if strings.Join(opened.Actions, "|") != "queued run #1 (PR)|queued run #2 (PR slow)" {
 		test.Fatalf("pr create actions: %v", opened.Actions)
 	}

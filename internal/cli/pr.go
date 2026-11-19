@@ -55,6 +55,17 @@ either, they act on the open pull request whose head is the current git branch.`
 	return pr
 }
 
+func printWaitHint(cmd *cobra.Command, repo string, number int64) {
+	fmt.Fprintf(cmd.ErrOrStderr(), `hint: to wait for this pull request instead of polling, run one of:
+    lyra pr wait %[2]d -R %[1]s --timeout 30m
+    lyra pr checks %[2]d -R %[1]s --watch
+  - pr wait prints the next review, comment, merge or close by someone else as JSON and exits;
+    run it again for the one after. It returns at once for replies that came since you last acted.
+  - pr checks --watch exits 0 when the checks pass and 1 when one fails.
+  - Both exit 8 when --timeout passes.
+`, repo, number)
+}
+
 func (app *app) pullNumber(cmd *cobra.Command, args []string) (int64, error) {
 	var branch string
 	if len(args) > 1 {

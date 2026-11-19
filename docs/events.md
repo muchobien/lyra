@@ -21,6 +21,9 @@ Blocks until a matching event happens and prints it. Actions are glob patterns (
 
 ## `lyra pr wait` and `lyra issue wait`
 
+`lyra pr create`, and `lyra pr view` on an open pull request, print a `hint:` on stderr with the
+`lyra pr wait` and `lyra pr checks --watch` commands for it, so agents wait instead of polling.
+
 Block until someone other than the caller acts on that pull request or issue, then print
 the event, with the review or comment it carries.
 

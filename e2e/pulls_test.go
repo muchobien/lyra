@@ -89,6 +89,9 @@ func TestPulls(test *testing.T) {
 			test.Errorf("lyra %s on feature: %+v", strings.Join(args, " "), result)
 		}
 	}
+	if result := inSource("pr", "view"); !strings.HasPrefix(result.stderr, "hint: to wait for this pull request") || !strings.Contains(result.stderr, "lyra pr wait 2 -R acme/demo --timeout 30m") || !strings.HasPrefix(result.stdout, "{") {
+		test.Errorf("pr view hint: %+v", result)
+	}
 	if result := inSource("pr", "view", "stale"); result.code != 1 || !strings.Contains(result.stderr, "no open pull request in acme/demo has head stale") {
 		test.Errorf("pr view for a branch without one: %+v", result)
 	}
@@ -171,6 +174,9 @@ func TestPulls(test *testing.T) {
 	merged := pr("view", "acme/demo", "2")
 	if merged.State != "merged" || merged.MergeSHA != newHead || merged.MergedAt == nil || merged.ClosedAt == nil || merged.BaseSHA != mainSHA || len(merged.Comments) != 1 {
 		test.Errorf("merged pr = %+v", merged)
+	}
+	if result := runLyra(test, srv, token, "pr", "view", "-R", "acme/demo", "2"); result.stderr != "" {
+		test.Errorf("pr view of a merged pull request printed a hint: %s", result.stderr)
 	}
 	if state := issueState("1"); state != "closed\n" {
 		test.Errorf("issue 1 after merging a PR with Fixes #1: %q", state)

@@ -111,7 +111,15 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 				Labels:    &labels,
 				Assignees: &assignees,
 			}
-			return app.show(cmd)(app.client.api.CreatePull(cmd.Context(), owner, repo, body))
+			created, output, err := decode[lyraapi.Pull](app.client.api.CreatePull(cmd.Context(), owner, repo, body))
+			if err != nil {
+				return err
+			}
+			if err := app.emit(cmd, output); err != nil {
+				return err
+			}
+			printWaitHint(cmd, args[0], created.Number)
+			return nil
 		},
 	}
 	flags := create.Flags()
@@ -181,7 +189,18 @@ func (app *app) itemViewCommand(kind itemKind) *cobra.Command {
 			}
 			owner, repo := splitRepo(args[0])
 			if kind.isPull() {
-				return app.show(cmd)(app.client.api.GetPull(cmd.Context(), owner, repo, number))
+				response, err := app.client.api.GetPull(cmd.Context(), owner, repo, number)
+				pull, output, err := decode[lyraapi.PullView](response, err)
+				if err != nil {
+					return err
+				}
+				if err := app.emit(cmd, output); err != nil {
+					return err
+				}
+				if pull.State == "open" {
+					printWaitHint(cmd, args[0], number)
+				}
+				return nil
 			}
 			return app.show(cmd)(app.client.api.GetIssue(cmd.Context(), owner, repo, number))
 		},
