@@ -49,7 +49,10 @@ func (app *app) eventWaitCommand() *cobra.Command {
 Without --since, only events after the command starts match. Pass the id of an
 event you have already seen as --since to also match anything that happened
 since then. The command reconnects if the connection drops, without missing
-events. It exits 3 with {"error":"timeout"} when --timeout passes.
+events. It exits 8 with {"error":"timeout"} when --timeout passes.
+
+It exits after the first event. --count N prints N events and --follow keeps printing
+until stopped, one JSON object per line.
 
 --assignee me waits until an issue or pull request is assigned to you (your
 LYRA_AGENT name, or your login without one): a work queue. Check
@@ -76,7 +79,9 @@ lyra issue list --assignee @me first for work assigned before you started waitin
 	)
 	flags.StringVar(&assignee, "assignee", "", "only assignments to this login or agent name, or me")
 	flags.Int64("since", 0, "match events after this event id (default: from now)")
-	flags.DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
+	addTimeoutFlag(wait, &timeout)
+	flags.Int("count", 1, "print this many events before exiting")
+	flags.Bool("follow", false, "keep printing events until stopped")
 	return wait
 }
 
@@ -90,13 +95,28 @@ func (app *app) waitAndEmit(cmd *cobra.Command, params lyraapi.StreamEventsParam
 		value := fmt.Sprint(since)
 		params.Since = &value
 	}
-	output, err := app.client.waitForEvent(cmd.Context(), params, timeout)
-	if err != nil {
-		return err
+	count, _ := flags.GetInt("count")
+	follow, _ := flags.GetBool("follow")
+	if follow && flags.Changed("count") {
+		return UsageError{errors.New("pass --count or --follow, not both")}
 	}
-	event := jsontext.Value(output)
-	if err := event.Indent(jsontext.WithIndent("  ")); err != nil {
-		return err
+	if count < 1 {
+		return UsageError{errors.New("--count must be at least 1")}
 	}
-	return app.emit(cmd, append(event, '\n'))
+	printed := 0
+	return app.client.streamEvents(cmd.Context(), params, timeout, func(data []byte) (bool, error) {
+		event := jsontext.Value(data)
+		err := event.Indent(jsontext.WithIndent("  "))
+		if follow || count > 1 {
+			err = event.Compact()
+		}
+		if err != nil {
+			return false, err
+		}
+		if err := app.emit(cmd, append(event, '\n')); err != nil {
+			return false, err
+		}
+		printed++
+		return !follow && printed >= count, nil
+	})
 }

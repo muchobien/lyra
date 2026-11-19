@@ -100,7 +100,10 @@ func TestWait(test *testing.T) {
 		args []string
 		code int
 	}{
-		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--timeout", "1s"}, 3},
+		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--timeout", "1"}, 8},
+		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--count", "2", "--follow"}, 2},
+		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--count", "0"}, 2},
+		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--timeout", "soon"}, 2},
 		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--for", "bogus"}, 2},
 		{[]string{"issue", "wait", "-R", "acme/demo", "1", "--for", "review"}, 2},
 		{[]string{"issue", "wait", "-R", "acme/demo"}, 2},

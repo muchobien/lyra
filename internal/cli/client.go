@@ -33,6 +33,8 @@ var (
 	ErrPending = errors.New("pending")
 )
 
+const streamIdle = 75 * time.Second
+
 type client struct {
 	api       *lyraapi.Client
 	streaming *lyraapi.Client
@@ -252,11 +254,12 @@ func responseError(response *http.Response) error {
 	return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(data)))
 }
 
-func (client *client) waitForEvent(
+func (client *client) streamEvents(
 	ctx context.Context,
 	params lyraapi.StreamEventsParams,
 	timeout time.Duration,
-) ([]byte, error) {
+	handle func([]byte) (bool, error),
+) error {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -275,24 +278,39 @@ func (client *client) waitForEvent(
 		if err == nil {
 			if response.StatusCode >= 400 && response.StatusCode < 500 {
 				defer response.Body.Close()
-				return nil, responseError(response)
+				return responseError(response)
 			}
-			var data []byte
-			data, lastID = readEvent(response, lastID)
+			var done bool
+			lastID, done, err = readEvents(response, lastID, handle)
 			response.Body.Close()
-			if len(data) > 0 {
-				return data, nil
+			if err != nil || done {
+				return err
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ErrTimeout
+			return ErrTimeout
 		case <-time.After(time.Second):
 		}
 	}
 }
 
-func readEvent(response *http.Response, lastID string) ([]byte, string) {
+func (client *client) waitForEvent(
+	ctx context.Context,
+	params lyraapi.StreamEventsParams,
+	timeout time.Duration,
+) ([]byte, error) {
+	var event []byte
+	err := client.streamEvents(ctx, params, timeout, func(data []byte) (bool, error) {
+		event = data
+		return true, nil
+	})
+	return event, err
+}
+
+func readEvents(response *http.Response, lastID string, handle func([]byte) (bool, error)) (string, bool, error) {
+	idle := time.AfterFunc(streamIdle, func() { response.Body.Close() })
+	defer idle.Stop()
 	reader := bufio.NewReader(response.Body)
 	data := []byte{}
 	for response.StatusCode == http.StatusOK {
@@ -300,16 +318,21 @@ func readEvent(response *http.Response, lastID string) ([]byte, string) {
 		if err != nil {
 			break
 		}
+		idle.Reset(streamIdle)
 		line = strings.TrimRight(line, "\r\n")
 		if value, found := strings.CutPrefix(line, "id:"); found {
 			lastID = strings.TrimSpace(value)
 		} else if value, found := strings.CutPrefix(line, "data:"); found {
 			data = append(data, strings.TrimPrefix(value, " ")...)
 		} else if line == "" && len(data) > 0 {
-			return data, lastID
+			done, err := handle(data)
+			if err != nil || done {
+				return lastID, done, err
+			}
+			data = []byte{}
 		}
 	}
-	return nil, lastID
+	return lastID, false, nil
 }
 
 func (client *client) uploadAsset(

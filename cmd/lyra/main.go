@@ -104,10 +104,7 @@ func main() {
 		if errors.As(err, &usage) {
 			os.Exit(2)
 		}
-		if errors.Is(err, cli.ErrTimeout) {
-			os.Exit(3)
-		}
-		if errors.Is(err, cli.ErrPending) {
+		if errors.Is(err, cli.ErrTimeout) || errors.Is(err, cli.ErrPending) {
 			os.Exit(8)
 		}
 		os.Exit(1)

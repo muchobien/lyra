@@ -316,7 +316,8 @@ the wait starts after your own last action on the ` + kind.noun + `, or after th
 wait already returned to you, whichever is later: a reply that arrived since you
 last acted returns at once, and waiting again doesn't return it twice. With --since
 ID it starts after that event instead. It reconnects if the connection drops, and
-exits 3 with {"error":"timeout"} when --timeout passes.
+exits 8 with {"error":"timeout"} when --timeout passes. --count N prints N events and
+--follow keeps printing until stopped, one JSON object per line.
 
 With --for checks, a pull request whose head has no Actions runs at all returns at once
 with state none.
@@ -331,7 +332,9 @@ with state none.
 	flags := wait.Flags()
 	flags.StringSliceVar(&chosen, "for", nil, "actions to wait for, comma-separated or repeated")
 	flags.Int64("since", 0, "start after this event id (default: after your last action on it)")
-	flags.DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: wait forever)")
+	addTimeoutFlag(wait, &timeout)
+	flags.Int("count", 1, "print this many events before exiting")
+	flags.Bool("follow", false, "keep printing events until stopped")
 	return wait
 }
 

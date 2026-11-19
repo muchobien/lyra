@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -68,7 +69,13 @@ func project(output []byte, fields []string) ([]byte, error) {
 			typed[index] = picked
 		}
 	}
-	encoded, err := json.Marshal(value, escaped, json.Deterministic(true), jsontext.WithIndent("  "))
+	encoded, err := json.Marshal(value, escaped, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Contains(bytes.TrimSpace(output), []byte("\n")) {
+		err = (*jsontext.Value)(&encoded).Indent(jsontext.WithIndent("  "))
+	}
 	return append(encoded, '\n'), err
 }
 

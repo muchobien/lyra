@@ -850,7 +850,15 @@ func TestEvents(test *testing.T) {
 	if result := runLyra(test, srv, token, "event", "wait", "--since", cursor, "--action", "repo.*", "--timeout", "5s", "--jq", ".repo"); result.stdout != "acme/third\n" {
 		test.Errorf("wait for repo.* = %q %s", result.stdout, result.stderr)
 	}
-	if result := runLyra(test, srv, token, "event", "wait", "--action", "repo.*", "--timeout", "1s"); result.code != 3 || strings.TrimSpace(result.stderr) != `{"error":"timeout"}` {
+	counted := runLyra(test, srv, token, "event", "wait", "--since", "0", "--count", "2", "--json", "id,action")
+	if lines := strings.Split(strings.TrimSpace(counted.stdout), "\n"); counted.code != 0 || len(lines) != 2 || !strings.HasPrefix(lines[0], `{"action":"`) || !strings.HasSuffix(lines[1], "}") {
+		test.Errorf("wait --count 2: %+v", counted)
+	}
+	followed := runLyra(test, srv, token, "event", "wait", "--since", "0", "--follow", "--timeout", "2", "--jq", ".id")
+	if lines := strings.Fields(followed.stdout); followed.code != 8 || len(lines) < 3 || lines[0] != "1" || lines[1] != "2" {
+		test.Errorf("wait --follow until the timeout: %+v", followed)
+	}
+	if result := runLyra(test, srv, token, "event", "wait", "--action", "repo.*", "--timeout", "1s"); result.code != 8 || strings.TrimSpace(result.stderr) != `{"error":"timeout"}` {
 		test.Errorf("wait without --since matched an earlier event: exit %d stdout %s stderr %s", result.code, result.stdout, result.stderr)
 	}
 

@@ -10,7 +10,11 @@ Blocks until a matching event happens and prints it. Actions are glob patterns (
 - Without `--since`, it waits for events after it starts. With `--since ID`, it also returns
   events since that one, so an agent that saved the id of the last event it saw can't miss
   one that happened in between.
-- It reconnects on its own if the server restarts.
+- It reconnects on its own if the server restarts, or when the stream stays silent for 75
+  seconds, past the server's 25-second keepalive.
+- It exits after the first event. `--count N` prints N events and `--follow` keeps printing
+  until stopped, one JSON object per line. `--timeout` (seconds, or a duration such as `30m`)
+  exits 8, the code `gh event listen` uses.
 - `--assignee me` returns when an issue or pull request is assigned to the caller (the agent
   name, or the login without one). This is a work queue; check
   `lyra issue list --assignee @me` first for work assigned earlier.

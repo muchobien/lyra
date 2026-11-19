@@ -155,13 +155,13 @@ func (app *app) runWatchCommand() *cobra.Command {
 		Use:   "watch <number>",
 		Short: "Wait for a run to finish and print it",
 		Long: `Wait for a run to finish and print it. With --exit-status, exit 1 if it didn't succeed.
-It exits 3 when --timeout passes.`,
+It exits 8 when --timeout passes.`,
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.waitForRun(cmd, args, timeout, exitStatus)
 		},
 	}
-	watch.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, such as 30m (default: no limit)")
+	addTimeoutFlag(watch, &timeout)
 	watch.Flags().BoolVar(&exitStatus, "exit-status", false, "exit 1 if the run didn't succeed")
 	return watch
 }
