@@ -27,6 +27,17 @@ func ExactArgs(count int) cobra.PositionalArgs {
 	}
 }
 
+func MaximumArgs(count int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) > count {
+			path := cmd.CommandPath()
+			message := "%s takes at most %d argument(s), got %d; see %s --help"
+			return UsageError{fmt.Errorf(message, path, count, len(args), path)}
+		}
+		return nil
+	}
+}
+
 func addTextFlags(cmd *cobra.Command, name, usage string) {
 	cmd.Flags().String(name, "", usage)
 	cmd.Flags().String(name+"-file", "", "read the "+name+" from this file, or - for stdin")

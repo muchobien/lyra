@@ -1288,6 +1288,12 @@ type ListIssuesParams struct {
 
 	// Q Search the title or an exact issue/pull request number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Head Pull requests from this branch; ignored for issues.
+	Head *string `form:"head,omitempty" json:"head,omitempty"`
+
+	// Base Pull requests into this branch; ignored for issues.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
 }
 
 // ListPullsParams defines parameters for ListPulls.
@@ -1306,6 +1312,12 @@ type ListPullsParams struct {
 
 	// Q Search the title or an exact issue/pull request number.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Head Pull requests from this branch; ignored for issues.
+	Head *string `form:"head,omitempty" json:"head,omitempty"`
+
+	// Base Pull requests into this branch; ignored for issues.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
 }
 
 // GetRepositoryRawFileParams defines parameters for GetRepositoryRawFile.
@@ -5726,6 +5738,30 @@ func NewListIssuesRequest(server string, owner string, repo string, params *List
 
 		}
 
+		if params.Head != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", *params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -6248,6 +6284,30 @@ func NewListPullsRequest(server string, owner string, repo string, params *ListP
 		if params.Q != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Head != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", *params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

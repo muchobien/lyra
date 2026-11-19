@@ -4,6 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -33,11 +35,16 @@ func (app *app) prCommand() *cobra.Command {
 	pr := app.itemCommand(itemKind{
 		use:            "pr",
 		noun:           "pull request",
+		target:         "[<number> | <branch>]",
 		states:         "open, closed, merged or all",
 		prefix:         "pr.",
 		actions:        append([]string{"review", "checks", "merged", "push"}, itemActions...),
 		defaultActions: []string{"review", "comment", "checks", "merged", "closed"},
 	})
+	pr.Long = `Manage pull requests.
+
+Commands that act on one pull request take its number or its head branch. Without
+either, they act on the open pull request whose head is the current git branch.`
 	pr.AddCommand(app.repoScoped(
 		app.prCommitsCommand(),
 		app.prDiffCommand(),
@@ -45,6 +52,34 @@ func (app *app) prCommand() *cobra.Command {
 		app.prReviewCommand(),
 	)...)
 	return pr
+}
+
+func (app *app) pullNumber(cmd *cobra.Command, args []string) (int64, error) {
+	var branch string
+	if len(args) > 1 {
+		number, err := strconv.ParseInt(strings.TrimPrefix(args[1], "#"), 10, 64)
+		if err == nil && number > 0 {
+			return number, nil
+		}
+		branch = args[1]
+	} else {
+		current, err := currentBranch(cmd)
+		if err != nil {
+			return 0, err
+		}
+		branch = current
+	}
+	owner, repo := splitRepo(args[0])
+	state, limit := "open", int64(1)
+	params := lyraapi.ListPullsParams{State: &state, Head: &branch, Limit: &limit}
+	pulls, _, err := decode[[]lyraapi.Pull](app.client.api.ListPulls(cmd.Context(), owner, repo, &params))
+	if err != nil {
+		return 0, err
+	}
+	if len(pulls) == 0 {
+		return 0, fmt.Errorf("no open pull request in %s has head %s", args[0], branch)
+	}
+	return pulls[0].Number, nil
 }
 
 func (app *app) missingChecks(cmd *cobra.Command, repo string, number int64) (*checksEvent, error) {
@@ -66,11 +101,11 @@ func (app *app) missingChecks(cmd *cobra.Command, repo string, number int64) (*c
 
 func (app *app) prCommitsCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "commits <number>",
+		Use:   "commits [<number> | <branch>]",
 		Short: "List a pull request's commits with signature status",
-		Args:  ExactArgs(1),
+		Args:  MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			number, err := parseNumber(args[1])
+			number, err := app.pullNumber(cmd, args)
 			if err != nil {
 				return err
 			}
@@ -83,11 +118,11 @@ func (app *app) prCommitsCommand() *cobra.Command {
 func (app *app) prDiffCommand() *cobra.Command {
 	var filesOnly bool
 	diff := &cobra.Command{
-		Use:   "diff <number>",
+		Use:   "diff [<number> | <branch>]",
 		Short: "Print a pull request's diff, or its changed files with --files",
-		Args:  ExactArgs(1),
+		Args:  MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			number, err := parseNumber(args[1])
+			number, err := app.pullNumber(cmd, args)
 			if err != nil {
 				return err
 			}
@@ -106,7 +141,7 @@ func (app *app) prMergeCommand() *cobra.Command {
 	var squash, fastForward, deleteBranch bool
 	var title, head string
 	merge := &cobra.Command{
-		Use:   "merge <number>",
+		Use:   "merge [<number> | <branch>]",
 		Short: "Merge a pull request by squashing or fast-forwarding",
 		Long: `Merge a pull request into its base branch.
 
@@ -114,12 +149,12 @@ func (app *app) prMergeCommand() *cobra.Command {
 (see lyra signing-key). --ff moves the base branch to the head commit, keeping its
 commits and their signatures. Pass --head with the commit you reviewed to refuse the
 merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
-		Args: ExactArgs(1),
+		Args: MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squash == fastForward {
 				return UsageError{errors.New("pr merge needs exactly one of --squash or --ff")}
 			}
-			number, err := parseNumber(args[1])
+			number, err := app.pullNumber(cmd, args)
 			if err != nil {
 				return err
 			}
@@ -155,7 +190,7 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 func (app *app) prReviewCommand() *cobra.Command {
 	var options reviewOptions
 	review := &cobra.Command{
-		Use:   "review <number>",
+		Use:   "review [<number> | <branch>]",
 		Short: "Approve a pull request, request changes, or comment on it",
 		Long: `Submit a review of the pull request's current head commit.
 
@@ -163,7 +198,7 @@ func (app *app) prReviewCommand() *cobra.Command {
 the author can't use them on their own pull request. --request-changes needs a body.
 --comments-file reads line comments as JSON: [{"path": "main.go", "line": 12, "side":
 "new", "body": "..."}], with lines as numbered in the diff (side defaults to new).`,
-		Args: ExactArgs(1),
+		Args: MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.submitReview(cmd, args, options)
 		},
@@ -198,7 +233,7 @@ func (app *app) submitReview(cmd *cobra.Command, args []string, options reviewOp
 	if err != nil {
 		return err
 	}
-	number, err := parseNumber(args[1])
+	number, err := app.pullNumber(cmd, args)
 	if err != nil {
 		return err
 	}

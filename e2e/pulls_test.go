@@ -74,9 +74,43 @@ func TestPulls(test *testing.T) {
 			test.Errorf("lyra %s: exit %d, want 1: %s", strings.Join(args, " "), result.code, result.stderr)
 		}
 	}
-	if result := runLyra(test, srv, token, "pr", "create", "-R", "acme/demo", "--title", "No head"); result.code != 2 {
-		test.Errorf("pr create without --head: exit %d, want 2", result.code)
+	inSource := func(args ...string) cliResult {
+		test.Helper()
+		env := []string{"GIT_DIR=" + filepath.Join(src, ".git")}
+		return startLyraWith(test, srv, token, env, append(args, "-R", "acme/demo")...)()
 	}
+	for _, args := range [][]string{
+		{"pr", "view", "--jq", ".number"},
+		{"pr", "view", "feature", "--jq", ".number"},
+		{"pr", "view", "#2", "--jq", ".number"},
+		{"pr", "diff", "--files", "--jq", "length - 1"},
+	} {
+		if result := inSource(args...); result.stdout != "2\n" {
+			test.Errorf("lyra %s on feature: %+v", strings.Join(args, " "), result)
+		}
+	}
+	if result := inSource("pr", "view", "stale"); result.code != 1 || !strings.Contains(result.stderr, "no open pull request in acme/demo has head stale") {
+		test.Errorf("pr view for a branch without one: %+v", result)
+	}
+	if result := inSource("pr", "view", "1", "2"); result.code != 2 {
+		test.Errorf("pr view with two arguments: %+v", result)
+	}
+	for flag, want := range map[string]string{"--head=feature": "[2]", "--head=stale": "[]", "--base=main": "[2]", "--base=stale": "[]"} {
+		if result := inSource("pr", "list", flag, "--jq", "map(.number)", "--state", "all"); compactJSON(test, []byte(result.stdout)) != want {
+			test.Errorf("pr list %s: %+v", flag, result)
+		}
+	}
+	mustGit(test, src, "switch", "-q", "stale")
+	if result := inSource("pr", "create", "--title", "From the current branch"); result.code != 1 || !strings.Contains(result.stderr, "main already contains every commit on stale") {
+		test.Errorf("pr create from the current branch: %+v", result)
+	}
+	mustGit(test, src, "switch", "-q", "--detach")
+	for _, args := range [][]string{{"pr", "view"}, {"pr", "create", "--title", "Detached"}} {
+		if result := inSource(args...); result.code != 2 || !strings.Contains(result.stderr, "not on a git branch") {
+			test.Errorf("lyra %s on a detached HEAD: %+v", strings.Join(args, " "), result)
+		}
+	}
+	mustGit(test, src, "switch", "-q", "feature")
 	if got := runLyra(test, srv, token, "pr", "list", "-R", "acme/demo", "--jq", `[.[].number] | map(tostring) | join(",")`).stdout; got != "2\n" {
 		test.Errorf("pr list %q", got)
 	}

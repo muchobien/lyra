@@ -15,6 +15,7 @@ import (
 type itemKind struct {
 	use            string
 	noun           string
+	target         string
 	states         string
 	prefix         string
 	actions        []string
@@ -36,10 +37,25 @@ func (kind itemKind) isPull() bool {
 	return kind.use == "pr"
 }
 
+func (kind itemKind) targetArgs() cobra.PositionalArgs {
+	if kind.isPull() {
+		return MaximumArgs(1)
+	}
+	return ExactArgs(1)
+}
+
+func (app *app) itemNumber(cmd *cobra.Command, kind itemKind, args []string) (int64, error) {
+	if kind.isPull() {
+		return app.pullNumber(cmd, args)
+	}
+	return parseNumber(args[1])
+}
+
 func (app *app) issueCommand() *cobra.Command {
 	return app.itemCommand(itemKind{
 		use:            "issue",
 		noun:           "issue",
+		target:         "<number>",
 		states:         "open, closed or all",
 		prefix:         "issue.",
 		actions:        itemActions,
@@ -50,8 +66,8 @@ func (app *app) issueCommand() *cobra.Command {
 func (app *app) itemCommand(kind itemKind) *cobra.Command {
 	parent := &cobra.Command{Use: kind.use, Short: "Manage " + kind.noun + "s"}
 	parent.AddCommand(app.repoScoped(
-		app.itemStateCommand(kind, "close <number>", "Close a "+kind.noun, lyraapi.Closed),
-		app.itemStateCommand(kind, "reopen <number>", "Reopen a closed "+kind.noun, lyraapi.Open),
+		app.itemStateCommand(kind, "close "+kind.target, "Close a "+kind.noun, lyraapi.Closed),
+		app.itemStateCommand(kind, "reopen "+kind.target, "Reopen a closed "+kind.noun, lyraapi.Open),
 		app.itemCreateCommand(kind),
 		app.itemListCommand(kind),
 		app.itemViewCommand(kind),
@@ -83,7 +99,9 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 				return app.show(cmd)(app.client.api.CreateIssue(cmd.Context(), owner, repo, body))
 			}
 			if head == "" {
-				return UsageError{errors.New("pr create needs --head")}
+				if head, err = currentBranch(cmd); err != nil {
+					return err
+				}
 			}
 			body := lyraapi.CreatePullRequest{
 				Title:     title,
@@ -99,7 +117,7 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 	flags := create.Flags()
 	flags.StringVar(&title, "title", "", "title (required)")
 	if kind.isPull() {
-		flags.StringVar(&head, "head", "", "branch with the changes (required)")
+		flags.StringVar(&head, "head", "", "branch with the changes (default: the current branch)")
 		flags.StringVar(&base, "base", "", "branch to merge into (default: the default branch)")
 	}
 	addTextFlags(create, "body", "body text in Markdown")
@@ -109,7 +127,7 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 }
 
 func (app *app) itemListCommand(kind itemKind) *cobra.Command {
-	var state string
+	var state, head, base string
 	var labels, assignees []string
 	var limit int64
 	list := &cobra.Command{
@@ -119,7 +137,14 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			owner, repo := splitRepo(args[0])
 			if kind.isPull() {
-				params := lyraapi.ListPullsParams{State: &state, Label: &labels, Assignee: &assignees, Limit: &limit}
+				params := lyraapi.ListPullsParams{
+					State:    &state,
+					Label:    &labels,
+					Assignee: &assignees,
+					Limit:    &limit,
+					Head:     &head,
+					Base:     &base,
+				}
 				return app.show(cmd)(app.client.api.ListPulls(cmd.Context(), owner, repo, &params))
 			}
 			params := lyraapi.ListIssuesParams{State: &state, Label: &labels, Assignee: &assignees, Limit: &limit}
@@ -136,16 +161,20 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 		"only "+kind.noun+"s assigned to this login or agent, or @me (repeatable)",
 	)
 	flags.Int64Var(&limit, "limit", 30, "maximum number of "+kind.noun+"s")
+	if kind.isPull() {
+		flags.StringVar(&head, "head", "", "only pull requests from this branch")
+		flags.StringVar(&base, "base", "", "only pull requests into this branch")
+	}
 	return list
 }
 
 func (app *app) itemViewCommand(kind itemKind) *cobra.Command {
 	return &cobra.Command{
-		Use:   "view <number>",
+		Use:   "view " + kind.target,
 		Short: "Show a " + kind.noun + " with its comments",
-		Args:  ExactArgs(1),
+		Args:  kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			number, err := parseNumber(args[1])
+			number, err := app.itemNumber(cmd, kind, args)
 			if err != nil {
 				return err
 			}
@@ -162,9 +191,9 @@ func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 	var path, side string
 	var line int64
 	comment := &cobra.Command{
-		Use:   "comment <number>",
+		Use:   "comment " + kind.target,
 		Short: "Comment on a " + kind.noun,
-		Args:  ExactArgs(1),
+		Args:  kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text, set, err := readText(cmd, "body")
 			if err != nil {
@@ -173,7 +202,7 @@ func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 			if !set {
 				return UsageError{errors.New(kind.use + " comment needs --body or --body-file")}
 			}
-			number, err := parseNumber(args[1])
+			number, err := app.itemNumber(cmd, kind, args)
 			if err != nil {
 				return err
 			}
@@ -201,7 +230,7 @@ func (app *app) itemCommentCommand(kind itemKind) *cobra.Command {
 }
 
 func (app *app) editItem(cmd *cobra.Command, kind itemKind, args []string, body lyraapi.EditItemRequest) error {
-	number, err := parseNumber(args[1])
+	number, err := app.itemNumber(cmd, kind, args)
 	if err != nil {
 		return err
 	}
@@ -216,9 +245,9 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 	var title string
 	var addLabels, removeLabels, addAssignees, removeAssignees []string
 	edit := &cobra.Command{
-		Use:   "edit <number>",
+		Use:   "edit " + kind.target,
 		Short: "Change a " + kind.noun + "'s title, body, labels or assignees",
-		Args:  ExactArgs(1),
+		Args:  kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := lyraapi.EditItemRequest{
 				AddLabels:       &addLabels,
@@ -264,7 +293,7 @@ func (app *app) itemStateCommand(kind itemKind, use, short string, state lyraapi
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
-		Args:  ExactArgs(1),
+		Args:  kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.editItem(cmd, kind, args, lyraapi.EditItemRequest{State: &state})
 		},
@@ -275,7 +304,7 @@ func (app *app) itemWaitCommand(kind itemKind) *cobra.Command {
 	var chosen []string
 	var timeout time.Duration
 	wait := &cobra.Command{
-		Use:   "wait <number>",
+		Use:   "wait " + kind.target,
 		Short: "Wait until someone else acts on a " + kind.noun,
 		Long: `Wait until someone other than you acts on the ` + kind.noun + `, then print that event as JSON,
 with the comment or review it carries.
@@ -293,7 +322,7 @@ with state none.
 
 --for chooses the actions, from ` + strings.Join(kind.actions, ", ") +
 			` (default: ` + strings.Join(kind.defaultActions, ", ") + `).`,
-		Args: ExactArgs(1),
+		Args: kind.targetArgs(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.waitForItem(cmd, kind, args, chosen, timeout)
 		},
@@ -312,7 +341,7 @@ func (app *app) waitForItem(
 	chosen []string,
 	timeout time.Duration,
 ) error {
-	number, err := parseNumber(args[1])
+	number, err := app.itemNumber(cmd, kind, args)
 	if err != nil {
 		return err
 	}

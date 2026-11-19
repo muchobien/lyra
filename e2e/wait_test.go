@@ -103,7 +103,7 @@ func TestWait(test *testing.T) {
 		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--timeout", "1s"}, 3},
 		{[]string{"pr", "wait", "-R", "acme/demo", "1", "--for", "bogus"}, 2},
 		{[]string{"issue", "wait", "-R", "acme/demo", "1", "--for", "review"}, 2},
-		{[]string{"pr", "wait", "-R", "acme/demo"}, 2},
+		{[]string{"issue", "wait", "-R", "acme/demo"}, 2},
 	} {
 		if result := runLyra(test, srv, token, check.args...); result.code != check.code {
 			test.Errorf("lyra %s: exit %d, want %d: %s", strings.Join(check.args, " "), result.code, check.code, result.stderr)

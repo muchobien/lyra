@@ -1074,6 +1074,10 @@ export type ListIssuesParams = {
   limit?: number;
   /** Search the title or an exact issue/pull request number. */
   q?: string;
+  /** Pull requests from this branch; ignored for issues. */
+  head?: string;
+  /** Pull requests into this branch; ignored for issues. */
+  base?: string;
 };
 
 export type ListPullsParams = {
@@ -1087,6 +1091,10 @@ export type ListPullsParams = {
   limit?: number;
   /** Search the title or an exact issue/pull request number. */
   q?: string;
+  /** Pull requests from this branch; ignored for issues. */
+  head?: string;
+  /** Pull requests into this branch; ignored for issues. */
+  base?: string;
 };
 
 export type GetRepositoryRawFileParams = {

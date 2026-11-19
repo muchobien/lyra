@@ -102,6 +102,8 @@ type listItemsInput struct {
 	Assignee []string `query:"assignee,explode" doc:"Items assigned to every one of these names; @me is the caller."`
 	Limit    int      `query:"limit" doc:"Defaults to 100."`
 	Q        string   `query:"q" doc:"Search the title or an exact issue/pull request number."`
+	Head     string   `query:"head" doc:"Pull requests from this branch; ignored for issues."`
+	Base     string   `query:"base" doc:"Pull requests into this branch; ignored for issues."`
 }
 
 type labelInput struct {

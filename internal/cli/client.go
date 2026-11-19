@@ -158,6 +158,15 @@ func (client *client) remoteRepository(cmd *cobra.Command) (string, error) {
 		strings.Join(names, ", "))}
 }
 
+func currentBranch(cmd *cobra.Command) (string, error) {
+	output, err := exec.CommandContext(cmd.Context(), "git", "branch", "--show-current").Output()
+	branch := strings.TrimSpace(string(output))
+	if err != nil || branch == "" {
+		return "", UsageError{errors.New("not on a git branch; pass a branch or pull request number")}
+	}
+	return branch, nil
+}
+
 func remoteRepo(remote, host string) (string, bool) {
 	remoteHost, path := "", ""
 	if parsed, err := url.Parse(remote); err == nil && parsed.Host != "" {
