@@ -123,16 +123,19 @@ func TestTriggers(test *testing.T) {
 	if output, err := secret.CombinedOutput(); err != nil || !strings.Contains(string(output), `"name": "DEPLOY_KEY"`) {
 		test.Fatalf("secret set: %v: %s", err, output)
 	}
-	if listed := runLyra(test, srv, token, "secret", "list", "-R", "acme/demo"); !strings.Contains(listed.stdout, `"name": "DEPLOY_KEY"`) || strings.Contains(listed.stdout, "s3cr3t") {
+	if result := runLyra(test, srv, token, "secret", "set", "-R", "acme/demo", "spare_key", "-b", "spare"); result.code != 0 {
+		test.Fatalf("secret set --body: %+v", result)
+	}
+	if listed := runLyra(test, srv, token, "secret", "list", "-R", "acme/demo"); !strings.Contains(listed.stdout, `"name": "DEPLOY_KEY"`) || !strings.Contains(listed.stdout, `"name": "SPARE_KEY"`) || strings.Contains(listed.stdout, "s3cr3t") {
 		test.Fatalf("secret list: %+v", listed)
 	}
 	if result := runLyra(test, srv, reader, "secret", "list", "-R", "acme/demo"); result.code != 1 || !strings.Contains(result.stderr, "lacks admin") {
 		test.Fatalf("secret list with a read token: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "variable", "set", "-R", "acme/demo", "GITHUB_REGION", "x"); result.code != 1 || !strings.Contains(result.stderr, "not starting with") {
+	if result := runLyra(test, srv, token, "variable", "set", "-R", "acme/demo", "GITHUB_REGION", "--body", "x"); result.code != 1 || !strings.Contains(result.stderr, "not starting with") {
 		test.Fatalf("reserved variable name: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "variable", "set", "-R", "acme/demo", "region", "eu-west"); result.code != 0 {
+	if result := runLyra(test, srv, token, "variable", "set", "-R", "acme/demo", "region", "-b", "eu-west"); result.code != 0 {
 		test.Fatalf("variable set: %+v", result)
 	}
 	for _, file := range []string{"lyra.db", "lyra.db-wal"} {
@@ -145,11 +148,11 @@ func TestTriggers(test *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"dispatch.yml", "--input", "reason=x"}, "input target is required"},
-		{[]string{"dispatch.yml", "--input", "target=staging"}, "input reason is required"},
-		{[]string{"dispatch.yml", "--input", "target=moon", "--input", "reason=x"}, "must be one of staging, production"},
-		{[]string{"dispatch.yml", "--input", "target=staging", "--input", "reason=x", "--input", "dry=maybe"}, "must be true or false"},
-		{[]string{"dispatch.yml", "--input", "target=staging", "--input", "reason=x", "--input", "extra=1"}, "has no input extra"},
+		{[]string{"dispatch.yml", "-f", "reason=x"}, "input target is required"},
+		{[]string{"dispatch.yml", "-f", "target=staging"}, "input reason is required"},
+		{[]string{"dispatch.yml", "-f", "target=moon", "-f", "reason=x"}, "must be one of staging, production"},
+		{[]string{"dispatch.yml", "-f", "target=staging", "-f", "reason=x", "-f", "dry=maybe"}, "must be true or false"},
+		{[]string{"dispatch.yml", "-f", "target=staging", "-f", "reason=x", "-f", "extra=1"}, "has no input extra"},
 		{[]string{"release.yml"}, "has no workflow_dispatch trigger"},
 		{[]string{"missing.yml"}, "no workflow missing.yml"},
 	} {
@@ -161,7 +164,7 @@ func TestTriggers(test *testing.T) {
 		Number int64  `json:"number"`
 		Event  string `json:"event"`
 	}
-	lyraJSON(test, srv, token, &dispatched, "workflow", "run", "-R", "acme/demo", "dispatch.yml", "--input", "target=production", "--input", "reason=ship")
+	lyraJSON(test, srv, token, &dispatched, "workflow", "run", "-R", "acme/demo", "dispatch.yml", "-F", "target=production", "--raw-field", "reason=ship")
 	if dispatched.Event != "workflow_dispatch" {
 		test.Fatalf("dispatched run: %+v", dispatched)
 	}

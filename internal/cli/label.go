@@ -24,8 +24,8 @@ func (app *app) labelCreateCommand() *cobra.Command {
 			return app.show(cmd)(app.client.api.CreateLabel(cmd.Context(), owner, repo, body))
 		},
 	}
-	create.Flags().StringVar(&color, "color", "", "six hex digits, such as d73a4a")
-	create.Flags().StringVar(&description, "description", "", "label description")
+	create.Flags().StringVarP(&color, "color", "c", "", "six hex digits, such as d73a4a")
+	create.Flags().StringVarP(&description, "description", "d", "", "label description")
 	return create
 }
 

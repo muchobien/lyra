@@ -68,6 +68,6 @@ in storage until lyra admin registry-gc frees them.`,
 			return app.emit(cmd, []byte(`{"deleted": `+strconv.Quote(args[0])+"}\n"))
 		},
 	}
-	remove.Flags().BoolVar(&yes, "yes", false, "confirm deletion")
+	remove.Flags().BoolVarP(&yes, "yes", "y", false, "confirm deletion")
 	return remove
 }

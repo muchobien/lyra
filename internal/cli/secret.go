@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"io"
-	"strings"
-
 	"github.com/spf13/cobra"
 
 	"github.com/muchobien/lyra/internal/cli/lyraapi"
@@ -16,23 +13,25 @@ func (app *app) secretCommand() *cobra.Command {
 }
 
 func (app *app) secretSetCommand() *cobra.Command {
-	return &cobra.Command{
+	set := &cobra.Command{
 		Use:   "set <NAME>",
-		Short: "Set a secret from stdin; one trailing newline is dropped",
-		Long: `Set a secret from stdin, so the value stays out of shell history: for example
-lyra secret set DEPLOY_KEY < key.txt. One trailing newline is dropped. Names are
-upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
+		Short: "Set a secret from --body or stdin",
+		Long: `Set a secret from --body, or from stdin so the value stays out of shell history: for
+example lyra secret set DEPLOY_KEY < key.txt. One trailing newline is dropped from stdin.
+Names are upper-cased. Jobs read it as ${{ secrets.NAME }}, and runners mask it in logs.`,
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			value, err := io.ReadAll(cmd.InOrStdin())
+			value, err := readValue(cmd)
 			if err != nil {
 				return err
 			}
 			owner, repo := splitRepo(args[0])
-			body := lyraapi.ValueRequest{Value: strings.TrimSuffix(string(value), "\n")}
+			body := lyraapi.ValueRequest{Value: value}
 			return app.show(cmd)(app.client.api.SetSecret(cmd.Context(), owner, repo, args[1], body))
 		},
 	}
+	set.Flags().StringP("body", "b", "", "the value (default: read from stdin)")
+	return set
 }
 
 func (app *app) secretListCommand() *cobra.Command {

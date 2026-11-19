@@ -58,16 +58,17 @@ func (app *app) findRelease(cmd *cobra.Command, repo, tag string) (lyraapi.Relea
 func (app *app) releaseCreateCommand() *cobra.Command {
 	var options releaseCreateOptions
 	create := &cobra.Command{
-		Use:   "create <tag>",
+		Use:   "create <tag> [<file>...]",
 		Short: "Create a release, uploading its assets before it's published",
 		Long: `Create a release for a tag. If the tag doesn't exist, publishing creates it at --target
 (default: the default branch). A draft doesn't create the tag until it's published.
 
-With --asset, the release is created as a draft, the assets are uploaded, and then it is
-published, so release.published fires once with every asset present. If an upload fails,
+With files, the release is created as a draft, the files are uploaded as assets, and then
+it is published, so release.published fires once with every asset present. If an upload fails,
 the release stays a draft; finish it with lyra release upload and lyra release publish.`,
-		Args: ExactArgs(1),
+		Args: MinimumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			options.assets = args[2:]
 			return app.createRelease(cmd, args, options)
 		},
 	}
@@ -78,22 +79,22 @@ the release stays a draft; finish it with lyra release upload and lyra release p
 		"",
 		"branch or commit to tag if the tag doesn't exist (default: the default branch)",
 	)
-	flags.StringVar(&options.title, "title", "", "release title (default: the tag)")
+	flags.StringVarP(&options.title, "title", "t", "", "release title (default: the tag)")
 	addTextFlags(create, "notes", "release notes in Markdown")
-	flags.BoolVar(&options.draft, "draft", false, "keep the release as a draft")
+	flags.BoolVarP(&options.draft, "draft", "d", false, "keep the release as a draft")
 	flags.BoolVar(
 		&options.generateNotes,
 		"generate-notes",
 		false,
 		"append a list of the pull requests merged since the previous release",
 	)
-	flags.BoolVar(
+	flags.BoolVarP(
 		&options.prerelease,
 		"prerelease",
+		"p",
 		false,
 		"mark as a prerelease, so it's never the latest release",
 	)
-	flags.StringArrayVar(&options.assets, "asset", nil, "file to upload as an asset (repeatable)")
 	return create
 }
 
@@ -236,7 +237,7 @@ func (app *app) releaseEditCommand() *cobra.Command {
 		},
 	}
 	flags := edit.Flags()
-	flags.StringVar(&title, "title", "", "release title")
+	flags.StringVarP(&title, "title", "t", "", "release title")
 	flags.StringVar(&target, "target", "", "branch or commit a draft's tag is created at")
 	flags.BoolVar(&prerelease, "prerelease", false, "mark as a prerelease (--prerelease=false to clear)")
 	addTextFlags(edit, "notes", "release notes in Markdown")
@@ -281,7 +282,7 @@ func (app *app) releaseDeleteCommand() *cobra.Command {
 		},
 	}
 	remove.Flags().BoolVar(&cleanupTag, "cleanup-tag", false, "delete the tag too")
-	remove.Flags().BoolVar(&yes, "yes", false, "confirm permanent deletion")
+	remove.Flags().BoolVarP(&yes, "yes", "y", false, "confirm permanent deletion")
 	return remove
 }
 
@@ -328,8 +329,8 @@ func (app *app) releaseDownloadCommand() *cobra.Command {
 			return app.downloadRelease(cmd, args, pattern, dir)
 		},
 	}
-	download.Flags().StringVar(&pattern, "pattern", "", "only assets whose name matches this glob")
-	download.Flags().StringVar(&dir, "dir", ".", "directory to write the files to")
+	download.Flags().StringVarP(&pattern, "pattern", "p", "", "only assets whose name matches this glob")
+	download.Flags().StringVarP(&dir, "dir", "D", ".", "directory to write the files to")
 	return download
 }
 

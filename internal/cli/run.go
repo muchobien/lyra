@@ -45,7 +45,7 @@ func (app *app) runListCommand() *cobra.Command {
 			return app.show(cmd)(app.client.api.ListRuns(cmd.Context(), owner, repo, &params))
 		},
 	}
-	list.Flags().Int64Var(&limit, "limit", 30, "how many runs, up to 100")
+	list.Flags().Int64VarP(&limit, "limit", "L", 30, "how many runs, up to 100")
 	return list
 }
 

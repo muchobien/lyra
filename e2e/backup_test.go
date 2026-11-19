@@ -82,7 +82,7 @@ func TestBackupRestore(test *testing.T) {
 	if err := os.WriteFile(asset, bytes.Repeat([]byte("lyra"), 4096), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--asset", asset)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", asset)
 	lyraJSON(test, srv, token, &issueResult{}, "issue", "create", "-R", "acme/demo", "--title", "Kept across a restore")
 	if status, body := call(test, http.MethodPut, srv.url+"/api/repos/acme/demo/secrets/KEY", bearer(token), `{"value":"hello"}`); status != http.StatusOK {
 		test.Fatalf("secret: HTTP %d: %s", status, body)
@@ -280,7 +280,7 @@ func TestReadOnly(test *testing.T) {
 		test.Fatalf("registry push while read-only: %v", err)
 	}
 	mustGit(test, "", "-c", auth, "clone", "-q", remote, filepath.Join(test.TempDir(), "clone"))
-	if result := runLyra(test, srv, token, "repo", "get", "acme/demo"); result.code != 0 {
+	if result := runLyra(test, srv, token, "repo", "view", "acme/demo"); result.code != 0 {
 		test.Fatalf("read while read-only: %+v", result)
 	}
 

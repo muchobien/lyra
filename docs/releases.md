@@ -6,7 +6,8 @@ A release belongs to a tag.
   `--target` (default: the default branch). A draft doesn't create its tag until it's
   published. An existing tag is never moved: `--target` must match it.
 - **Drafts** are visible only with `write` access.
-- **Assets:** `--asset` creates the release as a draft, uploads the files, then publishes it,
+- **Assets:** `lyra release create <tag> <file>...` creates the release as a draft, uploads the
+  files, then publishes it,
   so `release.published` fires once with every asset present. Uploading a name that exists
   needs `--clobber`. `download` checks each file's sha256 before keeping it.
 - **Latest** is the most recently published release that isn't a prerelease.

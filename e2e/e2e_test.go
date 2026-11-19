@@ -385,10 +385,10 @@ func TestCLI(test *testing.T) {
 		}
 	}
 	scoped := createToken(test, srv, `{"name":"acme","scope":"read","repos":["acme/*"]}`)
-	if result := runLyra(test, srv, scoped, "repo", "get", "acme/demo"); result.code != 0 {
+	if result := runLyra(test, srv, scoped, "repo", "view", "acme/demo"); result.code != 0 {
 		test.Errorf("acme/* token reads acme/demo: %+v", result)
 	}
-	if result := runLyra(test, srv, scoped, "repo", "get", "beta/tool"); result.code != 1 || !strings.Contains(result.stderr, "lacks read") {
+	if result := runLyra(test, srv, scoped, "repo", "view", "beta/tool"); result.code != 1 || !strings.Contains(result.stderr, "lacks read") {
 		test.Errorf("acme/* token reads beta/tool: %+v", result)
 	}
 	if result := runLyra(test, srv, scoped, "owner", "list", "--jq", ".[].name"); result.stdout != "acme\n" {
@@ -415,7 +415,7 @@ func TestCLI(test *testing.T) {
 	if result := runLyra(test, srv, token, "owner", "delete", "beta"); result.code != 1 || !strings.Contains(result.stderr, "still has repositories") {
 		test.Errorf("delete an owner with repositories: %+v", result)
 	}
-	if result := runLyra(test, srv, token, "repo", "get"); result.code != 2 {
+	if result := runLyra(test, srv, token, "repo", "view", "a", "b"); result.code != 2 {
 		test.Errorf("missing argument: exit %d, want 2", result.code)
 	}
 	if result := runLyra(test, srv, token, "repo", "list", "--bogus"); result.code != 2 {

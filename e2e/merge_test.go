@@ -98,7 +98,7 @@ func TestMerge(test *testing.T) {
 	if result := merge("2", "--ff"); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") {
 		test.Errorf("ff merge after main moved: exit %d %s", result.code, result.stderr)
 	}
-	if result := merge("2", "--squash", "--head", mainTip); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") {
+	if result := merge("2", "--squash", "--match-head-commit", mainTip); result.code != 1 || !strings.Contains(result.stderr, "HTTP 409") {
 		test.Errorf("squash with the wrong --head: exit %d %s", result.code, result.stderr)
 	}
 	reader := createToken(test, srv, `{"name":"reader","scope":"read","repos":["acme/demo"]}`)
@@ -107,7 +107,7 @@ func TestMerge(test *testing.T) {
 	}
 
 	var merged mergeView
-	lyraJSON(test, srv, token, &merged, "pr", "merge", "-R", "acme/demo", "2", "--squash", "--head", squashHead, "--delete-branch")
+	lyraJSON(test, srv, token, &merged, "pr", "merge", "-R", "acme/demo", "2", "--squash", "--match-head-commit", squashHead, "-d")
 	squashSHA := remoteSHA("refs/heads/main")
 	if merged.State != "merged" || merged.MergeSHA != squashSHA || merged.EventID == 0 || merged.Merge != nil {
 		test.Errorf("squash merge = %+v, main at %s", merged, squashSHA)

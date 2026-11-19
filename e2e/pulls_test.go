@@ -58,7 +58,7 @@ func TestPulls(test *testing.T) {
 	mainSHA := mustGit(test, src, "rev-parse", "main")
 	featureSHA := mustGit(test, src, "rev-parse", "feature")
 
-	created := pr("create", "acme/demo", "--head", "feature", "--title", "Add feature", "--body", "Fixes #1", "--assignee", "@me")
+	created := pr("create", "acme/demo", "-H", "feature", "-t", "Add feature", "-b", "Fixes #1", "-a", "@me")
 	if created.Number != 2 || created.Kind != "pr" || created.Base != "main" || created.Head != "feature" || created.HeadSHA != featureSHA || created.BaseSHA != mainSHA || created.EventID == 0 || fmt.Sprint(created.Assignees) != "[e2e-agent]" {
 		test.Errorf("pr create = %+v", created)
 	}

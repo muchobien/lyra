@@ -87,7 +87,7 @@ func TestReleaseNotes(test *testing.T) {
 	if err := os.WriteFile(asset, []byte(strings.Repeat("x", 1500)), 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", "--asset", asset)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v2.0.0", "--generate-notes", asset)
 	releaseJSON(test, srv, token, "create", "acme/demo", "v3.0.0", "--draft", "--title", "Secret draft")
 
 	status, page := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/releases", tailnet(), "")

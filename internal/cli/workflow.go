@@ -17,7 +17,7 @@ func (app *app) workflowCommand() *cobra.Command {
 
 func (app *app) workflowRunCommand() *cobra.Command {
 	var ref string
-	var inputs []string
+	var fields, rawFields []string
 	run := &cobra.Command{
 		Use:   "run <workflow>",
 		Short: "Start a workflow that has a workflow_dispatch trigger",
@@ -28,10 +28,10 @@ take their default, and required ones without a default must be given. Prints th
 		Args: ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			values := map[string]string{}
-			for _, input := range inputs {
+			for _, input := range append(fields, rawFields...) {
 				name, value, found := strings.Cut(input, "=")
 				if !found || name == "" {
-					return UsageError{fmt.Errorf("--input %q: want name=value", input)}
+					return UsageError{fmt.Errorf("--field %q: want name=value", input)}
 				}
 				values[name] = value
 			}
@@ -41,6 +41,7 @@ take their default, and required ones without a default must be given. Prints th
 		},
 	}
 	run.Flags().StringVar(&ref, "ref", "", "branch or tag to run the workflow from (default: the default branch)")
-	run.Flags().StringArrayVar(&inputs, "input", nil, "input as name=value (repeatable)")
+	run.Flags().StringArrayVarP(&fields, "field", "F", nil, "input as name=value (repeatable)")
+	run.Flags().StringArrayVarP(&rawFields, "raw-field", "f", nil, "input as name=value (repeatable)")
 	return run
 }

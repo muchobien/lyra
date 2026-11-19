@@ -115,14 +115,14 @@ func (app *app) itemCreateCommand(kind itemKind) *cobra.Command {
 		},
 	}
 	flags := create.Flags()
-	flags.StringVar(&title, "title", "", "title (required)")
+	flags.StringVarP(&title, "title", "t", "", "title (required)")
 	if kind.isPull() {
-		flags.StringVar(&head, "head", "", "branch with the changes (default: the current branch)")
-		flags.StringVar(&base, "base", "", "branch to merge into (default: the default branch)")
+		flags.StringVarP(&head, "head", "H", "", "branch with the changes (default: the current branch)")
+		flags.StringVarP(&base, "base", "B", "", "branch to merge into (default: the default branch)")
 	}
 	addTextFlags(create, "body", "body text in Markdown")
-	flags.StringArrayVar(&labels, "label", nil, "add this label, which must exist (repeatable)")
-	flags.StringArrayVar(&assignees, "assignee", nil, "assign a login or agent name, or @me (repeatable)")
+	flags.StringArrayVarP(&labels, "label", "l", nil, "add this label, which must exist (repeatable)")
+	flags.StringArrayVarP(&assignees, "assignee", "a", nil, "assign a login or agent name, or @me (repeatable)")
 	return create
 }
 
@@ -152,18 +152,19 @@ func (app *app) itemListCommand(kind itemKind) *cobra.Command {
 		},
 	}
 	flags := list.Flags()
-	flags.StringVar(&state, "state", "open", kind.states)
-	flags.StringArrayVar(&labels, "label", nil, "only "+kind.noun+"s with this label (repeatable)")
-	flags.StringArrayVar(
+	flags.StringVarP(&state, "state", "s", "open", kind.states)
+	flags.StringArrayVarP(&labels, "label", "l", nil, "only "+kind.noun+"s with this label (repeatable)")
+	flags.StringArrayVarP(
 		&assignees,
 		"assignee",
+		"a",
 		nil,
 		"only "+kind.noun+"s assigned to this login or agent, or @me (repeatable)",
 	)
-	flags.Int64Var(&limit, "limit", 30, "maximum number of "+kind.noun+"s")
+	flags.Int64VarP(&limit, "limit", "L", 30, "maximum number of "+kind.noun+"s")
 	if kind.isPull() {
-		flags.StringVar(&head, "head", "", "only pull requests from this branch")
-		flags.StringVar(&base, "base", "", "only pull requests into this branch")
+		flags.StringVarP(&head, "head", "H", "", "only pull requests from this branch")
+		flags.StringVarP(&base, "base", "B", "", "only pull requests into this branch")
 	}
 	return list
 }
@@ -275,7 +276,7 @@ func (app *app) itemEditCommand(kind itemKind) *cobra.Command {
 		},
 	}
 	flags := edit.Flags()
-	flags.StringVar(&title, "title", "", "new title")
+	flags.StringVarP(&title, "title", "t", "", "new title")
 	addTextFlags(edit, "body", "body text in Markdown")
 	flags.StringArrayVar(&addLabels, "add-label", nil, "add a label (repeatable)")
 	flags.StringArrayVar(&removeLabels, "remove-label", nil, "remove a label (repeatable)")

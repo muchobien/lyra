@@ -112,7 +112,7 @@ api_bind_addr = "[::]:3900"
 	if err := os.WriteFile(assetPath, asset, 0o644); err != nil {
 		test.Fatal(err)
 	}
-	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", "--asset", assetPath)
+	releaseJSON(test, srv, token, "create", "acme/demo", "v1.0.0", assetPath)
 	if count := objects(); count != 1 {
 		test.Fatalf("%d objects after the upload, expected 1", count)
 	}

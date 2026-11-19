@@ -84,7 +84,7 @@ func TestReleases(test *testing.T) {
 		test.Fatal(err)
 	}
 
-	draft := release("create", "acme/demo", "v1.0.0", "--draft", "--notes", "First release", "--asset", archivePath)
+	draft := release("create", "acme/demo", "v1.0.0", "--draft", "--notes", "First release", archivePath)
 	if !draft.Draft || draft.Commit != "" || draft.Target != "main" || len(draft.Assets) != 1 || draft.Assets[0].SHA256 != hex.EncodeToString(sum[:]) {
 		test.Fatalf("draft: %+v", draft)
 	}
@@ -264,7 +264,7 @@ func TestReleases(test *testing.T) {
 		test.Fatalf("edit: %+v", edited)
 	}
 
-	slashed := release("create", "acme/demo", "release/1.0", "--asset", checksumsPath)
+	slashed := release("create", "acme/demo", "release/1.0", checksumsPath)
 	if !strings.HasSuffix(slashed.Assets[0].DownloadURL, "/acme/demo/releases/download/release/1.0/checksums.txt") {
 		test.Fatalf("download URL of a tag with a slash: %s", slashed.Assets[0].DownloadURL)
 	}

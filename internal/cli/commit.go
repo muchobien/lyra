@@ -29,7 +29,7 @@ func (app *app) commitListCommand() *cobra.Command {
 		},
 	}
 	list.Flags().StringVar(&ref, "ref", "", "branch, tag or commit (default: the default branch)")
-	list.Flags().Int64Var(&limit, "limit", 30, "maximum number of commits")
+	list.Flags().Int64VarP(&limit, "limit", "L", 30, "maximum number of commits")
 	return list
 }
 

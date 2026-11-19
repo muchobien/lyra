@@ -17,16 +17,22 @@ func (app *app) variableCommand() *cobra.Command {
 }
 
 func (app *app) variableSetCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "set <NAME> <value>",
-		Short: "Set a variable; jobs read it as ${{ vars.NAME }}",
-		Args:  ExactArgs(2),
+	set := &cobra.Command{
+		Use:   "set <NAME>",
+		Short: "Set a variable from --body or stdin; jobs read it as ${{ vars.NAME }}",
+		Args:  ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			value, err := readValue(cmd)
+			if err != nil {
+				return err
+			}
 			owner, repo := splitRepo(args[0])
-			body := lyraapi.ValueRequest{Value: args[2]}
+			body := lyraapi.ValueRequest{Value: value}
 			return app.show(cmd)(app.client.api.SetVariable(cmd.Context(), owner, repo, args[1], body))
 		},
 	}
+	set.Flags().StringP("body", "b", "", "the value (default: read from stdin)")
+	return set
 }
 
 func (app *app) variableListCommand() *cobra.Command {

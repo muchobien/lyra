@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,17 @@ func ExactArgs(count int) cobra.PositionalArgs {
 	}
 }
 
+func MinimumArgs(count int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < count {
+			path := cmd.CommandPath()
+			message := "%s takes at least %d argument(s), got %d; see %s --help"
+			return UsageError{fmt.Errorf(message, path, count, len(args), path)}
+		}
+		return nil
+	}
+}
+
 func MaximumArgs(count int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) > count {
@@ -39,8 +51,8 @@ func MaximumArgs(count int) cobra.PositionalArgs {
 }
 
 func addTextFlags(cmd *cobra.Command, name, usage string) {
-	cmd.Flags().String(name, "", usage)
-	cmd.Flags().String(name+"-file", "", "read the "+name+" from this file, or - for stdin")
+	cmd.Flags().StringP(name, name[:1], "", usage)
+	cmd.Flags().StringP(name+"-file", "F", "", "read the "+name+" from this file, or - for stdin")
 }
 
 func readText(cmd *cobra.Command, name string) (string, bool, error) {
@@ -55,6 +67,14 @@ func readText(cmd *cobra.Command, name string) (string, bool, error) {
 	}
 	text, _ := flags.GetString(name)
 	return text, flags.Changed(name), nil
+}
+
+func readValue(cmd *cobra.Command) (string, error) {
+	if cmd.Flags().Changed("body") {
+		return cmd.Flags().GetString("body")
+	}
+	value, err := io.ReadAll(cmd.InOrStdin())
+	return strings.TrimSuffix(string(value), "\n"), err
 }
 
 func readInput(cmd *cobra.Command, file string) ([]byte, error) {

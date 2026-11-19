@@ -147,8 +147,8 @@ func (app *app) prMergeCommand() *cobra.Command {
 
 --squash writes one commit with the pull request's changes, signed by Lyra's key
 (see lyra signing-key). --ff moves the base branch to the head commit, keeping its
-commits and their signatures. Pass --head with the commit you reviewed to refuse the
-merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
+commits and their signatures. Pass --match-head-commit with the commit you reviewed to
+refuse the merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP 409.`,
 		Args: MaximumArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squash == fastForward {
@@ -178,11 +178,11 @@ merge if the branch has moved since. Conflicts and a moved base exit 1 with HTTP
 		},
 	}
 	flags := merge.Flags()
-	flags.BoolVar(&squash, "squash", false, "squash into one commit signed by Lyra")
+	flags.BoolVarP(&squash, "squash", "s", false, "squash into one commit signed by Lyra")
 	flags.BoolVar(&fastForward, "ff", false, "fast-forward the base branch to the head")
-	flags.BoolVar(&deleteBranch, "delete-branch", false, "delete the head branch after merging")
-	flags.StringVar(&head, "head", "", "merge only if the head branch is at this commit")
-	flags.StringVar(&title, "title", "", "squash commit title (default: the pull request title and number)")
+	flags.BoolVarP(&deleteBranch, "delete-branch", "d", false, "delete the head branch after merging")
+	flags.StringVar(&head, "match-head-commit", "", "merge only if the head branch is at this commit")
+	flags.StringVarP(&title, "subject", "t", "", "squash commit subject (default: the pull request title and number)")
 	addTextFlags(merge, "body", "body text in Markdown")
 	return merge
 }
@@ -204,9 +204,9 @@ the author can't use them on their own pull request. --request-changes needs a b
 		},
 	}
 	flags := review.Flags()
-	flags.BoolVar(&options.approve, "approve", false, "approve the changes")
-	flags.BoolVar(&options.requestChanges, "request-changes", false, "request changes before merging")
-	flags.BoolVar(&options.commentOnly, "comment", false, "comment without approving")
+	flags.BoolVarP(&options.approve, "approve", "a", false, "approve the changes")
+	flags.BoolVarP(&options.requestChanges, "request-changes", "r", false, "request changes before merging")
+	flags.BoolVarP(&options.commentOnly, "comment", "c", false, "comment without approving")
 	flags.StringVar(&options.commentsFile, "comments-file", "", "JSON file with line comments, or - for stdin")
 	addTextFlags(review, "body", "body text in Markdown")
 	return review
