@@ -1,5 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { DownloadIcon, GitBranchIcon, PauseIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
+import {
+  DownloadIcon,
+  GitBranchIcon,
+  PauseIcon,
+  PlayIcon,
+  SparkleIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { CopyButton } from "@/components/controls/CopyButton";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
 import { ResponsiveDetails } from "@/components/controls/ResponsiveDetails";
@@ -10,6 +17,7 @@ import { RunState } from "@/components/status/RunState";
 import { Status } from "@/components/status/Status";
 import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { FormError } from "@/components/forms/FormError";
+import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
 import "./styles.css";
@@ -32,10 +40,13 @@ export function RunDetail({ number }: RunDetailProps) {
     logPanel,
     cancel,
     rerun,
+    explanation,
+    explainedJob,
     retry,
     retryLogs,
     rerunClicked,
     cancelRun,
+    explainFailure,
     toggleFollow,
     logScrolled,
     jobChanged,
@@ -262,6 +273,21 @@ export function RunDetail({ number }: RunDetailProps) {
                 {following ? "Pause following" : "Resume following"}
               </button>
             )}
+            {explanation.available &&
+              !active &&
+              selected?.status === "failure" &&
+              logs.data?.done &&
+              logLines.length > 0 && (
+                <button
+                  type="button"
+                  className="lyra-controls-button"
+                  onClick={explainFailure}
+                  disabled={explanation.pending}
+                >
+                  <SparkleIcon size={16} />
+                  Explain failure
+                </button>
+              )}
             {selected && (
               <a
                 href={logsURL}
@@ -295,6 +321,17 @@ export function RunDetail({ number }: RunDetailProps) {
               onChange={searchChanged}
             />
           </div>
+          {explainedJob === selected?.id && (
+            <OnDeviceOutput
+              title="Why this job failed"
+              output={explanation.output}
+              progress={explanation.progress}
+              error={explanation.error}
+              pending={explanation.pending}
+              onStop={explanation.stop}
+              onDiscard={explanation.reset}
+            />
+          )}
           {active && highlightedStep && (
             <p className="lyra-actions-activeStep">
               <Status value="running" />

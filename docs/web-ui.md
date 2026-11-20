@@ -44,6 +44,8 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 
 - **Summarize** on an issue or pull request lists the key points of its description,
   comments and reviews, using the Summarizer API.
+- **Explain failure** on a failed job sends the end of the failed step's log to the Prompt
+  API and shows the likely cause, the log lines behind it and a suggested fix.
 
 ## Delivery and configuration
 

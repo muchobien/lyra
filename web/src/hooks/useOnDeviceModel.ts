@@ -6,6 +6,11 @@ type Start = (
   monitor: CreateMonitorCallback,
 ) => Promise<ReadableStream<string>>;
 
+export const englishText: LanguageModelCreateCoreOptions = {
+  expectedInputs: [{ type: "text", languages: ["en"] }],
+  expectedOutputs: [{ type: "text", languages: ["en"] }],
+};
+
 export function useOnDeviceModel(name: string, availability: () => Promise<Availability>) {
   const support = useQuery({
     queryKey: ["on-device-model", name],
