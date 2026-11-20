@@ -51,6 +51,13 @@
   }
 }
 
+.lyra-workspace-editor .lyra-onDevice {
+  margin: 0;
+  border-inline: 0;
+  border-bottom: 0;
+  border-radius: 0;
+}
+
 .lyra-workspace-preview {
   min-height: 9rem;
   & > p {

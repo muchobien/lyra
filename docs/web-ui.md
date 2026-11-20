@@ -49,6 +49,8 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 - **Draft description from commits** in the new pull request dialog writes a summary and
   a list of changes from the commits on the compare branch that aren't on the base branch.
   Insert appends it to the description.
+- **Proofread** in Markdown editors fixes spelling, grammar and punctuation without
+  changing code, links or structure. Replace swaps the text in the editor for the result.
 
 ## Delivery and configuration
 
