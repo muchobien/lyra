@@ -180,8 +180,11 @@ type Attachment struct {
 type BlobResponse struct {
 	Binary bool   `json:"binary"`
 	Code   string `json:"code"`
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
+
+	// Markdown Rendered HTML for Markdown files; empty otherwise.
+	Markdown string `json:"markdown"`
+	Path     string `json:"path"`
+	Size     int64  `json:"size"`
 }
 
 // Check defines model for Check.

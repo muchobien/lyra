@@ -1,11 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -35,10 +35,11 @@ type treeResponse struct {
 }
 
 type blobResponse struct {
-	Path   string `json:"path"`
-	Size   int    `json:"size"`
-	Code   string `json:"code"`
-	Binary bool   `json:"binary"`
+	Path     string `json:"path"`
+	Size     int    `json:"size"`
+	Code     string `json:"code"`
+	Markdown string `json:"markdown" doc:"Rendered HTML for Markdown files; empty otherwise."`
+	Binary   bool   `json:"binary"`
 }
 
 func (treeResponse) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.Schema {
@@ -112,16 +113,37 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	ref := r.PathValue("ref")
-	path := strings.Trim(r.PathValue("*"), "/")
-	sha, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), ref)
+	dir := s.repoDir(repo.Name)
+	branches, err := s.git.Branches(r.Context(), dir)
+	if err != nil {
+		return err
+	}
+	tags, err := s.git.Tags(r.Context(), dir)
+	if err != nil {
+		return err
+	}
+	target := strings.Trim(r.PathValue("*"), "/")
+	ref, _, _ := strings.Cut(target, "/")
+	names := make([]string, 0, 2*(len(branches)+len(tags)))
+	for _, branch := range branches {
+		names = append(names, branch.Name, "refs/heads/"+branch.Name)
+	}
+	for _, tag := range tags {
+		names = append(names, tag.Name, "refs/tags/"+tag.Name)
+	}
+	for _, name := range names {
+		if len(name) > len(ref) && (target == name || strings.HasPrefix(target, name+"/")) {
+			ref = name
+		}
+	}
+	path := strings.TrimPrefix(strings.TrimPrefix(target, ref), "/")
+	sha, err := s.git.ResolveCommit(r.Context(), dir, ref)
 	if err != nil {
 		return notFound("unknown ref " + ref)
 	}
-	query := url.Values{"ref": {ref}}
 	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 4)
 	if len(parts) > 2 && parts[2] == "blob" {
-		content, err := s.git.Blob(r.Context(), s.repoDir(repo.Name), sha, path)
+		content, err := s.git.Blob(r.Context(), dir, sha, path)
 		if errors.Is(err, repos.ErrNotFound) {
 			return notFound("file not found")
 		}
@@ -132,17 +154,13 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 			writeRaw(w, content)
 			return nil
 		}
-		query.Set("file", path)
-	} else {
-		if _, err := s.git.Tree(r.Context(), s.repoDir(repo.Name), sha, path); err != nil {
-			if errors.Is(err, repos.ErrNotFound) {
-				return notFound("directory not found")
-			}
-			return err
+	} else if _, err := s.git.Tree(r.Context(), dir, sha, path); err != nil {
+		if errors.Is(err, repos.ErrNotFound) {
+			return notFound("directory not found")
 		}
-		query.Set("path", path)
+		return err
 	}
-	http.Redirect(w, r, "/"+escapePath(repo.Name)+"?"+query.Encode(), http.StatusTemporaryRedirect)
+	webui.Serve(w, r, http.StatusOK, "")
 	return nil
 }
 
@@ -217,6 +235,10 @@ func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResp
 			lexer = lexers.Analyse(string(content))
 		}
 		view.Code = string(highlight(codeFormatter, lexer, string(content)))
+		var rendered bytes.Buffer
+		if strings.HasSuffix(strings.ToLower(path), ".md") && markdown.Convert(content, &rendered) == nil {
+			view.Markdown = `<article class="markdown">` + rendered.String() + `</article>`
+		}
 	}
 	return reply(view)
 }

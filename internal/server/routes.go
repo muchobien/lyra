@@ -55,9 +55,8 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Post("/git-receive-pack", s.handleGit)
 
 	repo.Get("/", s.page(s.uiApplication))
-	repo.Get("/tree/{ref}", s.page(s.uiSource))
-	repo.Get("/tree/{ref}/*", s.page(s.uiSource))
-	repo.Get("/blob/{ref}/*", s.page(s.uiSource))
+	repo.Get("/tree/*", s.page(s.uiSource))
+	repo.Get("/blob/*", s.page(s.uiSource))
 	repo.Get("/commits/{ref}", s.page(s.uiApplication))
 	repo.Get("/commit/{sha}", s.page(s.uiApplication))
 	repo.Get("/tags", s.page(s.uiApplication))

@@ -43,9 +43,8 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
             <div className="lyra-workspace-grow">
               <Link
                 className="lyra-workspace-rowTitle"
-                to="/$owner/$repo"
-                params={{ owner, repo }}
-                search={{ ref: `refs/tags/${tag.name}` }}
+                to="/$owner/$repo/tree/$"
+                params={{ owner, repo, _splat: tag.name }}
               >
                 {tag.name}
               </Link>
@@ -81,9 +80,8 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
             </Link>
             <Link
               className="lyra-workspace-browse"
-              to="/$owner/$repo"
-              params={{ owner, repo }}
-              search={{ ref: `refs/tags/${tag.name}` }}
+              to="/$owner/$repo/tree/$"
+              params={{ owner, repo, _splat: tag.name }}
               aria-label={`Browse files at ${tag.name}`}
               title="Browse files"
             >
@@ -191,9 +189,8 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
             <Status value={commit.signature.status} />
             <Link
               className="lyra-controls-button"
-              to="/$owner/$repo"
-              params={{ owner, repo }}
-              search={{ ref: commit.sha }}
+              to="/$owner/$repo/tree/$"
+              params={{ owner, repo, _splat: commit.sha }}
             >
               <FileDirectoryIcon size={16} />
               Browse files

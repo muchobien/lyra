@@ -60,9 +60,8 @@ export function CommitRows({ commits, owner, repo }: CommitRowsProps) {
               </Link>
               <Link
                 className="lyra-workspace-browse"
-                to="/$owner/$repo"
-                params={{ owner, repo }}
-                search={{ ref: commit.sha }}
+                to="/$owner/$repo/tree/$"
+                params={{ owner, repo, _splat: commit.sha }}
                 aria-label={`Browse files at ${commit.sha.slice(0, 7)}`}
                 title="Browse files"
               >

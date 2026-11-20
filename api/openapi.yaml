@@ -120,6 +120,9 @@ components:
           type: boolean
         code:
           type: string
+        markdown:
+          description: Rendered HTML for Markdown files; empty otherwise.
+          type: string
         path:
           type: string
         size:
@@ -129,6 +132,7 @@ components:
         - path
         - size
         - code
+        - markdown
         - binary
       type: object
     Check:

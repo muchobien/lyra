@@ -134,9 +134,8 @@ export function ActionsList() {
             <strong>{selected.name}</strong>
             <Link
               className="lyra-workspace-link"
-              to="/$owner/$repo"
-              params={{ owner, repo }}
-              search={{ ref: reference, file: selected.path }}
+              to="/$owner/$repo/blob/$"
+              params={{ owner, repo, _splat: `${reference}/${selected.path}` }}
             >
               View workflow file
             </Link>
