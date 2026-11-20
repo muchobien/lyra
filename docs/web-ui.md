@@ -46,6 +46,9 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
   comments and reviews, using the Summarizer API.
 - **Explain failure** on a failed job sends the end of the failed step's log to the Prompt
   API and shows the likely cause, the log lines behind it and a suggested fix.
+- **Draft description from commits** in the new pull request dialog writes a summary and
+  a list of changes from the commits on the compare branch that aren't on the base branch.
+  Insert appends it to the description.
 
 ## Delivery and configuration
 
