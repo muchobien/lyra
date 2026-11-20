@@ -23,6 +23,7 @@ import (
 	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 	goldmarktext "github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/muchobien/lyra/internal/store"
 	"github.com/muchobien/lyra/internal/webui"
@@ -116,6 +117,51 @@ func renderMarkdown(source string) template.HTML {
 		return preformatted(source)
 	}
 	return template.HTML(rendered.String())
+}
+
+func renderMarkdownFile(content []byte) (string, error) {
+	var rendered bytes.Buffer
+	rendered.WriteString(`<article class="markdown">`)
+	normalized := append(bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n")), '\n')
+	if rest, opened := bytes.CutPrefix(normalized, []byte("---\n")); opened {
+		if matter, body, closed := bytes.Cut(append([]byte("\n"), rest...), []byte("\n---\n")); closed {
+			var document yaml.Node
+			if yaml.Unmarshal(matter, &document) != nil ||
+				len(document.Content) > 0 && document.Content[0].Kind != yaml.MappingNode {
+				rendered.WriteString(string(preformatted(string(bytes.TrimPrefix(matter, []byte("\n"))))))
+			} else if len(document.Content) > 0 {
+				rendered.WriteString(frontmatterHTML(document.Content[0]))
+			}
+			content = body
+		}
+	}
+	if err := markdown.Convert(content, &rendered); err != nil {
+		return "", err
+	}
+	rendered.WriteString(`</article>`)
+	return rendered.String(), nil
+}
+
+func frontmatterHTML(node *yaml.Node) string {
+	switch node.Kind {
+	case yaml.MappingNode:
+		var head, row strings.Builder
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			head.WriteString("<th>" + frontmatterHTML(node.Content[index]) + "</th>")
+			row.WriteString("<td>" + frontmatterHTML(node.Content[index+1]) + "</td>")
+		}
+		return "<table><thead><tr>" + head.String() + "</tr></thead>" +
+			"<tbody><tr>" + row.String() + "</tr></tbody></table>"
+	case yaml.SequenceNode:
+		var row strings.Builder
+		for _, item := range node.Content {
+			row.WriteString("<td>" + frontmatterHTML(item) + "</td>")
+		}
+		return "<table><tbody><tr>" + row.String() + "</tr></tbody></table>"
+	case yaml.AliasNode:
+		return template.HTMLEscapeString("*" + node.Value)
+	}
+	return template.HTMLEscapeString(node.Value)
 }
 
 func highlight(formatter *chromahtml.Formatter, lexer chroma.Lexer, source string) template.HTML {

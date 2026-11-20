@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -235,9 +234,8 @@ func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResp
 			lexer = lexers.Analyse(string(content))
 		}
 		view.Code = string(highlight(codeFormatter, lexer, string(content)))
-		var rendered bytes.Buffer
-		if strings.HasSuffix(strings.ToLower(path), ".md") && markdown.Convert(content, &rendered) == nil {
-			view.Markdown = `<article class="markdown">` + rendered.String() + `</article>`
+		if strings.HasSuffix(strings.ToLower(path), ".md") {
+			view.Markdown, _ = renderMarkdownFile(content)
 		}
 	}
 	return reply(view)
