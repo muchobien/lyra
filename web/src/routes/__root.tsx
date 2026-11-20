@@ -7,6 +7,9 @@ import { stripEmptySearch } from "@/routing/search";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   shellComponent: App,
+  pendingMs: 0,
+  pendingMinMs: 0,
+  pendingComponent: () => null,
   beforeLoad: async ({ context, location }) => {
     if (initialPageError && initialPageError.pathname === location.pathname) {
       throw initialPageError.error;
