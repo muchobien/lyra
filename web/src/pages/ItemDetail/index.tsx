@@ -9,6 +9,7 @@ import {
   GitBranchIcon,
   GitCommitIcon,
   PencilIcon,
+  SparkleIcon,
 } from "@primer/octicons-react";
 import { type DiscussionComment, type Review } from "@/api";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
@@ -24,6 +25,7 @@ import { FormError } from "@/components/forms/FormError";
 import { ChecksPanel } from "@/components/code/ChecksPanel";
 import { CommitRows } from "@/components/code/CommitRows";
 import { DiffViewer } from "@/components/code/DiffViewer";
+import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import { itemDetailPaths } from "@/routing/paths";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
@@ -48,6 +50,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     commits,
     patch,
     comment,
+    summary,
     editTitle,
     editBody,
     reviewBody,
@@ -67,6 +70,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     retry,
     retryCommits,
     retryPatch,
+    summarize,
     submitComment,
     changeState,
     titleChanged,
@@ -405,6 +409,17 @@ export function ItemDetail({ kind, number }: DetailProps) {
             label="Copy link"
             compact
           />
+          {summary.available && (
+            <button
+              className="lyra-controls-button"
+              type="button"
+              onClick={summarize}
+              disabled={summary.pending}
+            >
+              <SparkleIcon size={16} />
+              Summarize
+            </button>
+          )}
           {canWrite && (
             <button
               className="lyra-controls-button"
@@ -474,6 +489,16 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </Link>
         </ScrollNavigation>
       )}
+
+      <OnDeviceOutput
+        title="Summary"
+        output={summary.output}
+        progress={summary.progress}
+        error={summary.error}
+        pending={summary.pending}
+        onStop={summary.stop}
+        onDiscard={summary.reset}
+      />
 
       {detailContent}
 

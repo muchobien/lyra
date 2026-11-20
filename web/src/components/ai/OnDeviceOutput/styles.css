@@ -1,0 +1,23 @@
+.lyra-onDevice {
+  margin-block: 1rem;
+  & .lyra-workspace-formError {
+    margin: 1rem 1.25rem;
+  }
+}
+
+.lyra-onDevice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lyra-onDevice-download {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  & progress {
+    width: 100%;
+  }
+}

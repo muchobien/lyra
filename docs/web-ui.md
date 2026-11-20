@@ -35,6 +35,16 @@ Authors can comment on their work; approving it requires a different author iden
 Comment drafts and viewed-file progress survive navigation inside the application and
 reset on reload. Drafts are held in memory, not browser storage.
 
+## On-device AI
+
+Where Chrome provides its built-in AI models, the UI offers features that run on your
+device. Their controls appear only when the browser reports the model as available; the
+first use downloads the model and shows its progress. Results are suggestions: they
+appear in a panel with Stop and Discard, and nothing is saved until you use them.
+
+- **Summarize** on an issue or pull request lists the key points of its description,
+  comments and reviews, using the Summarizer API.
+
 ## Delivery and configuration
 
 Actions discovers workflows at a branch or tag. Workflows with declared manual triggers

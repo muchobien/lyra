@@ -26,6 +26,8 @@ import { type CommentAnchor } from "@/components/code/DiffViewer";
 import { useDraft } from "@/hooks/useDraft";
 import { itemDetailPaths } from "@/routing/paths";
 import { repositoryQueries } from "@/api/repositoryQueries";
+import { type Actor } from "@/api/generated/models";
+import { useOnDeviceModel } from "@/hooks/useOnDeviceModel";
 
 export type DetailProps = { kind: "pulls" | "issues"; number: number };
 
@@ -73,6 +75,12 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     side: "new",
     head_sha: "",
   });
+
+  const summary = useOnDeviceModel("summarizer", async () =>
+    "Summarizer" in self
+      ? Summarizer.availability({ expectedInputLanguages: ["en"], outputLanguage: "en" })
+      : "unavailable",
+  );
 
   const lineBody = useDraft(
     `${draftKey}/line/${anchor.head_sha}/${anchor.side}/${anchor.path}/${anchor.line}`,
@@ -145,6 +153,53 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
 
   function retryPatch() {
     void patch.refetch();
+  }
+
+  function summarize() {
+    const data = workspace.data;
+    if (!data) {
+      return;
+    }
+    const author = (actor: Actor) =>
+      actor.agent ? `${actor.agent} for ${actor.user}` : actor.user;
+    const replies = [
+      ...data.comments
+        .filter((entry) => !entry.review_id)
+        .map((entry) => ({
+          at: entry.created_at,
+          text: `${author(entry.author)} commented:\n${entry.body}`,
+        })),
+      ...data.reviews.map((entry) => ({
+        at: entry.created_at,
+        text: [
+          `${author(entry.author)} reviewed (${entry.state}):\n${entry.body}`,
+          ...entry.comments.map((line) => `On ${line.path}:${line.line}: ${line.body}`),
+        ].join("\n"),
+      })),
+    ].toSorted((first, second) => Date.parse(first.at) - Date.parse(second.at));
+    const thread = [
+      `${author(data.item.author)} opened it:\n${data.item.body || "No description."}`,
+      ...replies.map((entry) => entry.text),
+    ];
+    void summary.run(async (signal, monitor) => {
+      const summarizer = await Summarizer.create({
+        type: "key-points",
+        format: "markdown",
+        length: "medium",
+        expectedInputLanguages: ["en"],
+        outputLanguage: "en",
+        sharedContext: `${kind === "pulls" ? "A pull request" : "An issue"} titled "${data.item.title}" in the Git repository ${name}.`,
+        signal,
+        monitor,
+      });
+      let input = thread.join("\n\n");
+      let usage = await summarizer.measureInputUsage(input, { signal });
+      while (input && usage > summarizer.inputQuota) {
+        input = input.slice(0, Math.floor((input.length * summarizer.inputQuota) / usage) - 200);
+        usage = await summarizer.measureInputUsage(input, { signal });
+      }
+      return summarizer.summarizeStreaming(input, { signal });
+    });
   }
 
   function submitComment(event: SubmitEvent<HTMLFormElement>) {
@@ -278,6 +333,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     commits,
     patch,
     comment,
+    summary,
     editTitle,
     editBody,
     reviewBody,
@@ -297,6 +353,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     retry,
     retryCommits,
     retryPatch,
+    summarize,
     submitComment,
     changeState,
     titleChanged,
