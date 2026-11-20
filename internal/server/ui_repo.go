@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"html/template"
 	"net/http"
@@ -33,9 +32,11 @@ func (s *Server) readme(ctx context.Context, dir, sha, path string, entries []re
 			continue
 		}
 		shown = preformatted(string(content))
-		var rendered bytes.Buffer
-		if strings.HasSuffix(strings.ToLower(entry.Name), ".md") && markdown.Convert(content, &rendered) == nil {
-			shown = template.HTML(`<article class="markdown">` + rendered.String() + `</article>`)
+		if !strings.HasSuffix(strings.ToLower(entry.Name), ".md") {
+			continue
+		}
+		if rendered, err := renderMarkdownFile(content); err == nil {
+			shown = template.HTML(rendered)
 		}
 	}
 	return shown
