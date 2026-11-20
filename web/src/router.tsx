@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { APIError } from "./api";
-import { RouteError, RoutePending } from "./routing/boundaries";
+import { RouteError } from "./routing/boundaries";
 import { NotFound } from "./pages/NotFound";
 import { routeTree } from "./routeTree.gen";
 
@@ -34,9 +34,6 @@ export const router = createRouter({
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0,
   defaultStructuralSharing: true,
-  defaultPendingMs: 250,
-  defaultPendingMinMs: 150,
-  defaultPendingComponent: RoutePending,
   defaultErrorComponent: RouteError,
   defaultNotFoundComponent: NotFound,
 });

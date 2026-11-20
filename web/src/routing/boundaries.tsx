@@ -1,10 +1,6 @@
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
 
-export function RoutePending() {
-  return <output>Loading workspace…</output>;
-}
-
 export function RouteError({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
 
