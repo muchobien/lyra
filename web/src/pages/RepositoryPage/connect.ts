@@ -1,6 +1,6 @@
 import { useLatestRelease } from "@/api/releases";
 import { useEffect, useState, type ChangeEvent, type ToggleEvent } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   useGetRepo,
   useGetRepositoryTree,
@@ -10,27 +10,34 @@ import {
   useListRepositoryFiles,
   useListTags,
 } from "@/api/generated/lyra";
+import { splitSource } from "@/routing/paths";
 
-export function useConnect() {
+export type RepositoryPageProps = { view: "tree" | "blob"; target: string };
+
+export function useConnect({ view, target }: RepositoryPageProps) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
-  const search = useSearch({ from: "/$owner/$repo/" });
-  const navigate = useNavigate({ from: "/$owner/$repo/" });
+  const navigate = useNavigate();
 
   const name = `${owner}/${repo}`;
   const metadata = useGetRepo(owner, repo);
   const hasBranches = Boolean(metadata.data?.branches.length);
-  const ref = search.ref || metadata.data?.default_branch || "main";
-  const params = { ref, path: search.path || "" };
+  const tags = useListTags(owner, repo);
+  const source = splitSource(
+    target,
+    metadata.data?.branches.map((branch) => branch.name) || [],
+    tags.data?.map((tag) => tag.name) || [],
+  );
+  const ref = source.ref || metadata.data?.default_branch || "main";
+  const params = { ref, path: source.path };
   const tree = useGetRepositoryTree(owner, repo, params, {
-    query: { enabled: !!metadata.data && !search.file },
+    query: { enabled: !!metadata.data && view === "tree" },
   });
-  const blobParams = { ref, path: search.file || "" };
+  const blobParams = params;
   const blob = useGetRepositoryBlob(owner, repo, blobParams, {
-    query: { enabled: !!metadata.data && !!search.file },
+    query: { enabled: !!metadata.data && view === "blob" },
   });
   const latest = useLatestRelease(owner, repo);
   const images = useListImages(owner, repo);
-  const tags = useListTags(owner, repo);
   const releases = useListReleases(owner, repo);
 
   const [finderOpen, setFinderOpen] = useState(false);
@@ -68,7 +75,10 @@ export function useConnect() {
   }, [hasBranches]);
 
   function branchChanged(event: ChangeEvent<HTMLSelectElement>) {
-    void navigate({ search: { ref: event.target.value } });
+    void navigate({
+      to: "/$owner/$repo/tree/$",
+      params: { owner, repo, _splat: event.target.value },
+    });
   }
 
   function searchChanged(event: ChangeEvent<HTMLInputElement>) {
@@ -89,7 +99,7 @@ export function useConnect() {
 
   function retry() {
     void metadata.refetch();
-    if (search.file) {
+    if (view === "blob") {
       void blob.refetch();
     } else {
       void tree.refetch();
@@ -100,12 +110,13 @@ export function useConnect() {
     void files.refetch();
   }
 
-  const failure = metadata.error || (search.file ? blob.error : tree.error);
+  const failure = metadata.error || (view === "blob" ? blob.error : tree.error);
 
   return {
     owner,
     repo,
-    search,
+    view,
+    path: source.path,
     name,
     metadata,
     hasBranches,

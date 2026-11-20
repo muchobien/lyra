@@ -13,6 +13,22 @@ export const diffPaths = {
   commit: "/$owner/$repo/commit/$sha",
 } as const;
 
+export function splitSource(target: string, branches: string[], tags: string[]) {
+  const names = [
+    ...branches,
+    ...branches.map((name) => `refs/heads/${name}`),
+    ...tags,
+    ...tags.map((name) => `refs/tags/${name}`),
+  ];
+  let ref = target.split("/")[0];
+  for (const name of names) {
+    if (name.length > ref.length && (target === name || target.startsWith(`${name}/`))) {
+      ref = name;
+    }
+  }
+  return { ref, path: target.slice(ref.length + 1) };
+}
+
 export const numberParams = {
   parse: ({ number }: { number: string }) => {
     const parsed = Number(number);

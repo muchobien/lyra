@@ -91,9 +91,15 @@ func TestEmbeddedUI(test *testing.T) {
 			test.Fatalf("missing %s: HTTP %d", path, status)
 		}
 	}
-	status, body = call(test, http.MethodGet, srv.url+"/acme/demo?ref=feature%2Fnested&file=branch.txt", tailnet(), "")
-	if status != http.StatusOK || !strings.Contains(string(body), `<div id="root"></div>`) {
-		test.Fatalf("UI deep link: HTTP %d, %s", status, body)
+	status, rawFile := call(test, http.MethodGet, srv.url+"/acme/demo/blob/feature/nested/branch.txt?raw", tailnet(), "")
+	if status != http.StatusOK || string(rawFile) != "branch content\n" {
+		test.Fatalf("raw file by path: HTTP %d, %s", status, rawFile)
+	}
+	for _, target := range []string{"/acme/demo/blob/feature/nested/branch.txt", "/acme/demo/blob/refs/heads/feature/nested/branch.txt", "/acme/demo/tree/main", "/acme/demo/tree/main/src", "/acme/demo/blob/main/src/example.go"} {
+		status, body = call(test, http.MethodGet, srv.url+target, tailnet(), "")
+		if status != http.StatusOK || !strings.Contains(string(body), `<div id="root"></div>`) {
+			test.Fatalf("UI deep link %s: HTTP %d, %s", target, status, body)
+		}
 	}
 	asset := regexp.MustCompile(`src="(/static/assets/[^"]+\.js)"`).FindSubmatch(body)
 	if len(asset) != 2 {
@@ -136,7 +142,7 @@ func TestEmbeddedUI(test *testing.T) {
 			test.Fatalf("workspace shell %s: HTTP %d", target, status)
 		}
 	}
-	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/commits/missing", "/acme/demo/releases/tag/missing"} {
+	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/commits/missing", "/acme/demo/releases/tag/missing", "/acme/demo/tree/missing", "/acme/demo/tree/main/missing", "/acme/demo/blob/main/missing", "/acme/demo/blob/feature/branch.txt"} {
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			status, body := call(test, method, srv.url+target, tailnet(), "")
 			if status != http.StatusNotFound || (method == http.MethodHead && len(body) != 0) {
@@ -150,16 +156,5 @@ func TestEmbeddedUI(test *testing.T) {
 	status, body = call(test, http.MethodGet, srv.url+"/acme/demo", bearer(reader), "")
 	if status != http.StatusForbidden || !strings.Contains(string(body), `data-error-title="Forbidden"`) {
 		test.Fatalf("forbidden workspace: HTTP %d", status)
-	}
-	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	request, _ = http.NewRequest(http.MethodGet, srv.url+"/acme/demo/blob/main/src/example.go", nil)
-	request.Header.Set("Tailscale-User-Login", login)
-	response, err = client.Do(request)
-	if err != nil {
-		test.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusTemporaryRedirect || response.Header.Get("Location") != "/acme/demo?file=src%2Fexample.go&ref=main" {
-		test.Fatalf("source deep-link redirect: HTTP %d %s", response.StatusCode, response.Header.Get("Location"))
 	}
 }

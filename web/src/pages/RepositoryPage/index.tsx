@@ -17,13 +17,13 @@ import { FileIcon } from "@/components/code/FileIcon";
 import { DateTime } from "@/components/metadata/DateTime";
 import "@/styles/controls.css";
 import "./styles.css";
-import { useConnect } from "./connect";
+import { useConnect, type RepositoryPageProps } from "./connect";
 
-export function RepositoryPage() {
+export function RepositoryPage({ view, target }: RepositoryPageProps) {
   const {
     owner,
     repo,
-    search,
+    path,
     name,
     metadata,
     hasBranches,
@@ -45,7 +45,7 @@ export function RepositoryPage() {
     retry,
     retryFiles,
     failure,
-  } = useConnect();
+  } = useConnect({ view, target });
   if (failure) {
     return <ErrorNotice error={failure} retry={retry} />;
   }
@@ -53,8 +53,7 @@ export function RepositoryPage() {
     return <output className="lyra-repository-page-loading">Loading repository…</output>;
   }
 
-  const activePath = search.file || search.path || "";
-  const parts = activePath.split("/").filter(Boolean);
+  const parts = path.split("/").filter(Boolean);
   const latestImages = latest.data?.images || [];
   const containers = latestImages.length
     ? latestImages
@@ -121,21 +120,24 @@ export function RepositoryPage() {
               </button>
             </div>
           </div>
-          {activePath && (
+          {path && (
             <nav className="lyra-repository-page-breadcrumb" aria-label="File path">
-              <Link to="/$owner/$repo" params={{ owner, repo }} search={{ ref: search.ref }}>
+              <Link to="/$owner/$repo/tree/$" params={{ owner, repo, _splat: ref }}>
                 {repo}
               </Link>
               {parts.map((part, index) => (
                 <span key={parts.slice(0, index + 1).join("/")}>
                   <span>/</span>
-                  {search.file && index === parts.length - 1 ? (
+                  {view === "blob" && index === parts.length - 1 ? (
                     <strong>{part}</strong>
                   ) : (
                     <Link
-                      to="/$owner/$repo"
-                      params={{ owner, repo }}
-                      search={{ ref: search.ref, path: parts.slice(0, index + 1).join("/") }}
+                      to="/$owner/$repo/tree/$"
+                      params={{
+                        owner,
+                        repo,
+                        _splat: [ref, ...parts.slice(0, index + 1)].join("/"),
+                      }}
                     >
                       {part}
                     </Link>
@@ -144,14 +146,14 @@ export function RepositoryPage() {
               ))}
             </nav>
           )}
-          {!search.file && tree.isPending && (
+          {view === "tree" && tree.isPending && (
             <div
               className="lyra-repository-page-skeleton"
               aria-label="Loading files"
               aria-busy="true"
             />
           )}
-          {!search.file && tree.data?.empty && (
+          {view === "tree" && tree.data?.empty && (
             <div className="lyra-repository-page-empty">
               <GitBranchIcon size={24} />
               <h1>Your repository is ready</h1>
@@ -166,7 +168,7 @@ export function RepositoryPage() {
               </div>
             </div>
           )}
-          {!search.file && tree.data && !tree.data.empty && (
+          {view === "tree" && tree.data && !tree.data.empty && (
             <>
               <div className="lyra-repository-page-tree">
                 {tree.data.last && (
@@ -218,15 +220,11 @@ export function RepositoryPage() {
                     <div className="lyra-repository-page-entry" key={entry.name}>
                       <FileIcon name={entry.name} folder={entry.type === "tree"} />
                       <Link
-                        to="/$owner/$repo"
-                        params={{ owner, repo }}
-                        search={{
-                          ref: search.ref,
-                          path: search.path,
-                          file: undefined,
-                          ...(entry.type === "tree"
-                            ? { path: [search.path, entry.name].filter(Boolean).join("/") }
-                            : { file: [search.path, entry.name].filter(Boolean).join("/") }),
+                        to={entry.type === "tree" ? "/$owner/$repo/tree/$" : "/$owner/$repo/blob/$"}
+                        params={{
+                          owner,
+                          repo,
+                          _splat: [ref, path, entry.name].filter(Boolean).join("/"),
                         }}
                       >
                         {entry.name}
@@ -261,10 +259,10 @@ export function RepositoryPage() {
               )}
             </>
           )}
-          {search.file && blob.isPending && (
+          {view === "blob" && blob.isPending && (
             <output className="lyra-repository-page-loading">Loading file…</output>
           )}
-          {search.file && blob.data && (
+          {view === "blob" && blob.data && (
             <section className="lyra-repository-page-blob">
               <div className="lyra-repository-page-fileHeading">
                 <FileIcon name={parts.at(-1) ?? ""} />
@@ -423,16 +421,15 @@ export function RepositoryPage() {
         <div className="lyra-repository-page-finderResults">
           {files.isPending && <output>Loading files…</output>}
           {files.error && <ErrorNotice error={files.error} retry={retryFiles} />}{" "}
-          {visibleFiles.slice(0, 100).map((path) => (
+          {visibleFiles.slice(0, 100).map((filePath) => (
             <Link
-              key={path}
-              to="/$owner/$repo"
-              params={{ owner, repo }}
-              search={{ ref: search.ref, file: path }}
+              key={filePath}
+              to="/$owner/$repo/blob/$"
+              params={{ owner, repo, _splat: `${ref}/${filePath}` }}
               onClick={closeFinder}
             >
-              <FileIcon name={path.split("/").at(-1) ?? path} />
-              {path}
+              <FileIcon name={filePath.split("/").at(-1) ?? filePath} />
+              {filePath}
             </Link>
           ))}
           {files.data && visibleFiles.length === 0 && <p>No matching files.</p>}

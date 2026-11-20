@@ -220,9 +220,8 @@ export function RunDetail({ number }: RunDetailProps) {
             </Link>
           )}
           <Link
-            to="/$owner/$repo"
-            params={{ owner, repo }}
-            search={{ ref: data.sha, file: data.workflow }}
+            to="/$owner/$repo/blob/$"
+            params={{ owner, repo, _splat: `${data.sha}/${data.workflow}` }}
             className="lyra-workspace-link"
           >
             Workflow file

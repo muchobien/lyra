@@ -1,7 +1,14 @@
 import { type QueryExecuteOptions, type QueryClient } from "@tanstack/react-query";
 import { notFound } from "@tanstack/react-router";
 import { APIError } from "@/api";
-import { getGetRepoQueryOptions, getListCommitsQueryOptions } from "@/api/generated/lyra";
+import {
+  getGetRepoQueryOptions,
+  getGetRepositoryBlobQueryOptions,
+  getGetRepositoryTreeQueryOptions,
+  getListCommitsQueryOptions,
+  getListTagsQueryOptions,
+} from "@/api/generated/lyra";
+import { splitSource } from "@/routing/paths";
 
 export async function loadQuery<Data, ErrorType, Key extends readonly unknown[]>(
   client: QueryClient,
@@ -33,5 +40,29 @@ export async function loadCommits(
         limit,
       }),
     );
+  }
+}
+
+export async function loadSource(
+  client: QueryClient,
+  owner: string,
+  repo: string,
+  view: "tree" | "blob",
+  target: string,
+) {
+  const [metadata, tags] = await Promise.all([
+    loadQuery(client, getGetRepoQueryOptions(owner, repo)),
+    loadQuery(client, getListTagsQueryOptions(owner, repo)),
+  ]);
+  const source = splitSource(
+    target,
+    metadata.branches.map((branch) => branch.name),
+    tags.map((tag) => tag.name),
+  );
+  const params = { ref: source.ref || metadata.default_branch || "main", path: source.path };
+  if (view === "blob") {
+    await loadQuery(client, getGetRepositoryBlobQueryOptions(owner, repo, params));
+  } else {
+    await loadQuery(client, getGetRepositoryTreeQueryOptions(owner, repo, params));
   }
 }

@@ -18,6 +18,7 @@ import { Route as OwnerRepoActivityRouteImport } from "./routes/$owner/$repo/act
 import { Route as OwnerRepoImagesRouteImport } from "./routes/$owner/$repo/images"
 import { Route as OwnerRepoSettingsRouteImport } from "./routes/$owner/$repo/settings"
 import { Route as OwnerRepoTagsRouteImport } from "./routes/$owner/$repo/tags"
+import { Route as OwnerRepoBlobSplatRouteImport } from "./routes/$owner/$repo/blob/$"
 import { Route as OwnerRepoCommitShaRouteImport } from "./routes/$owner/$repo/commit/$sha"
 import { Route as OwnerRepoCommitsIndexRouteImport } from "./routes/$owner/$repo/commits/index"
 import { Route as OwnerRepoCommitsSplatRouteImport } from "./routes/$owner/$repo/commits/$"
@@ -28,6 +29,7 @@ import { Route as OwnerRepoPullsNumberRouteImport } from "./routes/$owner/$repo/
 import { Route as OwnerRepoReleasesIndexRouteImport } from "./routes/$owner/$repo/releases/index"
 import { Route as OwnerRepoRunsIndexRouteImport } from "./routes/$owner/$repo/runs/index"
 import { Route as OwnerRepoRunsNumberRouteImport } from "./routes/$owner/$repo/runs/$number"
+import { Route as OwnerRepoTreeSplatRouteImport } from "./routes/$owner/$repo/tree/$"
 import { Route as OwnerRepoReleasesTagSplatRouteImport } from "./routes/$owner/$repo/releases/tag/$"
 
 const IndexRoute = IndexRouteImport.update({
@@ -73,6 +75,11 @@ const OwnerRepoSettingsRoute = OwnerRepoSettingsRouteImport.update({
 const OwnerRepoTagsRoute = OwnerRepoTagsRouteImport.update({
   id: "/tags",
   path: "/tags",
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoBlobSplatRoute = OwnerRepoBlobSplatRouteImport.update({
+  id: "/blob/$",
+  path: "/blob/$",
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoCommitShaRoute = OwnerRepoCommitShaRouteImport.update({
@@ -125,6 +132,11 @@ const OwnerRepoRunsNumberRoute = OwnerRepoRunsNumberRouteImport.update({
   path: "/runs/$number",
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
+const OwnerRepoTreeSplatRoute = OwnerRepoTreeSplatRouteImport.update({
+  id: "/tree/$",
+  path: "/tree/$",
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
 const OwnerRepoReleasesTagSplatRoute =
   OwnerRepoReleasesTagSplatRouteImport.update({
     id: "/releases/tag/$",
@@ -142,11 +154,13 @@ export interface FileRoutesByFullPath {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo/": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
   "/$owner/$repo/issues/$number": typeof OwnerRepoIssuesNumberRoute
   "/$owner/$repo/pulls/$number": typeof OwnerRepoPullsNumberRoute
   "/$owner/$repo/runs/$number": typeof OwnerRepoRunsNumberRoute
+  "/$owner/$repo/tree/$": typeof OwnerRepoTreeSplatRoute
   "/$owner/$repo/commits/": typeof OwnerRepoCommitsIndexRoute
   "/$owner/$repo/issues/": typeof OwnerRepoIssuesIndexRoute
   "/$owner/$repo/pulls/": typeof OwnerRepoPullsIndexRoute
@@ -163,11 +177,13 @@ export interface FileRoutesByTo {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
   "/$owner/$repo/issues/$number": typeof OwnerRepoIssuesNumberRoute
   "/$owner/$repo/pulls/$number": typeof OwnerRepoPullsNumberRoute
   "/$owner/$repo/runs/$number": typeof OwnerRepoRunsNumberRoute
+  "/$owner/$repo/tree/$": typeof OwnerRepoTreeSplatRoute
   "/$owner/$repo/commits": typeof OwnerRepoCommitsIndexRoute
   "/$owner/$repo/issues": typeof OwnerRepoIssuesIndexRoute
   "/$owner/$repo/pulls": typeof OwnerRepoPullsIndexRoute
@@ -186,11 +202,13 @@ export interface FileRoutesById {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo/": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
   "/$owner/$repo/issues/$number": typeof OwnerRepoIssuesNumberRoute
   "/$owner/$repo/pulls/$number": typeof OwnerRepoPullsNumberRoute
   "/$owner/$repo/runs/$number": typeof OwnerRepoRunsNumberRoute
+  "/$owner/$repo/tree/$": typeof OwnerRepoTreeSplatRoute
   "/$owner/$repo/commits/": typeof OwnerRepoCommitsIndexRoute
   "/$owner/$repo/issues/": typeof OwnerRepoIssuesIndexRoute
   "/$owner/$repo/pulls/": typeof OwnerRepoPullsIndexRoute
@@ -210,11 +228,13 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo/"
+    | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
     | "/$owner/$repo/issues/$number"
     | "/$owner/$repo/pulls/$number"
     | "/$owner/$repo/runs/$number"
+    | "/$owner/$repo/tree/$"
     | "/$owner/$repo/commits/"
     | "/$owner/$repo/issues/"
     | "/$owner/$repo/pulls/"
@@ -231,11 +251,13 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo"
+    | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
     | "/$owner/$repo/issues/$number"
     | "/$owner/$repo/pulls/$number"
     | "/$owner/$repo/runs/$number"
+    | "/$owner/$repo/tree/$"
     | "/$owner/$repo/commits"
     | "/$owner/$repo/issues"
     | "/$owner/$repo/pulls"
@@ -253,11 +275,13 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo/"
+    | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
     | "/$owner/$repo/issues/$number"
     | "/$owner/$repo/pulls/$number"
     | "/$owner/$repo/runs/$number"
+    | "/$owner/$repo/tree/$"
     | "/$owner/$repo/commits/"
     | "/$owner/$repo/issues/"
     | "/$owner/$repo/pulls/"
@@ -338,6 +362,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof OwnerRepoTagsRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
+    "/$owner/$repo/blob/$": {
+      id: "/$owner/$repo/blob/$"
+      path: "/blob/$"
+      fullPath: "/$owner/$repo/blob/$"
+      preLoaderRoute: typeof OwnerRepoBlobSplatRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
     "/$owner/$repo/commit/$sha": {
       id: "/$owner/$repo/commit/$sha"
       path: "/commit/$sha"
@@ -408,6 +439,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof OwnerRepoRunsNumberRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
+    "/$owner/$repo/tree/$": {
+      id: "/$owner/$repo/tree/$"
+      path: "/tree/$"
+      fullPath: "/$owner/$repo/tree/$"
+      preLoaderRoute: typeof OwnerRepoTreeSplatRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
     "/$owner/$repo/releases/tag/$": {
       id: "/$owner/$repo/releases/tag/$"
       path: "/releases/tag/$"
@@ -424,11 +462,13 @@ interface OwnerRepoRouteRouteChildren {
   OwnerRepoSettingsRoute: typeof OwnerRepoSettingsRoute
   OwnerRepoTagsRoute: typeof OwnerRepoTagsRoute
   OwnerRepoIndexRoute: typeof OwnerRepoIndexRoute
+  OwnerRepoBlobSplatRoute: typeof OwnerRepoBlobSplatRoute
   OwnerRepoCommitShaRoute: typeof OwnerRepoCommitShaRoute
   OwnerRepoCommitsSplatRoute: typeof OwnerRepoCommitsSplatRoute
   OwnerRepoIssuesNumberRoute: typeof OwnerRepoIssuesNumberRoute
   OwnerRepoPullsNumberRoute: typeof OwnerRepoPullsNumberRoute
   OwnerRepoRunsNumberRoute: typeof OwnerRepoRunsNumberRoute
+  OwnerRepoTreeSplatRoute: typeof OwnerRepoTreeSplatRoute
   OwnerRepoCommitsIndexRoute: typeof OwnerRepoCommitsIndexRoute
   OwnerRepoIssuesIndexRoute: typeof OwnerRepoIssuesIndexRoute
   OwnerRepoPullsIndexRoute: typeof OwnerRepoPullsIndexRoute
@@ -443,11 +483,13 @@ const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
   OwnerRepoSettingsRoute: OwnerRepoSettingsRoute,
   OwnerRepoTagsRoute: OwnerRepoTagsRoute,
   OwnerRepoIndexRoute: OwnerRepoIndexRoute,
+  OwnerRepoBlobSplatRoute: OwnerRepoBlobSplatRoute,
   OwnerRepoCommitShaRoute: OwnerRepoCommitShaRoute,
   OwnerRepoCommitsSplatRoute: OwnerRepoCommitsSplatRoute,
   OwnerRepoIssuesNumberRoute: OwnerRepoIssuesNumberRoute,
   OwnerRepoPullsNumberRoute: OwnerRepoPullsNumberRoute,
   OwnerRepoRunsNumberRoute: OwnerRepoRunsNumberRoute,
+  OwnerRepoTreeSplatRoute: OwnerRepoTreeSplatRoute,
   OwnerRepoCommitsIndexRoute: OwnerRepoCommitsIndexRoute,
   OwnerRepoIssuesIndexRoute: OwnerRepoIssuesIndexRoute,
   OwnerRepoPullsIndexRoute: OwnerRepoPullsIndexRoute,
