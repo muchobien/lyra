@@ -168,6 +168,8 @@ export interface Attachment {
 export interface BlobResponse {
   binary: boolean;
   code: string;
+  /** Rendered HTML for Markdown files; empty otherwise. */
+  markdown: string;
   path: string;
   size: number;
 }

@@ -19,7 +19,7 @@ import "@/styles/controls.css";
 import "./styles.css";
 import { useConnect, type RepositoryPageProps } from "./connect";
 
-export function RepositoryPage({ view, target }: RepositoryPageProps) {
+export function RepositoryPage({ view, target, plain = false }: RepositoryPageProps) {
   const {
     owner,
     repo,
@@ -265,6 +265,26 @@ export function RepositoryPage({ view, target }: RepositoryPageProps) {
           {view === "blob" && blob.data && (
             <section className="lyra-repository-page-blob">
               <div className="lyra-repository-page-fileHeading">
+                {blob.data.markdown && (
+                  <nav className="lyra-repository-page-views" aria-label="File view">
+                    <Link
+                      to="/$owner/$repo/blob/$"
+                      params={{ owner, repo, _splat: target }}
+                      search={{}}
+                      activeOptions={{ exact: true }}
+                    >
+                      Preview
+                    </Link>
+                    <Link
+                      to="/$owner/$repo/blob/$"
+                      params={{ owner, repo, _splat: target }}
+                      search={{ plain: "1" }}
+                      activeOptions={{ exact: true }}
+                    >
+                      Code
+                    </Link>
+                  </nav>
+                )}
                 <FileIcon name={parts.at(-1) ?? ""} />
                 <strong>{parts.at(-1)}</strong>
                 <span>
@@ -284,7 +304,9 @@ export function RepositoryPage({ view, target }: RepositoryPageProps) {
               ) : (
                 <div
                   className="lyra-repository-page-rendered"
-                  dangerouslySetInnerHTML={{ __html: blob.data.code }}
+                  dangerouslySetInnerHTML={{
+                    __html: blob.data.markdown && !plain ? blob.data.markdown : blob.data.code,
+                  }}
                 />
               )}
             </section>

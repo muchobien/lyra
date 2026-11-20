@@ -49,16 +49,21 @@ func TestEmbeddedUI(test *testing.T) {
 		test.Fatalf("recursive files: HTTP %d, %s, %v", status, body, err)
 	}
 	var blob struct {
-		Code   string `json:"code"`
-		Binary bool   `json:"binary"`
+		Code     string `json:"code"`
+		Markdown string `json:"markdown"`
+		Binary   bool   `json:"binary"`
 	}
 	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blob?path=src/example.go", tailnet(), "")
 	if err := json.Unmarshal(body, &blob); err != nil || status != http.StatusOK || blob.Binary || !strings.Contains(blob.Code, `class="chroma"`) || strings.Contains(blob.Code, "<script") {
 		test.Fatalf("highlighted blob: HTTP %d, %s, %v", status, body, err)
 	}
+	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blob?path=README.md", tailnet(), "")
+	if err := json.Unmarshal(body, &blob); err != nil || status != http.StatusOK || !strings.Contains(blob.Code, `class="chroma"`) || !strings.Contains(blob.Markdown, "<h1>Demo</h1>") || strings.Contains(blob.Markdown, "<script") {
+		test.Fatalf("rendered Markdown blob: HTTP %d, %s, %v", status, body, err)
+	}
 	for _, path := range []string{"data.bin", "large.txt"} {
 		status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blob?path="+path, tailnet(), "")
-		if err := json.Unmarshal(body, &blob); err != nil || status != http.StatusOK || !blob.Binary || blob.Code != "" {
+		if err := json.Unmarshal(body, &blob); err != nil || status != http.StatusOK || !blob.Binary || blob.Code != "" || blob.Markdown != "" {
 			test.Fatalf("unrendered file %s: HTTP %d, %s, %v", path, status, body, err)
 		}
 	}

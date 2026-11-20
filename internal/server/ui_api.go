@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -34,10 +35,11 @@ type treeResponse struct {
 }
 
 type blobResponse struct {
-	Path   string `json:"path"`
-	Size   int    `json:"size"`
-	Code   string `json:"code"`
-	Binary bool   `json:"binary"`
+	Path     string `json:"path"`
+	Size     int    `json:"size"`
+	Code     string `json:"code"`
+	Markdown string `json:"markdown" doc:"Rendered HTML for Markdown files; empty otherwise."`
+	Binary   bool   `json:"binary"`
 }
 
 func (treeResponse) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.Schema {
@@ -233,6 +235,10 @@ func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResp
 			lexer = lexers.Analyse(string(content))
 		}
 		view.Code = string(highlight(codeFormatter, lexer, string(content)))
+		var rendered bytes.Buffer
+		if strings.HasSuffix(strings.ToLower(path), ".md") && markdown.Convert(content, &rendered) == nil {
+			view.Markdown = `<article class="markdown">` + rendered.String() + `</article>`
+		}
 	}
 	return reply(view)
 }

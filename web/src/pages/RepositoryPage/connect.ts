@@ -12,7 +12,7 @@ import {
 } from "@/api/generated/lyra";
 import { splitSource } from "@/routing/paths";
 
-export type RepositoryPageProps = { view: "tree" | "blob"; target: string };
+export type RepositoryPageProps = { view: "tree" | "blob"; target: string; plain?: boolean };
 
 export function useConnect({ view, target }: RepositoryPageProps) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });

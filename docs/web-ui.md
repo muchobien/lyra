@@ -13,7 +13,8 @@ navigation scrolls horizontally and keeps the selected section visible.
 Code contains files, commit history and tags. Directories open at
 `/<owner>/<repo>/tree/<ref>/<path>` and files at `/<owner>/<repo>/blob/<ref>/<path>`; the
 ref is the longest branch or tag name the path starts with, or else a commit. Add `?raw`
-to a file URL to download it. Press `T` to open the file finder. The repository sidebar shows the latest
+to a file URL to download it. Markdown files open rendered; Code, or `?plain=1`, shows
+their highlighted source. Press `T` to open the file finder. The repository sidebar shows the latest
 stable release and containers associated with its tag, or the latest container when
 there is no match. Releases and containers have their own list and detail views.
 
