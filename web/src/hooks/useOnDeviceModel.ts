@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 type Start = (
   signal: AbortSignal,
   monitor: CreateMonitorCallback,
-) => Promise<ReadableStream<string>>;
+) => Promise<AsyncIterable<string>>;
 
 export const englishText: LanguageModelCreateCoreOptions = {
   expectedInputs: [{ type: "text", languages: ["en"] }],

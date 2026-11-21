@@ -51,6 +51,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     patch,
     comment,
     summary,
+    commitMessage,
     editTitle,
     editBody,
     reviewBody,
@@ -79,6 +80,8 @@ export function ItemDetail({ kind, number }: DetailProps) {
     decisionChanged,
     submitReview,
     openMerge,
+    draftCommitMessage,
+    acceptCommitMessage,
     methodChanged,
     mergeTitleChanged,
     submitMerge,
@@ -610,6 +613,35 @@ export function ItemDetail({ kind, number }: DetailProps) {
                   value={mergeBody.value}
                   onChange={mergeBody.setValue}
                 />
+                {commitMessage.available && (
+                  <button
+                    className="lyra-controls-button"
+                    type="button"
+                    onClick={draftCommitMessage}
+                    disabled={commitMessage.pending}
+                  >
+                    <SparkleIcon size={16} />
+                    Draft commit message
+                  </button>
+                )}
+                <OnDeviceOutput
+                  title="Commit message"
+                  output={commitMessage.output}
+                  progress={commitMessage.progress}
+                  error={commitMessage.error}
+                  pending={commitMessage.pending}
+                  onStop={commitMessage.stop}
+                  onDiscard={commitMessage.reset}
+                  content={<pre className="lyra-workspace-plainText">{commitMessage.output}</pre>}
+                >
+                  <button
+                    className="lyra-controls-button"
+                    type="button"
+                    onClick={acceptCommitMessage}
+                  >
+                    Use
+                  </button>
+                </OnDeviceOutput>
               </>
             )}
             <label className="lyra-workspace-checkbox">

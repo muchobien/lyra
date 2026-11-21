@@ -20,6 +20,7 @@ import {
   useMergePull,
   useCommentPull,
   useListLabels,
+  listPullCommits,
 } from "@/api/generated/lyra";
 import { formValue } from "@/utils/forms";
 import { type CommentAnchor } from "@/components/code/DiffViewer";
@@ -27,7 +28,7 @@ import { useDraft } from "@/hooks/useDraft";
 import { itemDetailPaths } from "@/routing/paths";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { type Actor } from "@/api/generated/models";
-import { useOnDeviceModel } from "@/hooks/useOnDeviceModel";
+import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
 
 export type DetailProps = { kind: "pulls" | "issues"; number: number };
 
@@ -80,6 +81,10 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     "Summarizer" in self
       ? Summarizer.availability({ expectedInputLanguages: ["en"], outputLanguage: "en" })
       : "unavailable",
+  );
+
+  const commitMessage = useOnDeviceModel("language-model", async () =>
+    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
   );
 
   const lineBody = useDraft(
@@ -278,6 +283,43 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     merging.reset();
   }
 
+  function draftCommitMessage() {
+    const item = workspace.data?.item;
+    if (!item) {
+      return;
+    }
+    void commitMessage.run(async (signal, monitor) => {
+      const commits = await listPullCommits(owner, repo, number, { signal });
+      const session = await LanguageModel.create({
+        ...englishText,
+        initialPrompts: [
+          {
+            role: "system",
+            content:
+              "You write squash commit messages in the Conventional Commits format. The first line is the subject: a type such as feat, fix, refactor, docs, test, ci, build or chore, an optional scope in parentheses, a colon, then a lowercase summary of what the change does, with no trailing period and at most 72 characters. After a blank line, the body explains what changed and why in a few short lines, for a reader who hasn't seen the pull request. Only state what the pull request supports. Output only the message, without code fences.",
+          },
+        ],
+        signal,
+        monitor,
+      });
+      const log = commits
+        .map((commit) => [`- ${commit.subject}`, commit.body.trim()].filter(Boolean).join("\n\n"))
+        .join("\n");
+      return session.promptStreaming(
+        `Pull request title: ${item.title}\n\nDescription:\n${item.body || "None."}\n\nCommits, newest first:\n${log}`,
+        { signal },
+      );
+    });
+  }
+
+  function acceptCommitMessage() {
+    const [subject = "", ...body] = commitMessage.output.trim().split("\n");
+    const suffix = ` (#${number})`;
+    mergeTitle.setValue(subject.endsWith(suffix) ? subject : subject + suffix);
+    mergeBody.setValue(body.join("\n").trim());
+    commitMessage.reset();
+  }
+
   function methodChanged(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "squash" || value === "ff") {
@@ -334,6 +376,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     patch,
     comment,
     summary,
+    commitMessage,
     editTitle,
     editBody,
     reviewBody,
@@ -362,6 +405,8 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     decisionChanged,
     submitReview,
     openMerge,
+    draftCommitMessage,
+    acceptCommitMessage,
     methodChanged,
     mergeTitleChanged,
     submitMerge,

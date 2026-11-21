@@ -13,6 +13,7 @@ type OnDeviceOutputProps = {
   pending: boolean;
   onStop: () => void;
   onDiscard: () => void;
+  content?: ReactNode;
   children?: ReactNode;
 };
 
@@ -24,6 +25,7 @@ export function OnDeviceOutput({
   pending,
   onStop,
   onDiscard,
+  content: result,
   children,
 }: OnDeviceOutputProps) {
   if (!pending && !output && !error) {
@@ -37,6 +39,8 @@ export function OnDeviceOutput({
         <progress value={progress} />
       </label>
     );
+  } else if (result && output) {
+    content = result;
   } else if (pending && !output) {
     content = (
       <output className="lyra-workspace-plainText lyra-workspace-muted">Generating…</output>
