@@ -45,12 +45,16 @@ export function ItemList({ kind }: ItemListProps) {
     description,
     creation,
     draft,
+    labelSuggestion,
+    suggestedLabels,
     retry,
     filtersChanged,
     preventSearchSubmit,
     titleChanged,
     draftDescription,
     insertDraft,
+    suggestLabels,
+    applyLabels,
     submit,
   } = useConnect({ kind });
 
@@ -329,6 +333,37 @@ export function ItemList({ kind }: ItemListProps) {
           <Field label="Labels">
             <input name="labels" placeholder="bug, enhancement" list="available-labels" />
           </Field>
+          {labelSuggestion.available && !!labels.data?.length && (
+            <button
+              className="lyra-controls-button"
+              type="button"
+              onClick={suggestLabels}
+              disabled={labelSuggestion.pending || !title.value.trim()}
+            >
+              <SparkleIcon size={16} />
+              Suggest labels
+            </button>
+          )}
+          <OnDeviceOutput
+            title="Suggested labels"
+            output={labelSuggestion.output}
+            progress={labelSuggestion.progress}
+            error={labelSuggestion.error}
+            pending={labelSuggestion.pending}
+            onStop={labelSuggestion.stop}
+            onDiscard={labelSuggestion.reset}
+            content={
+              <p className="lyra-workspace-plainText">
+                {suggestedLabels.length ? suggestedLabels.join(", ") : "No label fits."}
+              </p>
+            }
+          >
+            {suggestedLabels.length > 0 && (
+              <button className="lyra-controls-button" type="button" onClick={applyLabels}>
+                Apply
+              </button>
+            )}
+          </OnDeviceOutput>
           <datalist id="available-labels">
             {labels.data?.map((label) => (
               <option key={label.name} value={label.name}>

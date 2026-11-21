@@ -53,6 +53,13 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
     "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
   );
 
+  const labelSuggestion = useOnDeviceModel("language-model", async () =>
+    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
+  );
+  const suggestedLabels: string[] = labelSuggestion.output
+    ? JSON.parse(labelSuggestion.output).labels
+    : [];
+
   function created(item: ItemWrite | PullWrite) {
     title.clear();
     description.clear();
@@ -139,6 +146,57 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
     });
   }
 
+  function suggestLabels() {
+    const available = labels.data || [];
+    void labelSuggestion.run(async (signal, monitor) => {
+      const session = await LanguageModel.create({
+        ...englishText,
+        initialPrompts: [
+          {
+            role: "system",
+            content: `You pick labels for a new ${kind === "pulls" ? "pull request" : "issue"} from the repository's labels. Pick only labels that clearly apply, at most three, and none when no label fits. The labels are:\n${available
+              .map((label) => `- ${label.name}${label.description ? `: ${label.description}` : ""}`)
+              .join("\n")}`,
+          },
+        ],
+        signal,
+        monitor,
+      });
+      const result = await session.prompt(
+        `Title: ${title.value}\n\nDescription:\n${description.value || "None."}`,
+        {
+          signal,
+          responseConstraint: {
+            type: "object",
+            properties: {
+              labels: {
+                type: "array",
+                maxItems: 3,
+                items: { type: "string", enum: available.map((label) => label.name) },
+              },
+            },
+            required: ["labels"],
+          },
+        },
+      );
+      return (async function* () {
+        yield result;
+      })();
+    });
+  }
+
+  function applyLabels() {
+    const input = document.querySelector<HTMLInputElement>('#new-item input[name="labels"]');
+    if (input) {
+      const current = input.value
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      input.value = [...new Set([...current, ...suggestedLabels])].join(", ");
+    }
+    labelSuggestion.reset();
+  }
+
   function insertDraft() {
     description.setValue([description.value.trim(), draft.output].filter(Boolean).join("\n\n"));
     draft.reset();
@@ -185,12 +243,16 @@ export function useConnect({ kind }: Pick<ItemListProps, "kind">) {
     description,
     creation,
     draft,
+    labelSuggestion,
+    suggestedLabels,
     retry,
     filtersChanged,
     preventSearchSubmit,
     titleChanged,
     draftDescription,
     insertDraft,
+    suggestLabels,
+    applyLabels,
     submit,
   };
 }

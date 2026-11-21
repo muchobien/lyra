@@ -52,6 +52,8 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 - **Draft commit message** in the merge dialog writes a Conventional Commit subject and
   body for a squash merge from the pull request and its commits. Use fills in the commit
   title and message.
+- **Suggest labels** in the new issue and pull request dialogs picks up to three of the
+  repository's labels from the title and description. Apply adds them to the labels field.
 - **Pre-review** on a pull request's Files changed tab reviews each changed file's added
   lines for likely bugs, unhandled errors and leftover debug code. Comment opens the line
   comment dialog with the suggestion filled in, to edit or post.
