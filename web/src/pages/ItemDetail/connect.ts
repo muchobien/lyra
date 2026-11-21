@@ -1,4 +1,4 @@
-import { useContext, useState, type ChangeEvent, type SubmitEvent } from "react";
+import { useContext, useState, type ChangeEvent, type MouseEvent, type SubmitEvent } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext } from "@/api";
@@ -31,6 +31,8 @@ import { type Actor } from "@/api/generated/models";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
 
 export type DetailProps = { kind: "pulls" | "issues"; number: number };
+
+type Suggestion = { path: string; line: number; comment: string };
 
 export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -87,8 +89,18 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
   );
 
+  const preReview = useOnDeviceModel("language-model", async () =>
+    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
+  );
+  const suggestions: Suggestion[] = preReview.output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const [lineSuggestion, setLineSuggestion] = useState("");
+
   const lineBody = useDraft(
     `${draftKey}/line/${anchor.head_sha}/${anchor.side}/${anchor.path}/${anchor.line}`,
+    lineSuggestion,
   );
 
   async function refresh() {
@@ -143,6 +155,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       onSuccess: async () => {
         document.querySelector<HTMLDialogElement>("#line-comment")?.close();
         lineBody.clear();
+        setLineSuggestion("");
         await refresh();
       },
     },
@@ -348,7 +361,99 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     });
   }
 
+  function startPreReview() {
+    const files = patch.data?.files.filter((file) => !file.binary) || [];
+    void preReview.run(async (signal, monitor) => {
+      const session = await LanguageModel.create({
+        ...englishText,
+        initialPrompts: [
+          {
+            role: "system",
+            content:
+              "You review one file of a pull request's diff. Each line starts with its line number in the new file and + for added lines, or - for removed lines without a number. Point out likely bugs, unhandled errors, leftover debug code and confusing names in the added lines only. Each comment names the added line it is about and says what to change in one or two sentences. Return no comments when nothing needs to change; don't comment on style that a formatter handles.",
+          },
+        ],
+        signal,
+        monitor,
+      });
+      const schema = {
+        type: "object",
+        properties: {
+          comments: {
+            type: "array",
+            maxItems: 5,
+            items: {
+              type: "object",
+              properties: { line: { type: "integer" }, comment: { type: "string" } },
+              required: ["line", "comment"],
+            },
+          },
+        },
+        required: ["comments"],
+      };
+      return (async function* () {
+        for (const file of files) {
+          const added = new Set(
+            file.lines.filter((line) => line.kind === "add").map((line) => line.new),
+          );
+          if (!added.size) {
+            continue;
+          }
+          let lines = file.lines.map((line) => {
+            if (line.kind === "add") {
+              return `${line.new} + ${line.text}`;
+            }
+            if (line.kind === "delete") {
+              return `- ${line.text}`;
+            }
+            if (line.kind === "hunk") {
+              return line.text;
+            }
+            return `${line.new}   ${line.text}`;
+          });
+          const prompt = () => `File ${file.path}:\n\n${lines.join("\n")}`;
+          while (
+            lines.length > 20 &&
+            (await session.measureContextUsage(prompt(), { signal })) >
+              session.contextWindow - session.contextUsage - 1024
+          ) {
+            lines = lines.slice(0, Math.floor((lines.length * 3) / 4));
+          }
+          const fileSession = await session.clone({ signal });
+          const result = JSON.parse(
+            await fileSession.prompt(prompt(), { signal, responseConstraint: schema }),
+          ) as { comments: { line: number; comment: string }[] };
+          fileSession.destroy();
+          for (const entry of result.comments.filter((entry) => added.has(entry.line))) {
+            yield (
+              JSON.stringify({ path: file.path, line: entry.line, comment: entry.comment }) + "\n"
+            );
+          }
+        }
+        yield "\n";
+      })();
+    });
+  }
+
+  function openSuggestion(event: MouseEvent<HTMLButtonElement>) {
+    const suggestion = suggestions[Number(event.currentTarget.dataset.index)];
+    if (!suggestion || !patch.data) {
+      return;
+    }
+    setAnchor({
+      path: suggestion.path,
+      line: suggestion.line,
+      side: "new",
+      head_sha: patch.data.head_sha,
+    });
+    setLineSuggestion(suggestion.comment);
+    lineCommenting.reset();
+    document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
+    document.getElementById("line-comment-body")?.focus();
+  }
+
   function openLineComment(next: CommentAnchor) {
+    setLineSuggestion("");
     setAnchor(next);
     lineCommenting.reset();
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
@@ -377,6 +482,8 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     comment,
     summary,
     commitMessage,
+    preReview,
+    suggestions,
     editTitle,
     editBody,
     reviewBody,
@@ -410,6 +517,8 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     methodChanged,
     mergeTitleChanged,
     submitMerge,
+    startPreReview,
+    openSuggestion,
     openLineComment,
     submitLine,
   };

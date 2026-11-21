@@ -52,6 +52,8 @@ export function ItemDetail({ kind, number }: DetailProps) {
     comment,
     summary,
     commitMessage,
+    preReview,
+    suggestions,
     editTitle,
     editBody,
     reviewBody,
@@ -85,6 +87,8 @@ export function ItemDetail({ kind, number }: DetailProps) {
     methodChanged,
     mergeTitleChanged,
     submitMerge,
+    startPreReview,
+    openSuggestion,
     openLineComment,
     submitLine,
   } = useConnect({ kind, number });
@@ -147,18 +151,67 @@ export function ItemDetail({ kind, number }: DetailProps) {
       detailContent = <ErrorNotice error={patch.error} retry={retryPatch} />;
     } else if (patch.data) {
       detailContent = (
-        <DiffViewer
-          key={patch.data.head_sha}
-          files={patch.data.files}
-          owner={owner}
-          repo={repo}
-          section={kind}
-          target={String(number)}
-          head={patch.data.head_sha}
-          canComment={canWrite && item.state === "open"}
-          onComment={openLineComment}
-          comments={workspace.data.comments}
-        />
+        <>
+          {canWrite && item.state === "open" && preReview.available && (
+            <div className="lyra-workspace-actions">
+              <button
+                className="lyra-controls-button"
+                type="button"
+                onClick={startPreReview}
+                disabled={preReview.pending}
+              >
+                <SparkleIcon size={16} />
+                Pre-review
+              </button>
+            </div>
+          )}
+          <OnDeviceOutput
+            title="Pre-review"
+            output={preReview.output}
+            progress={preReview.progress}
+            error={preReview.error}
+            pending={preReview.pending}
+            onStop={preReview.stop}
+            onDiscard={preReview.reset}
+            content={
+              <ul className="lyra-onDevice-list">
+                {suggestions.map((suggestion, index) => (
+                  <li key={`${suggestion.path}:${suggestion.line}:${index}`}>
+                    <div>
+                      <code>
+                        {suggestion.path}:{suggestion.line}
+                      </code>
+                      <p>{suggestion.comment}</p>
+                    </div>
+                    <button
+                      className="lyra-controls-button"
+                      type="button"
+                      data-index={index}
+                      onClick={openSuggestion}
+                    >
+                      Comment
+                    </button>
+                  </li>
+                ))}
+                {!preReview.pending && suggestions.length === 0 && (
+                  <li className="lyra-workspace-muted">No suggestions.</li>
+                )}
+              </ul>
+            }
+          />
+          <DiffViewer
+            key={patch.data.head_sha}
+            files={patch.data.files}
+            owner={owner}
+            repo={repo}
+            section={kind}
+            target={String(number)}
+            head={patch.data.head_sha}
+            canComment={canWrite && item.state === "open"}
+            onComment={openLineComment}
+            comments={workspace.data.comments}
+          />
+        </>
       );
     } else {
       detailContent = <output className="lyra-workspace-empty">Loading diff…</output>;

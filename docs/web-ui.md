@@ -52,6 +52,9 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 - **Draft commit message** in the merge dialog writes a Conventional Commit subject and
   body for a squash merge from the pull request and its commits. Use fills in the commit
   title and message.
+- **Pre-review** on a pull request's Files changed tab reviews each changed file's added
+  lines for likely bugs, unhandled errors and leftover debug code. Comment opens the line
+  comment dialog with the suggestion filled in, to edit or post.
 - **Proofread** in Markdown editors fixes spelling, grammar and punctuation without
   changing code, links or structure. Replace swaps the text in the editor for the result.
 
