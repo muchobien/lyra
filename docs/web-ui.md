@@ -57,6 +57,9 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 - **Pre-review** on a pull request's Files changed tab reviews each changed file's added
   lines for likely bugs, unhandled errors and leftover debug code. Comment opens the line
   comment dialog with the suggestion filled in, to edit or post.
+- **Describe images** in Markdown editors writes alt text for this server's images whose
+  alt text is empty or a file name, such as attachments uploaded with the CLI. Use as alt
+  text writes the descriptions into the Markdown.
 - **Proofread** in Markdown editors fixes spelling, grammar and punctuation without
   changing code, links or structure. Replace swaps the text in the editor for the result.
 
