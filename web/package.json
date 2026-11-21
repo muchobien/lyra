@@ -31,7 +31,8 @@
     "orval": "8.47.0",
     "typescript": "7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
-    "vite-plus": "1.7.0"
+    "vite-plus": "1.7.0",
+    "webmcp-types": "0.2.0"
   },
   "devEngines": {
     "packageManager": {

@@ -63,6 +63,17 @@ appear in a panel with Stop and Discard, and nothing is saved until you use them
 - **Proofread** in Markdown editors fixes spelling, grammar and punctuation without
   changing code, links or structure. Replace swaps the text in the editor for the result.
 
+### Tools for browser agents
+
+When Chrome exposes WebMCP (`document.modelContext`), the signed-in UI registers tools that
+AI agents in the browser can call with your session: `list_repositories`, `list_issues`,
+`list_pull_requests`, `get_issue`, `get_pull_request`, `get_pull_request_diff`,
+`list_runs`, `get_run` and `get_job_log` read; `create_issue` and `add_comment` write
+and are only registered for sessions that can write. Read tools are marked as returning
+untrusted content, and write tools as consequential, so the browser can ask before running
+them. WebMCP is an origin trial: enable `chrome://flags/#enable-webmcp-testing`, or serve
+the trial's token for your origin.
+
 ## Delivery and configuration
 
 Actions discovers workflows at a branch or tag. Workflows with declared manual triggers
