@@ -192,6 +192,9 @@ importers:
       '@tanstack/router-plugin':
         specifier: 1.169.0
         version: 1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@voidzero-dev/vite-plus-core@8.3.8000(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))(esbuild@0.28.2)
+      '@types/dom-chromium-ai':
+        specifier: 0.0.18
+        version: 0.0.18
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
@@ -216,6 +219,9 @@ importers:
       vite-plus:
         specifier: 1.7.0
         version: 1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)
+      webmcp-types:
+        specifier: 0.2.0
+        version: 0.2.0
 
 packages:
 
@@ -1031,6 +1037,9 @@ packages:
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
+
+  '@types/dom-chromium-ai@0.0.18':
+    resolution: {integrity: sha512-/ZITAMdViQlLmEs56d/ET9qJ42EfnrBrLw5gRB4p0raDoavGDacqP9VITK8wNM0f9bPmnddHZeJ+FWIkWi6JlQ==}
 
   '@types/estree@1.0.10':
     resolution: {integrity: sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==}
@@ -2094,6 +2103,9 @@ packages:
       jsdom:
         optional: true
 
+  webmcp-types@0.2.0:
+    resolution: {integrity: sha512-YPuBdkpZbmOKHwH00buRfqNfYWK9o85iL53dn9KLSBAzMPMFVQ3xwtBqKv855lPwlMwAoHFUm7ypreiTPgyrng==}
+
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
@@ -2793,6 +2805,8 @@ snapshots:
       assertion-error: 2.0.1
 
   '@types/deep-eql@4.0.2': {}
+
+  '@types/dom-chromium-ai@0.0.18': {}
 
   '@types/estree@1.0.10': {}
 
@@ -3655,6 +3669,8 @@ snapshots:
       '@vitest/ui': 5.1.0(vitest@5.1.0)
     transitivePeerDependencies:
       - msw
+
+  webmcp-types@0.2.0: {}
 
   webpack-virtual-modules@0.6.2: {}
 

@@ -9,6 +9,7 @@ import {
   GitBranchIcon,
   GitCommitIcon,
   PencilIcon,
+  SparkleIcon,
 } from "@primer/octicons-react";
 import { type DiscussionComment, type Review } from "@/api";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
@@ -24,6 +25,7 @@ import { FormError } from "@/components/forms/FormError";
 import { ChecksPanel } from "@/components/code/ChecksPanel";
 import { CommitRows } from "@/components/code/CommitRows";
 import { DiffViewer } from "@/components/code/DiffViewer";
+import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import { itemDetailPaths } from "@/routing/paths";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
@@ -48,6 +50,10 @@ export function ItemDetail({ kind, number }: DetailProps) {
     commits,
     patch,
     comment,
+    summary,
+    commitMessage,
+    preReview,
+    suggestions,
     editTitle,
     editBody,
     reviewBody,
@@ -67,6 +73,7 @@ export function ItemDetail({ kind, number }: DetailProps) {
     retry,
     retryCommits,
     retryPatch,
+    summarize,
     submitComment,
     changeState,
     titleChanged,
@@ -75,9 +82,13 @@ export function ItemDetail({ kind, number }: DetailProps) {
     decisionChanged,
     submitReview,
     openMerge,
+    draftCommitMessage,
+    acceptCommitMessage,
     methodChanged,
     mergeTitleChanged,
     submitMerge,
+    startPreReview,
+    openSuggestion,
     openLineComment,
     submitLine,
   } = useConnect({ kind, number });
@@ -140,18 +151,67 @@ export function ItemDetail({ kind, number }: DetailProps) {
       detailContent = <ErrorNotice error={patch.error} retry={retryPatch} />;
     } else if (patch.data) {
       detailContent = (
-        <DiffViewer
-          key={patch.data.head_sha}
-          files={patch.data.files}
-          owner={owner}
-          repo={repo}
-          section={kind}
-          target={String(number)}
-          head={patch.data.head_sha}
-          canComment={canWrite && item.state === "open"}
-          onComment={openLineComment}
-          comments={workspace.data.comments}
-        />
+        <>
+          {canWrite && item.state === "open" && preReview.available && (
+            <div className="lyra-workspace-actions">
+              <button
+                className="lyra-controls-button"
+                type="button"
+                onClick={startPreReview}
+                disabled={preReview.pending}
+              >
+                <SparkleIcon size={16} />
+                Pre-review
+              </button>
+            </div>
+          )}
+          <OnDeviceOutput
+            title="Pre-review"
+            output={preReview.output}
+            progress={preReview.progress}
+            error={preReview.error}
+            pending={preReview.pending}
+            onStop={preReview.stop}
+            onDiscard={preReview.reset}
+            content={
+              <ul className="lyra-onDevice-list">
+                {suggestions.map((suggestion, index) => (
+                  <li key={`${suggestion.path}:${suggestion.line}:${index}`}>
+                    <div>
+                      <code>
+                        {suggestion.path}:{suggestion.line}
+                      </code>
+                      <p>{suggestion.comment}</p>
+                    </div>
+                    <button
+                      className="lyra-controls-button"
+                      type="button"
+                      data-index={index}
+                      onClick={openSuggestion}
+                    >
+                      Comment
+                    </button>
+                  </li>
+                ))}
+                {!preReview.pending && suggestions.length === 0 && (
+                  <li className="lyra-workspace-muted">No suggestions.</li>
+                )}
+              </ul>
+            }
+          />
+          <DiffViewer
+            key={patch.data.head_sha}
+            files={patch.data.files}
+            owner={owner}
+            repo={repo}
+            section={kind}
+            target={String(number)}
+            head={patch.data.head_sha}
+            canComment={canWrite && item.state === "open"}
+            onComment={openLineComment}
+            comments={workspace.data.comments}
+          />
+        </>
       );
     } else {
       detailContent = <output className="lyra-workspace-empty">Loading diff…</output>;
@@ -405,6 +465,17 @@ export function ItemDetail({ kind, number }: DetailProps) {
             label="Copy link"
             compact
           />
+          {summary.available && (
+            <button
+              className="lyra-controls-button"
+              type="button"
+              onClick={summarize}
+              disabled={summary.pending}
+            >
+              <SparkleIcon size={16} />
+              Summarize
+            </button>
+          )}
           {canWrite && (
             <button
               className="lyra-controls-button"
@@ -474,6 +545,16 @@ export function ItemDetail({ kind, number }: DetailProps) {
           </Link>
         </ScrollNavigation>
       )}
+
+      <OnDeviceOutput
+        title="Summary"
+        output={summary.output}
+        progress={summary.progress}
+        error={summary.error}
+        pending={summary.pending}
+        onStop={summary.stop}
+        onDiscard={summary.reset}
+      />
 
       {detailContent}
 
@@ -585,6 +666,35 @@ export function ItemDetail({ kind, number }: DetailProps) {
                   value={mergeBody.value}
                   onChange={mergeBody.setValue}
                 />
+                {commitMessage.available && (
+                  <button
+                    className="lyra-controls-button"
+                    type="button"
+                    onClick={draftCommitMessage}
+                    disabled={commitMessage.pending}
+                  >
+                    <SparkleIcon size={16} />
+                    Draft commit message
+                  </button>
+                )}
+                <OnDeviceOutput
+                  title="Commit message"
+                  output={commitMessage.output}
+                  progress={commitMessage.progress}
+                  error={commitMessage.error}
+                  pending={commitMessage.pending}
+                  onStop={commitMessage.stop}
+                  onDiscard={commitMessage.reset}
+                  content={<pre className="lyra-workspace-plainText">{commitMessage.output}</pre>}
+                >
+                  <button
+                    className="lyra-controls-button"
+                    type="button"
+                    onClick={acceptCommitMessage}
+                  >
+                    Use
+                  </button>
+                </OnDeviceOutput>
               </>
             )}
             <label className="lyra-workspace-checkbox">

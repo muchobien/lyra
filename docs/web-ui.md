@@ -35,6 +35,45 @@ Authors can comment on their work; approving it requires a different author iden
 Comment drafts and viewed-file progress survive navigation inside the application and
 reset on reload. Drafts are held in memory, not browser storage.
 
+## On-device AI
+
+Where Chrome provides its built-in AI models, the UI offers features that run on your
+device. Their controls appear only when the browser reports the model as available; the
+first use downloads the model and shows its progress. Results are suggestions: they
+appear in a panel with Stop and Discard, and nothing is saved until you use them.
+
+- **Summarize** on an issue or pull request lists the key points of its description,
+  comments and reviews, using the Summarizer API.
+- **Explain failure** on a failed job sends the end of the failed step's log to the Prompt
+  API and shows the likely cause, the log lines behind it and a suggested fix.
+- **Draft description from commits** in the new pull request dialog writes a summary and
+  a list of changes from the commits on the compare branch that aren't on the base branch.
+  Insert appends it to the description.
+- **Draft commit message** in the merge dialog writes a Conventional Commit subject and
+  body for a squash merge from the pull request and its commits. Use fills in the commit
+  title and message.
+- **Suggest labels** in the new issue and pull request dialogs picks up to three of the
+  repository's labels from the title and description. Apply adds them to the labels field.
+- **Pre-review** on a pull request's Files changed tab reviews each changed file's added
+  lines for likely bugs, unhandled errors and leftover debug code. Comment opens the line
+  comment dialog with the suggestion filled in, to edit or post.
+- **Describe images** in Markdown editors writes alt text for this server's images whose
+  alt text is empty or a file name, such as attachments uploaded with the CLI. Use as alt
+  text writes the descriptions into the Markdown.
+- **Proofread** in Markdown editors fixes spelling, grammar and punctuation without
+  changing code, links or structure. Replace swaps the text in the editor for the result.
+
+### Tools for browser agents
+
+When Chrome exposes WebMCP (`document.modelContext`), the signed-in UI registers tools that
+AI agents in the browser can call with your session: `list_repositories`, `list_issues`,
+`list_pull_requests`, `get_issue`, `get_pull_request`, `get_pull_request_diff`,
+`list_runs`, `get_run` and `get_job_log` read; `create_issue` and `add_comment` write
+and are only registered for sessions that can write. Read tools are marked as returning
+untrusted content, and write tools as consequential, so the browser can ask before running
+them. WebMCP is an origin trial: enable `chrome://flags/#enable-webmcp-testing`, or serve
+the trial's token for your origin.
+
 ## Delivery and configuration
 
 Actions discovers workflows at a branch or tag. Workflows with declared manual triggers

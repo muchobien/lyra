@@ -1,4 +1,4 @@
-import { useContext, useState, type ChangeEvent, type SubmitEvent } from "react";
+import { useContext, useState, type ChangeEvent, type MouseEvent, type SubmitEvent } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext } from "@/api";
@@ -20,14 +20,19 @@ import {
   useMergePull,
   useCommentPull,
   useListLabels,
+  listPullCommits,
 } from "@/api/generated/lyra";
 import { formValue } from "@/utils/forms";
 import { type CommentAnchor } from "@/components/code/DiffViewer";
 import { useDraft } from "@/hooks/useDraft";
 import { itemDetailPaths } from "@/routing/paths";
 import { repositoryQueries } from "@/api/repositoryQueries";
+import { type Actor } from "@/api/generated/models";
+import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
 
 export type DetailProps = { kind: "pulls" | "issues"; number: number };
+
+type Suggestion = { path: string; line: number; comment: string };
 
 export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -74,8 +79,28 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     head_sha: "",
   });
 
+  const summary = useOnDeviceModel("summarizer", async () =>
+    "Summarizer" in self
+      ? Summarizer.availability({ expectedInputLanguages: ["en"], outputLanguage: "en" })
+      : "unavailable",
+  );
+
+  const commitMessage = useOnDeviceModel("language-model", async () =>
+    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
+  );
+
+  const preReview = useOnDeviceModel("language-model", async () =>
+    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
+  );
+  const suggestions: Suggestion[] = preReview.output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const [lineSuggestion, setLineSuggestion] = useState("");
+
   const lineBody = useDraft(
     `${draftKey}/line/${anchor.head_sha}/${anchor.side}/${anchor.path}/${anchor.line}`,
+    lineSuggestion,
   );
 
   async function refresh() {
@@ -130,6 +155,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
       onSuccess: async () => {
         document.querySelector<HTMLDialogElement>("#line-comment")?.close();
         lineBody.clear();
+        setLineSuggestion("");
         await refresh();
       },
     },
@@ -145,6 +171,53 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
 
   function retryPatch() {
     void patch.refetch();
+  }
+
+  function summarize() {
+    const data = workspace.data;
+    if (!data) {
+      return;
+    }
+    const author = (actor: Actor) =>
+      actor.agent ? `${actor.agent} for ${actor.user}` : actor.user;
+    const replies = [
+      ...data.comments
+        .filter((entry) => !entry.review_id)
+        .map((entry) => ({
+          at: entry.created_at,
+          text: `${author(entry.author)} commented:\n${entry.body}`,
+        })),
+      ...data.reviews.map((entry) => ({
+        at: entry.created_at,
+        text: [
+          `${author(entry.author)} reviewed (${entry.state}):\n${entry.body}`,
+          ...entry.comments.map((line) => `On ${line.path}:${line.line}: ${line.body}`),
+        ].join("\n"),
+      })),
+    ].toSorted((first, second) => Date.parse(first.at) - Date.parse(second.at));
+    const thread = [
+      `${author(data.item.author)} opened it:\n${data.item.body || "No description."}`,
+      ...replies.map((entry) => entry.text),
+    ];
+    void summary.run(async (signal, monitor) => {
+      const summarizer = await Summarizer.create({
+        type: "key-points",
+        format: "markdown",
+        length: "medium",
+        expectedInputLanguages: ["en"],
+        outputLanguage: "en",
+        sharedContext: `${kind === "pulls" ? "A pull request" : "An issue"} titled "${data.item.title}" in the Git repository ${name}.`,
+        signal,
+        monitor,
+      });
+      let input = thread.join("\n\n");
+      let usage = await summarizer.measureInputUsage(input, { signal });
+      while (input && usage > summarizer.inputQuota) {
+        input = input.slice(0, Math.floor((input.length * summarizer.inputQuota) / usage) - 200);
+        usage = await summarizer.measureInputUsage(input, { signal });
+      }
+      return summarizer.summarizeStreaming(input, { signal });
+    });
   }
 
   function submitComment(event: SubmitEvent<HTMLFormElement>) {
@@ -223,6 +296,43 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     merging.reset();
   }
 
+  function draftCommitMessage() {
+    const item = workspace.data?.item;
+    if (!item) {
+      return;
+    }
+    void commitMessage.run(async (signal, monitor) => {
+      const commits = await listPullCommits(owner, repo, number, { signal });
+      const session = await LanguageModel.create({
+        ...englishText,
+        initialPrompts: [
+          {
+            role: "system",
+            content:
+              "You write squash commit messages in the Conventional Commits format. The first line is the subject: a type such as feat, fix, refactor, docs, test, ci, build or chore, an optional scope in parentheses, a colon, then a lowercase summary of what the change does, with no trailing period and at most 72 characters. After a blank line, the body explains what changed and why in a few short lines, for a reader who hasn't seen the pull request. Only state what the pull request supports. Output only the message, without code fences.",
+          },
+        ],
+        signal,
+        monitor,
+      });
+      const log = commits
+        .map((commit) => [`- ${commit.subject}`, commit.body.trim()].filter(Boolean).join("\n\n"))
+        .join("\n");
+      return session.promptStreaming(
+        `Pull request title: ${item.title}\n\nDescription:\n${item.body || "None."}\n\nCommits, newest first:\n${log}`,
+        { signal },
+      );
+    });
+  }
+
+  function acceptCommitMessage() {
+    const [subject = "", ...body] = commitMessage.output.trim().split("\n");
+    const suffix = ` (#${number})`;
+    mergeTitle.setValue(subject.endsWith(suffix) ? subject : subject + suffix);
+    mergeBody.setValue(body.join("\n").trim());
+    commitMessage.reset();
+  }
+
   function methodChanged(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "squash" || value === "ff") {
@@ -251,7 +361,99 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     });
   }
 
+  function startPreReview() {
+    const files = patch.data?.files.filter((file) => !file.binary) || [];
+    void preReview.run(async (signal, monitor) => {
+      const session = await LanguageModel.create({
+        ...englishText,
+        initialPrompts: [
+          {
+            role: "system",
+            content:
+              "You review one file of a pull request's diff. Each line starts with its line number in the new file and + for added lines, or - for removed lines without a number. Point out likely bugs, unhandled errors, leftover debug code and confusing names in the added lines only. Each comment names the added line it is about and says what to change in one or two sentences. Return no comments when nothing needs to change; don't comment on style that a formatter handles.",
+          },
+        ],
+        signal,
+        monitor,
+      });
+      const schema = {
+        type: "object",
+        properties: {
+          comments: {
+            type: "array",
+            maxItems: 5,
+            items: {
+              type: "object",
+              properties: { line: { type: "integer" }, comment: { type: "string" } },
+              required: ["line", "comment"],
+            },
+          },
+        },
+        required: ["comments"],
+      };
+      return (async function* () {
+        for (const file of files) {
+          const added = new Set(
+            file.lines.filter((line) => line.kind === "add").map((line) => line.new),
+          );
+          if (!added.size) {
+            continue;
+          }
+          let lines = file.lines.map((line) => {
+            if (line.kind === "add") {
+              return `${line.new} + ${line.text}`;
+            }
+            if (line.kind === "delete") {
+              return `- ${line.text}`;
+            }
+            if (line.kind === "hunk") {
+              return line.text;
+            }
+            return `${line.new}   ${line.text}`;
+          });
+          const prompt = () => `File ${file.path}:\n\n${lines.join("\n")}`;
+          while (
+            lines.length > 20 &&
+            (await session.measureContextUsage(prompt(), { signal })) >
+              session.contextWindow - session.contextUsage - 1024
+          ) {
+            lines = lines.slice(0, Math.floor((lines.length * 3) / 4));
+          }
+          const fileSession = await session.clone({ signal });
+          const result = JSON.parse(
+            await fileSession.prompt(prompt(), { signal, responseConstraint: schema }),
+          ) as { comments: { line: number; comment: string }[] };
+          fileSession.destroy();
+          for (const entry of result.comments.filter((entry) => added.has(entry.line))) {
+            yield (
+              JSON.stringify({ path: file.path, line: entry.line, comment: entry.comment }) + "\n"
+            );
+          }
+        }
+        yield "\n";
+      })();
+    });
+  }
+
+  function openSuggestion(event: MouseEvent<HTMLButtonElement>) {
+    const suggestion = suggestions[Number(event.currentTarget.dataset.index)];
+    if (!suggestion || !patch.data) {
+      return;
+    }
+    setAnchor({
+      path: suggestion.path,
+      line: suggestion.line,
+      side: "new",
+      head_sha: patch.data.head_sha,
+    });
+    setLineSuggestion(suggestion.comment);
+    lineCommenting.reset();
+    document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
+    document.getElementById("line-comment-body")?.focus();
+  }
+
   function openLineComment(next: CommentAnchor) {
+    setLineSuggestion("");
     setAnchor(next);
     lineCommenting.reset();
     document.querySelector<HTMLDialogElement>("#line-comment")?.showModal();
@@ -278,6 +480,10 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     commits,
     patch,
     comment,
+    summary,
+    commitMessage,
+    preReview,
+    suggestions,
     editTitle,
     editBody,
     reviewBody,
@@ -297,6 +503,7 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     retry,
     retryCommits,
     retryPatch,
+    summarize,
     submitComment,
     changeState,
     titleChanged,
@@ -305,9 +512,13 @@ export function useConnect({ kind, number }: Pick<DetailProps, "kind" | "number"
     decisionChanged,
     submitReview,
     openMerge,
+    draftCommitMessage,
+    acceptCommitMessage,
     methodChanged,
     mergeTitleChanged,
     submitMerge,
+    startPreReview,
+    openSuggestion,
     openLineComment,
     submitLine,
   };
