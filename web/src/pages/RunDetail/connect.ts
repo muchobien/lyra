@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type ToggleEvent,
   type UIEvent,
 } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -14,9 +15,9 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { classify, stripAnsi } from "@/components/code/LogText/logic";
+import { classify, readableText } from "@/components/code/LogText/logic";
 
-type Logs = { lines: string[]; offset: number; done: boolean };
+type Logs = { lines: string[]; times: string[]; offset: number; done: boolean };
 
 export type RunDetailProps = { number: number };
 
@@ -59,13 +60,21 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       const response = await request(
         getGetJobLogsUrl(owner, repo, number, selected?.id || 0, {
           offset: previous?.offset || 0,
+          timestamps: true,
         }),
         signal,
       );
       const text = await response.text();
-      const lines = text ? text.replace(/\n$/, "").split("\n") : [];
+      const entries = text ? text.replace(/\n$/, "").split("\n") : [];
       return {
-        lines: [...(previous?.lines || []), ...lines],
+        lines: [
+          ...(previous?.lines || []),
+          ...entries.map((entry) => entry.slice(entry.indexOf(" ") + 1)),
+        ],
+        times: [
+          ...(previous?.times || []),
+          ...entries.map((entry) => entry.slice(0, entry.indexOf(" "))),
+        ],
         offset: Number(response.headers.get("Lyra-Log-Next") || 0),
         done: response.headers.get("Lyra-Log-Done") === "true",
       };
@@ -100,6 +109,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const [explainedJob, setExplainedJob] = useState(0);
 
   const [following, setFollowing] = useState(true);
+  const [timestamps, setTimestamps] = useState(false);
+  const [fullLogOpen, setFullLogOpen] = useState(false);
   const logPanel = useRef<HTMLDivElement>(null);
 
   const cancel = useCancelRun({
@@ -156,7 +167,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       step
         ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
         : logs.data.lines
-    ).map(stripAnsi);
+    ).flatMap((line) => readableText(line) ?? []);
     setExplainedJob(selected.id);
     void explanation.run(async (signal, monitor) => {
       const session = await LanguageModel.create({
@@ -218,6 +229,14 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     }
   }
 
+  function timestampsChanged(event: ChangeEvent<HTMLInputElement>) {
+    setTimestamps(event.target.checked);
+  }
+
+  function fullLogToggled(event: ToggleEvent<HTMLDetailsElement>) {
+    setFullLogOpen(event.newState === "open");
+  }
+
   function jobChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({ search: { ...search, job: event.target.value }, resetScroll: false });
     setFollowing(true);
@@ -245,6 +264,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     logs,
     annotations,
     following,
+    timestamps,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -258,6 +279,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     annotationClicked,
     toggleFollow,
     logScrolled,
+    timestampsChanged,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   };

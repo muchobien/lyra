@@ -42,6 +42,8 @@ export function RunDetail({ number }: RunDetailProps) {
     logs,
     annotations,
     following,
+    timestamps,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -55,6 +57,8 @@ export function RunDetail({ number }: RunDetailProps) {
     annotationClicked,
     toggleFollow,
     logScrolled,
+    timestampsChanged,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   } = useConnect({ number });
@@ -69,6 +73,7 @@ export function RunDetail({ number }: RunDetailProps) {
   const data = run.data;
   const canWrite = identity?.scope !== "read";
   const logLines = logs.data?.lines || [];
+  const logTimes = timestamps ? logs.data?.times : undefined;
   const highlightedStep = selected?.started_at
     ? selected.steps.find((step) => step.result === "failure") ||
       selected.steps.find((step) => !!step.started_at && !step.stopped_at)
@@ -104,6 +109,7 @@ export function RunDetail({ number }: RunDetailProps) {
     logContent = (
       <LogText
         lines={logLines}
+        times={logTimes}
         start={0}
         end={logLines.length}
         query={search.q}
@@ -121,6 +127,7 @@ export function RunDetail({ number }: RunDetailProps) {
             </summary>
             <LogText
               lines={logLines}
+              times={logTimes}
               start={highlightedStep.log_index}
               end={highlightedStep.log_index + highlightedStep.log_length}
               query={search.q}
@@ -143,6 +150,7 @@ export function RunDetail({ number }: RunDetailProps) {
                 </summary>
                 <LogText
                   lines={logLines}
+                  times={logTimes}
                   start={step.log_index}
                   end={step.log_index + step.log_length}
                   query={search.q}
@@ -151,15 +159,18 @@ export function RunDetail({ number }: RunDetailProps) {
               </details>
             ))}
         </details>
-        <details className="lyra-actions-step">
+        <details className="lyra-actions-step" open={fullLogOpen} onToggle={fullLogToggled}>
           <summary>Full log</summary>
-          <LogText
-            lines={logLines}
-            start={0}
-            end={logLines.length}
-            query={search.q}
-            empty="No matching log lines."
-          />
+          {fullLogOpen && (
+            <LogText
+              lines={logLines}
+              times={logTimes}
+              start={0}
+              end={logLines.length}
+              query={search.q}
+              empty="No matching log lines."
+            />
+          )}
         </details>
       </div>
     );
@@ -329,6 +340,10 @@ export function RunDetail({ number }: RunDetailProps) {
               value={search.q || ""}
               onChange={searchChanged}
             />
+            <label className="lyra-workspace-checkbox">
+              <input type="checkbox" checked={timestamps} onChange={timestampsChanged} />
+              Show timestamps
+            </label>
           </div>
           {explainedJob === selected?.id && (
             <OnDeviceOutput

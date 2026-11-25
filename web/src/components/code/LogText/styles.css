@@ -28,6 +28,9 @@
   & span[data-italic] {
     font-style: italic;
   }
+  & a {
+    text-decoration: underline;
+  }
   & span[data-underline] {
     text-decoration: underline;
   }
@@ -160,6 +163,13 @@
   flex: 0 0 4.5rem;
   padding-right: 1rem;
   text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.lyra-log-text-time {
+  flex: none;
+  padding-right: 1rem;
   color: var(--muted);
   user-select: none;
 }
