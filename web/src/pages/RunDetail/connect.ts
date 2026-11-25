@@ -5,6 +5,7 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type ToggleEvent,
   type UIEvent,
 } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -13,7 +14,7 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { stripAnsi } from "@/components/code/LogText/logic";
+import { readableText } from "@/components/code/LogText/logic";
 
 type Logs = { lines: string[]; times: string[]; offset: number; done: boolean };
 
@@ -92,6 +93,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
 
   const [following, setFollowing] = useState(true);
   const [timestamps, setTimestamps] = useState(false);
+  const [fullLogOpen, setFullLogOpen] = useState(false);
   const logPanel = useRef<HTMLDivElement>(null);
 
   const cancel = useCancelRun({
@@ -148,7 +150,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       step
         ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
         : logs.data.lines
-    ).map(stripAnsi);
+    ).flatMap((line) => readableText(line) ?? []);
     setExplainedJob(selected.id);
     void explanation.run(async (signal, monitor) => {
       const session = await LanguageModel.create({
@@ -192,6 +194,10 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     setTimestamps(event.target.checked);
   }
 
+  function fullLogToggled(event: ToggleEvent<HTMLDetailsElement>) {
+    setFullLogOpen(event.newState === "open");
+  }
+
   function jobChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({ search: { ...search, job: event.target.value }, resetScroll: false });
     setFollowing(true);
@@ -219,6 +225,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     logs,
     following,
     timestamps,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -232,6 +239,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     toggleFollow,
     logScrolled,
     timestampsChanged,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   };

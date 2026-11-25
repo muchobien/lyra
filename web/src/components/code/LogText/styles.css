@@ -28,6 +28,9 @@
   & span[data-italic] {
     font-style: italic;
   }
+  & a {
+    text-decoration: underline;
+  }
   & span[data-underline] {
     text-decoration: underline;
   }

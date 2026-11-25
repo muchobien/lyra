@@ -48,6 +48,7 @@ type LogEntry =
 
 // oxlint-disable-next-line no-control-regex
 const escapes = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9])/g;
+export const linkPattern = /(\bhttps?:\/\/[^\s"'<>`]*[^\s"'<>`.,;:!?)\]}])/;
 const workflowCommand = /^(?:::([a-z-]+)(?: ([^:]*))?::(.*)|##\[([a-z]+)\](.*))$/;
 const hiddenCommands = new Set([
   "add-matcher",
@@ -59,7 +60,7 @@ const hiddenCommands = new Set([
 ]);
 const annotationLevels = new Set(["warning", "error", "notice"]);
 
-export function stripAnsi(text: string) {
+function stripAnsi(text: string) {
   return text.replace(escapes, "");
 }
 
@@ -195,6 +196,24 @@ function classify(raw: string): LogEntry {
     return { kind: "command", text: raw.slice(raw.indexOf("[command]") + "[command]".length) };
   }
   return { kind: "text", text: raw };
+}
+
+export function readableText(raw: string) {
+  const entry = classify(raw);
+  if (entry.kind === "hidden" || entry.kind === "endgroup") {
+    return undefined;
+  }
+  if (entry.kind === "annotation") {
+    return [
+      `${entry.level[0].toUpperCase() + entry.level.slice(1)}:`,
+      entry.title && `${entry.title} ·`,
+      entry.text,
+      entry.location,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return stripAnsi(entry.text);
 }
 
 function logLine(number: number, entry: LogEntry): LogLine {
