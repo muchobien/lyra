@@ -6,6 +6,7 @@ export type LogTextProps = {
   start: number;
   end: number;
   query?: string;
+  target?: number;
   empty: string;
 };
 
@@ -237,7 +238,12 @@ function visibleText(line: LogLine) {
   return [line.title, ...line.spans.map((span) => span.text), line.location].join(" ");
 }
 
-export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "times" | "empty">) {
+export function useLogic({
+  lines,
+  start,
+  end,
+  query,
+}: Omit<LogTextProps, "times" | "target" | "empty">) {
   const blocks = useMemo(() => {
     const result: LogBlock[] = [];
     const needle = query?.toLowerCase();

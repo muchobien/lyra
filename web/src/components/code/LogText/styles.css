@@ -138,6 +138,12 @@
   &:hover {
     background: var(--hover);
   }
+  &[data-target] {
+    background: var(--accent-surface);
+    & .lyra-log-text-number {
+      color: var(--accent);
+    }
+  }
   &[data-selected] {
     background: var(--hover);
     box-shadow: inset 2px 0 var(--accent);
@@ -165,6 +171,9 @@
   text-align: right;
   color: var(--muted);
   user-select: none;
+  &:hover {
+    color: var(--text);
+  }
 }
 
 .lyra-log-text-time {
