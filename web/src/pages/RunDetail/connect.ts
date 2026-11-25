@@ -84,6 +84,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
 
   const [following, setFollowing] = useState(true);
   const logPanel = useRef<HTMLDivElement>(null);
+  const locatedLog = useRef("");
 
   const cancel = useCancelRun({
     mutation: {
@@ -108,6 +109,34 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       logPanel.current.scrollTop = logPanel.current.scrollHeight;
     }
   }, [logs.data?.offset, following, active]);
+
+  useEffect(() => {
+    const logID = logKey.join(" ");
+    const failed = selected?.steps.some((step) => step.result === "failure");
+    if (
+      active ||
+      !failed ||
+      !logs.data?.done ||
+      !logPanel.current ||
+      locatedLog.current === logID
+    ) {
+      return;
+    }
+    locatedLog.current = logID;
+    const stepLog = logPanel.current.querySelector(".lyra-actions-step");
+    const line =
+      stepLog?.querySelector<HTMLElement>('.lyra-log-text-line[data-level="error"]') ||
+      [...(stepLog?.querySelectorAll<HTMLElement>(".lyra-log-text-line") || [])].at(-1);
+    if (!line) {
+      return;
+    }
+    line.closest("details")?.setAttribute("open", "");
+    line.scrollIntoView({ block: "center", container: "nearest" } as ScrollIntoViewOptions);
+    line.animate([{ background: "var(--danger-border)" }, { background: "transparent" }], {
+      duration: 2000,
+      easing: "ease-in",
+    });
+  });
 
   function retry() {
     void run.refetch();
