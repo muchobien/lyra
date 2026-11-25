@@ -152,7 +152,7 @@ function ansiSpans(text: string) {
   return spans;
 }
 
-function classify(raw: string): LogEntry {
+export function classify(raw: string): LogEntry {
   const plain = stripAnsi(raw);
   const match = plain.match(workflowCommand);
   if (match) {
@@ -186,7 +186,7 @@ function classify(raw: string): LogEntry {
         level: name as "warning" | "error" | "notice",
         text,
         title: fields.get("title"),
-        location: location && !text.includes(location) ? location : undefined,
+        location: location || undefined,
       };
     }
   }
@@ -204,7 +204,7 @@ function logLine(number: number, entry: LogEntry): LogLine {
       spans: [{ text: entry.text, style: {} }],
       level: entry.level,
       title: entry.title,
-      location: entry.location,
+      location: entry.location && !entry.text.includes(entry.location) ? entry.location : undefined,
     };
   }
   if (entry.kind === "command" || entry.kind === "text") {

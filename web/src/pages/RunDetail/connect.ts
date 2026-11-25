@@ -1,6 +1,7 @@
 import {
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -13,7 +14,7 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { stripAnsi } from "@/components/code/LogText/logic";
+import { classify, stripAnsi } from "@/components/code/LogText/logic";
 
 type Logs = { lines: string[]; offset: number; done: boolean };
 
@@ -76,6 +77,22 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       return 1000;
     },
   });
+
+  const annotations = useMemo(
+    () =>
+      (logs.data?.lines || []).flatMap((raw, index) => {
+        const entry = classify(raw);
+        if (entry.kind !== "annotation") {
+          return [];
+        }
+        const step = selected?.steps.find(
+          (candidate) =>
+            index >= candidate.log_index && index < candidate.log_index + candidate.log_length,
+        );
+        return [{ ...entry, line: index + 1, step }];
+      }),
+    [logs.data?.lines, selected],
+  );
 
   const explanation = useOnDeviceModel("language-model", async () =>
     "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
@@ -168,6 +185,28 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     });
   }
 
+  function annotationClicked(event: MouseEvent<HTMLButtonElement>) {
+    const { step, line } = event.currentTarget.dataset;
+    const panel = logPanel.current;
+    const target =
+      panel?.querySelector<HTMLElement>(`[data-step="${step}"] [data-line="${line}"]`) ||
+      panel?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+    if (!panel || !target) {
+      return;
+    }
+    for (
+      let details = target.closest("details");
+      details;
+      details = details.parentElement?.closest("details") || null
+    ) {
+      details.open = true;
+    }
+    panel.querySelector("[data-selected]")?.removeAttribute("data-selected");
+    target.setAttribute("data-selected", "");
+    setFollowing(false);
+    target.scrollIntoView({ block: "center" });
+  }
+
   function toggleFollow() {
     setFollowing(!following);
   }
@@ -204,6 +243,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     active,
     logsURL,
     logs,
+    annotations,
     following,
     logPanel,
     cancel,
@@ -215,6 +255,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     rerunClicked,
     cancelRun,
     explainFailure,
+    annotationClicked,
     toggleFollow,
     logScrolled,
     jobChanged,

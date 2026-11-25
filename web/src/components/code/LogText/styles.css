@@ -135,6 +135,10 @@
   &:hover {
     background: var(--hover);
   }
+  &[data-selected] {
+    background: var(--hover);
+    box-shadow: inset 2px 0 var(--accent);
+  }
   &[data-kind="command"] {
     color: var(--accent);
   }

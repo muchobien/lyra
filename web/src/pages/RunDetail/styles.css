@@ -127,6 +127,61 @@
   border-bottom: 1px solid var(--border);
 }
 
+.lyra-actions-annotations {
+  border-bottom: 1px solid var(--border);
+  & > summary {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+  & ul {
+    max-height: 30dvh;
+    overflow: auto;
+    margin: 0;
+    padding: 0 0.5rem 0.5rem;
+    list-style: none;
+  }
+  & button {
+    display: flex;
+    gap: 0.6rem;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    color: var(--text);
+    &:hover {
+      background: var(--hover);
+    }
+    & > svg {
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+    & > span {
+      display: grid;
+      gap: 0.2rem;
+      min-width: 0;
+    }
+    & > span > span:not(.lyra-workspace-meta) {
+      font-family: var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  }
+  & [data-level="warning"] > svg {
+    color: var(--attention);
+  }
+  & [data-level="error"] > svg {
+    color: var(--danger);
+  }
+  & [data-level="notice"] > svg {
+    color: var(--accent);
+  }
+}
+
 .lyra-actions-step {
   border-bottom: 1px solid var(--soft-border);
   & > summary {
