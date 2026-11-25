@@ -19,6 +19,7 @@ import { Route as OwnerRepoBranchesRouteImport } from "./routes/$owner/$repo/bra
 import { Route as OwnerRepoImagesRouteImport } from "./routes/$owner/$repo/images"
 import { Route as OwnerRepoSettingsRouteImport } from "./routes/$owner/$repo/settings"
 import { Route as OwnerRepoTagsRouteImport } from "./routes/$owner/$repo/tags"
+import { Route as OwnerRepoBlameSplatRouteImport } from "./routes/$owner/$repo/blame/$"
 import { Route as OwnerRepoBlobSplatRouteImport } from "./routes/$owner/$repo/blob/$"
 import { Route as OwnerRepoCommitShaRouteImport } from "./routes/$owner/$repo/commit/$sha"
 import { Route as OwnerRepoCommitsIndexRouteImport } from "./routes/$owner/$repo/commits/index"
@@ -83,6 +84,11 @@ const OwnerRepoSettingsRoute = OwnerRepoSettingsRouteImport.update({
 const OwnerRepoTagsRoute = OwnerRepoTagsRouteImport.update({
   id: "/tags",
   path: "/tags",
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoBlameSplatRoute = OwnerRepoBlameSplatRouteImport.update({
+  id: "/blame/$",
+  path: "/blame/$",
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoBlobSplatRoute = OwnerRepoBlobSplatRouteImport.update({
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo/": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blame/$": typeof OwnerRepoBlameSplatRoute
   "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blame/$": typeof OwnerRepoBlameSplatRoute
   "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
@@ -227,6 +235,7 @@ export interface FileRoutesById {
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
   "/$owner/$repo/": typeof OwnerRepoIndexRoute
+  "/$owner/$repo/blame/$": typeof OwnerRepoBlameSplatRoute
   "/$owner/$repo/blob/$": typeof OwnerRepoBlobSplatRoute
   "/$owner/$repo/commit/$sha": typeof OwnerRepoCommitShaRoute
   "/$owner/$repo/commits/$": typeof OwnerRepoCommitsSplatRoute
@@ -256,6 +265,7 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo/"
+    | "/$owner/$repo/blame/$"
     | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo"
+    | "/$owner/$repo/blame/$"
     | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
@@ -309,6 +320,7 @@ export interface FileRouteTypes {
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
     | "/$owner/$repo/"
+    | "/$owner/$repo/blame/$"
     | "/$owner/$repo/blob/$"
     | "/$owner/$repo/commit/$sha"
     | "/$owner/$repo/commits/$"
@@ -403,6 +415,13 @@ declare module "@tanstack/react-router" {
       path: "/tags"
       fullPath: "/$owner/$repo/tags"
       preLoaderRoute: typeof OwnerRepoTagsRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
+    "/$owner/$repo/blame/$": {
+      id: "/$owner/$repo/blame/$"
+      path: "/blame/$"
+      fullPath: "/$owner/$repo/blame/$"
+      preLoaderRoute: typeof OwnerRepoBlameSplatRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
     "/$owner/$repo/blob/$": {
@@ -520,6 +539,7 @@ interface OwnerRepoRouteRouteChildren {
   OwnerRepoSettingsRoute: typeof OwnerRepoSettingsRoute
   OwnerRepoTagsRoute: typeof OwnerRepoTagsRoute
   OwnerRepoIndexRoute: typeof OwnerRepoIndexRoute
+  OwnerRepoBlameSplatRoute: typeof OwnerRepoBlameSplatRoute
   OwnerRepoBlobSplatRoute: typeof OwnerRepoBlobSplatRoute
   OwnerRepoCommitShaRoute: typeof OwnerRepoCommitShaRoute
   OwnerRepoCommitsSplatRoute: typeof OwnerRepoCommitsSplatRoute
@@ -544,6 +564,7 @@ const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
   OwnerRepoSettingsRoute: OwnerRepoSettingsRoute,
   OwnerRepoTagsRoute: OwnerRepoTagsRoute,
   OwnerRepoIndexRoute: OwnerRepoIndexRoute,
+  OwnerRepoBlameSplatRoute: OwnerRepoBlameSplatRoute,
   OwnerRepoBlobSplatRoute: OwnerRepoBlobSplatRoute,
   OwnerRepoCommitShaRoute: OwnerRepoCommitShaRoute,
   OwnerRepoCommitsSplatRoute: OwnerRepoCommitsSplatRoute,

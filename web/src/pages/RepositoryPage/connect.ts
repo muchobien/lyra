@@ -5,6 +5,7 @@ import {
   useGetRepo,
   useGetRepositoryTree,
   useGetRepositoryBlob,
+  useGetRepositoryBlame,
   useListImages,
   useListReleases,
   useListRepositoryFiles,
@@ -12,7 +13,11 @@ import {
 } from "@/api/generated/lyra";
 import { splitSource } from "@/routing/paths";
 
-export type RepositoryPageProps = { view: "tree" | "blob"; target: string; plain?: boolean };
+export type RepositoryPageProps = {
+  view: "tree" | "blob" | "blame";
+  target: string;
+  plain?: boolean;
+};
 
 export function useConnect({ view, target }: RepositoryPageProps) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -35,6 +40,9 @@ export function useConnect({ view, target }: RepositoryPageProps) {
   const blobParams = params;
   const blob = useGetRepositoryBlob(owner, repo, blobParams, {
     query: { enabled: !!metadata.data && view === "blob" },
+  });
+  const blame = useGetRepositoryBlame(owner, repo, params, {
+    query: { enabled: !!metadata.data && view === "blame" },
   });
   const latest = useLatestRelease(owner, repo);
   const images = useListImages(owner, repo);
@@ -101,6 +109,8 @@ export function useConnect({ view, target }: RepositoryPageProps) {
     void metadata.refetch();
     if (view === "blob") {
       void blob.refetch();
+    } else if (view === "blame") {
+      void blame.refetch();
     } else {
       void tree.refetch();
     }
@@ -110,7 +120,8 @@ export function useConnect({ view, target }: RepositoryPageProps) {
     void files.refetch();
   }
 
-  const failure = metadata.error || (view === "blob" ? blob.error : tree.error);
+  const failure =
+    metadata.error || { tree: tree.error, blob: blob.error, blame: blame.error }[view];
   const archiveURL = `/${owner}/${repo}/archive/${ref.split("/").map(encodeURIComponent).join("/")}`;
 
   return {
@@ -125,6 +136,7 @@ export function useConnect({ view, target }: RepositoryPageProps) {
     tree,
     blobParams,
     blob,
+    blame,
     latest,
     images,
     tags,

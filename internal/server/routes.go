@@ -78,6 +78,7 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/", s.page(s.uiApplication))
 	repo.Get("/tree/*", s.page(s.uiSource))
 	repo.Get("/blob/*", s.page(s.uiSource))
+	repo.Get("/blame/*", s.page(s.uiSource))
 	repo.Get("/commits/{ref}", s.page(s.uiApplication))
 	repo.Get("/commit/{sha}", s.page(s.uiApplication))
 	repo.Get("/tags", s.page(s.uiApplication))

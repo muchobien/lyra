@@ -153,6 +153,62 @@ func TestCompare(test *testing.T) {
 	}
 }
 
+func TestBlame(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	src := pushDemo(test, srv, token)
+	commitFile(test, src, "README.md", "# Demo\n\nMore <b>text</b>\n", "Expand README")
+	commitFile(test, src, "data.bin", "\x00\xff", "Add binary")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main")
+	var blame struct {
+		Binary bool `json:"binary"`
+		Ranges []struct {
+			Start  int      `json:"start"`
+			Lines  []string `json:"lines"`
+			Commit struct {
+				Author  string `json:"author"`
+				Date    string `json:"date"`
+				Summary string `json:"summary"`
+			} `json:"commit"`
+		} `json:"ranges"`
+	}
+	status, body := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blame?path=README.md", bearer(token), "")
+	if err := json.Unmarshal(body, &blame); err != nil || status != http.StatusOK || blame.Binary || len(blame.Ranges) != 2 {
+		test.Fatalf("blame: HTTP %d, %s, %v", status, body, err)
+	}
+	first, second := blame.Ranges[0], blame.Ranges[1]
+	if first.Start != 1 || len(first.Lines) != 1 || first.Commit.Summary != "Document the project" ||
+		second.Start != 2 || len(second.Lines) != 2 || second.Commit.Summary != "Expand README" ||
+		first.Commit.Author == "" || first.Commit.Date == "" {
+		test.Fatalf("blame ranges: %+v", blame.Ranges)
+	}
+	if !strings.Contains(second.Lines[1], "More") || strings.Contains(second.Lines[1], "<b>") {
+		test.Fatalf("highlighted line: %s", second.Lines[1])
+	}
+	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blame?ref=feature/nested&path=README.md", bearer(token), "")
+	if err := json.Unmarshal(body, &blame); err != nil || status != http.StatusOK || len(blame.Ranges) != 1 {
+		test.Fatalf("blame at a branch: HTTP %d, %s, %v", status, body, err)
+	}
+	status, body = call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blame?path=data.bin", bearer(token), "")
+	if err := json.Unmarshal(body, &blame); err != nil || status != http.StatusOK || !blame.Binary || len(blame.Ranges) != 0 {
+		test.Fatalf("binary blame: HTTP %d, %s, %v", status, body, err)
+	}
+	if status, _ := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blame?path=missing", bearer(token), ""); status != http.StatusNotFound {
+		test.Fatalf("missing file blame: HTTP %d", status)
+	}
+	for target, want := range map[string]int{
+		"/acme/demo/blame/main/README.md":            http.StatusOK,
+		"/acme/demo/blame/feature/nested/branch.txt": http.StatusOK,
+		"/acme/demo/blame/main/missing":              http.StatusNotFound,
+		"/acme/demo/blame/main/README.md?raw":        http.StatusOK,
+	} {
+		status, body := call(test, http.MethodGet, srv.url+target, tailnet(), "")
+		if status != want || (want == http.StatusOK && !strings.Contains(string(body), `<div id="root"></div>`)) {
+			test.Fatalf("%s: HTTP %d", target, status)
+		}
+	}
+}
+
 func TestGoImport(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)

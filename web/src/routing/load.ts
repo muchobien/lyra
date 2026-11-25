@@ -4,6 +4,7 @@ import { APIError } from "@/api";
 import {
   getGetRepoQueryOptions,
   getGetRepositoryBlobQueryOptions,
+  getGetRepositoryBlameQueryOptions,
   getGetRepositoryTreeQueryOptions,
   getListCommitsQueryOptions,
   getListTagsQueryOptions,
@@ -47,7 +48,7 @@ export async function loadSource(
   client: QueryClient,
   owner: string,
   repo: string,
-  view: "tree" | "blob",
+  view: "tree" | "blob" | "blame",
   target: string,
 ) {
   const [metadata, tags] = await Promise.all([
@@ -62,6 +63,8 @@ export async function loadSource(
   const params = { ref: source.ref || metadata.default_branch || "main", path: source.path };
   if (view === "blob") {
     await loadQuery(client, getGetRepositoryBlobQueryOptions(owner, repo, params));
+  } else if (view === "blame") {
+    await loadQuery(client, getGetRepositoryBlameQueryOptions(owner, repo, params));
   } else {
     await loadQuery(client, getGetRepositoryTreeQueryOptions(owner, repo, params));
   }

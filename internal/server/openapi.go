@@ -574,6 +574,10 @@ func (s *Server) registerWorkspaces(api huma.API) {
 		Summary: "Read highlighted source or binary/large-file metadata", Description: "Scope: read.",
 	}, s.handleBlob)
 	register(api, huma.Operation{
+		OperationID: "getRepositoryBlame", Method: http.MethodGet, Path: repository + "/blame", Tags: tags,
+		Summary: "Read the commit that last changed each line of a file", Description: "Scope: read.",
+	}, s.handleBlame)
+	register(api, huma.Operation{
 		OperationID: "getRepositoryRawFile", Method: http.MethodGet, Path: repository + "/raw", Tags: tags,
 		Summary:     "Download the original file bytes",
 		Description: "Scope: read. Served with nosniff and a sandbox policy.",

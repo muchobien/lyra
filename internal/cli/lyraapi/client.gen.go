@@ -174,6 +174,32 @@ type Attachment struct {
 	Url         string    `json:"url"`
 }
 
+// BlameCommit defines model for BlameCommit.
+type BlameCommit struct {
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Sha     string `json:"sha"`
+	Summary string `json:"summary"`
+}
+
+// BlameRange defines model for BlameRange.
+type BlameRange struct {
+	Commit BlameCommit `json:"commit"`
+
+	// Lines Highlighted HTML, one entry per line.
+	Lines []string `json:"lines"`
+
+	// Start Line number of the range's first line.
+	Start int64 `json:"start"`
+}
+
+// BlameResponse defines model for BlameResponse.
+type BlameResponse struct {
+	Binary bool         `json:"binary"`
+	Path   string       `json:"path"`
+	Ranges []BlameRange `json:"ranges"`
+}
+
 // BlobResponse defines model for BlobResponse.
 type BlobResponse struct {
 	Binary bool   `json:"binary"`
@@ -1303,6 +1329,15 @@ type UploadAttachmentParams struct {
 	Name string `form:"name" json:"name"`
 }
 
+// GetRepositoryBlameParams defines parameters for GetRepositoryBlame.
+type GetRepositoryBlameParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // GetRepositoryBlobParams defines parameters for GetRepositoryBlob.
 type GetRepositoryBlobParams struct {
 	// Ref Branch, tag, or commit; defaults to the repository's default branch.
@@ -1822,6 +1857,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
 	UploadAttachmentWithBody(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRepositoryBlame Read the commit that last changed each line of a file
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+	GetRepositoryBlame(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetRepositoryBlob Read highlighted source or binary/large-file metadata
 	//
@@ -3013,6 +3055,23 @@ func (c *Client) GetRepo(ctx context.Context, owner string, repo string, reqEdit
 // Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
 func (c *Client) UploadAttachmentWithBody(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUploadAttachmentRequestWithBody(c.Server, owner, repo, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRepositoryBlame Read the commit that last changed each line of a file
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+func (c *Client) GetRepositoryBlame(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRepositoryBlameRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5545,6 +5604,86 @@ func NewUploadAttachmentRequestWithBody(server string, owner string, repo string
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetRepositoryBlameRequest constructs an http.Request for the GetRepositoryBlame method
+func NewGetRepositoryBlameRequest(server string, owner string, repo string, params *GetRepositoryBlameParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/blame"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9989,6 +10128,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
 	UploadAttachmentWithBodyWithResponse(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadAttachmentResponse, error)
 
+	// GetRepositoryBlameWithResponse Read the commit that last changed each line of a file
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+	GetRepositoryBlameWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlameResponse, error)
+
 	// GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
 	//
 	// Scope: read.
@@ -11847,6 +11995,54 @@ func (r UploadAttachmentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UploadAttachmentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRepositoryBlameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BlameResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRepositoryBlameResponse) GetJSON200() *BlameResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRepositoryBlameResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRepositoryBlameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRepositoryBlameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRepositoryBlameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRepositoryBlameResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15756,6 +15952,21 @@ func (c *ClientWithResponses) UploadAttachmentWithBodyWithResponse(ctx context.C
 	return ParseUploadAttachmentResponse(rsp)
 }
 
+// GetRepositoryBlameWithResponse Read the commit that last changed each line of a file
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+func (c *ClientWithResponses) GetRepositoryBlameWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlameResponse, error) {
+	rsp, err := c.GetRepositoryBlame(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRepositoryBlameResponse(rsp)
+}
+
 // GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
 //
 // Scope: read.
@@ -17828,6 +18039,39 @@ func ParseUploadAttachmentResponse(rsp *http.Response) (*UploadAttachmentRespons
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRepositoryBlameResponse parses an HTTP response from a GetRepositoryBlameWithResponse call
+func ParseGetRepositoryBlameResponse(rsp *http.Response) (*GetRepositoryBlameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRepositoryBlameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BlameResponse
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody

@@ -32,6 +32,7 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
     tree,
     blobParams,
     blob,
+    blame,
     latest,
     images,
     tags,
@@ -130,7 +131,7 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
               {parts.map((part, index) => (
                 <span key={parts.slice(0, index + 1).join("/")}>
                   <span>/</span>
-                  {view === "blob" && index === parts.length - 1 ? (
+                  {view !== "tree" && index === parts.length - 1 ? (
                     <strong>{part}</strong>
                   ) : (
                     <Link
@@ -297,6 +298,9 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
                     notation: "compact",
                   }).format(blob.data.size)}
                 </span>
+                <Link to="/$owner/$repo/blame/$" params={{ owner, repo, _splat: target }}>
+                  Blame
+                </Link>
                 <a href={rawURL}>Raw</a>
               </div>
               {blob.data.binary ? (
@@ -310,6 +314,55 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
                     __html: blob.data.markdown && !plain ? blob.data.markdown : blob.data.code,
                   }}
                 />
+              )}
+            </section>
+          )}
+          {view === "blame" && blame.isPending && (
+            <output className="lyra-repository-page-loading">Loading blame…</output>
+          )}
+          {view === "blame" && blame.data && (
+            <section className="lyra-repository-page-blob">
+              <div className="lyra-repository-page-fileHeading">
+                <FileIcon name={parts.at(-1) ?? ""} />
+                <strong>{parts.at(-1)}</strong>
+                <span>Blame</span>
+                <Link to="/$owner/$repo/blob/$" params={{ owner, repo, _splat: target }}>
+                  File
+                </Link>
+                <a href={rawURL}>Raw</a>
+              </div>
+              {blame.data.binary ? (
+                <p className="lyra-repository-page-loading">
+                  Binary or large file. <a href={rawURL}>Download raw file</a>
+                </p>
+              ) : (
+                <div className="lyra-repository-page-blame">
+                  {blame.data.ranges.map((range) => (
+                    <div className="lyra-repository-page-blameRange" key={range.start}>
+                      <div className="lyra-repository-page-blameCommit">
+                        <Link
+                          to="/$owner/$repo/commit/$sha"
+                          params={{ owner, repo, sha: range.commit.sha }}
+                          search={{}}
+                          title={range.commit.summary}
+                        >
+                          {range.commit.summary}
+                        </Link>
+                        <span>
+                          {range.commit.author} · <DateTime value={range.commit.date} />
+                        </span>
+                      </div>
+                      <div className="lyra-repository-page-blameLines">
+                        {range.lines.map((line, index) => (
+                          <div className="lyra-repository-page-blameLine" key={range.start + index}>
+                            <span>{range.start + index}</span>
+                            <div dangerouslySetInnerHTML={{ __html: line }} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
           )}

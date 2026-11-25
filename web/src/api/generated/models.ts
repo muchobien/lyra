@@ -165,6 +165,27 @@ export interface Attachment {
   url: string;
 }
 
+export interface BlameCommit {
+  author: string;
+  date: string;
+  sha: string;
+  summary: string;
+}
+
+export interface BlameRange {
+  commit: BlameCommit;
+  /** Highlighted HTML, one entry per line. */
+  lines: string[];
+  /** Line number of the range's first line. */
+  start: number;
+}
+
+export interface BlameResponse {
+  binary: boolean;
+  path: string;
+  ranges: BlameRange[];
+}
+
 export interface BlobResponse {
   binary: boolean;
   code: string;
@@ -1087,6 +1108,13 @@ export type ListEventsParams = {
 export type UploadAttachmentParams = {
   /** File name, shown in the attachment's URL. */
   name: string;
+};
+
+export type GetRepositoryBlameParams = {
+  /** Branch, tag, or commit; defaults to the repository's default branch. */
+  ref?: string;
+  /** Path relative to the repository root. */
+  path?: string;
 };
 
 export type GetRepositoryBlobParams = {

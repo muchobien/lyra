@@ -20,6 +20,7 @@ import type {
 import type {
   AssetWrite,
   Attachment,
+  BlameResponse,
   BlobResponse,
   BranchView,
   CommentRequest,
@@ -50,6 +51,7 @@ import type {
   FileChange,
   GetCompareWorkspaceParams,
   GetJobLogsParams,
+  GetRepositoryBlameParams,
   GetRepositoryBlobParams,
   GetRepositoryRawFileParams,
   GetRepositoryTreeParams,
@@ -2191,6 +2193,143 @@ export const useUploadAttachment = <TError = ErrorType<ErrorBody>,
       > => {
       return useMutation(getUploadAttachmentMutationOptions(options), queryClient);
     }
+
+export const getGetRepositoryBlameUrl = (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/blame?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/blame`
+}
+
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export const getRepositoryBlame = async (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: Parameters<typeof orvalFetch>[1]): Promise<BlameResponse> => {
+
+  return orvalFetch<BlameResponse>(getGetRepositoryBlameUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRepositoryBlameQueryKey = (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/blame`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRepositoryBlameQueryOptions = <TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRepositoryBlameQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRepositoryBlame>>> = ({ signal }) => getRepositoryBlame(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetRepositoryBlameQueryResult = NonNullable<Awaited<ReturnType<typeof getRepositoryBlame>>>
+export type GetRepositoryBlameQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: undefined |  GetRepositoryBlameParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRepositoryBlame>>,
+          TError,
+          Awaited<ReturnType<typeof getRepositoryBlame>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRepositoryBlame>>,
+          TError,
+          Awaited<ReturnType<typeof getRepositoryBlame>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetRepositoryBlameQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetRepositoryBlobUrl = (owner: string,
     repo: string,
