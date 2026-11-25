@@ -7,7 +7,7 @@ import {
   type MouseEvent,
   type UIEvent,
 } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
@@ -23,6 +23,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const search = useSearch({ from: "/$owner/$repo/runs/$number" });
   const navigate = useNavigate({ from: "/$owner/$repo/runs/$number" });
+  const hash = useLocation({ select: (location) => location.hash });
   const identity = useContext(IdentityContext);
   const queryClient = useQueryClient();
 
@@ -84,6 +85,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
 
   const [following, setFollowing] = useState(true);
   const logPanel = useRef<HTMLDivElement>(null);
+  const targetLine = Number(/^L(\d+)$/.exec(hash)?.[1] || 0);
+  const logsLoaded = !!logs.data;
 
   const cancel = useCancelRun({
     mutation: {
@@ -108,6 +111,21 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       logPanel.current.scrollTop = logPanel.current.scrollHeight;
     }
   }, [logs.data?.offset, following, active]);
+
+  useEffect(() => {
+    const element = document.querySelector("[data-target]");
+    if (!element) {
+      return;
+    }
+    for (
+      let details = element.closest("details");
+      details;
+      details = details.parentElement?.closest("details") || null
+    ) {
+      details.open = true;
+    }
+    element.scrollIntoView({ block: "nearest" });
+  }, [targetLine, logsLoaded]);
 
   function retry() {
     void run.refetch();
@@ -204,6 +222,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     active,
     logsURL,
     logs,
+    targetLine,
     following,
     logPanel,
     cancel,

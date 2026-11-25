@@ -37,6 +37,7 @@ export function RunDetail({ number }: RunDetailProps) {
     active,
     logsURL,
     logs,
+    targetLine,
     following,
     logPanel,
     cancel,
@@ -68,6 +69,9 @@ export function RunDetail({ number }: RunDetailProps) {
     ? selected.steps.find((step) => step.result === "failure") ||
       selected.steps.find((step) => !!step.started_at && !step.stopped_at)
     : undefined;
+  const targetStep = selected?.steps.find(
+    (step) => targetLine > step.log_index && targetLine <= step.log_index + step.log_length,
+  );
   const triggerLabels: Record<string, string> = {
     workflow_dispatch: "Manual",
     pull_request: "Pull request",
@@ -101,6 +105,7 @@ export function RunDetail({ number }: RunDetailProps) {
         start={0}
         end={logLines.length}
         query={search.q}
+        target={targetLine}
         empty="No matching log lines."
       />
     );
@@ -118,6 +123,7 @@ export function RunDetail({ number }: RunDetailProps) {
               start={highlightedStep.log_index}
               end={highlightedStep.log_index + highlightedStep.log_length}
               query={search.q}
+              target={targetLine}
               empty="No log lines for this step."
             />
           </details>
@@ -140,6 +146,7 @@ export function RunDetail({ number }: RunDetailProps) {
                   start={step.log_index}
                   end={step.log_index + step.log_length}
                   query={search.q}
+                  target={targetLine}
                   empty="No log lines for this step."
                 />
               </details>
@@ -152,6 +159,7 @@ export function RunDetail({ number }: RunDetailProps) {
             start={0}
             end={logLines.length}
             query={search.q}
+            target={targetStep ? undefined : targetLine}
             empty="No matching log lines."
           />
         </details>

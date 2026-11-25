@@ -4,7 +4,7 @@ import { useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic
 
 type SpansProps = { spans: LogSpan[] };
 
-type LineProps = { line: LogLine };
+type LineProps = { line: LogLine; targeted: boolean };
 
 function Spans({ spans }: SpansProps) {
   return spans.map((span, index) => {
@@ -33,12 +33,17 @@ function Spans({ spans }: SpansProps) {
   });
 }
 
-function Line({ line }: LineProps) {
+function Line({ line, targeted }: LineProps) {
   return (
-    <div className="lyra-log-text-line" data-kind={line.kind} data-level={line.level}>
-      <span className="lyra-log-text-number" aria-hidden="true">
+    <div
+      className="lyra-log-text-line"
+      data-target={targeted || undefined}
+      data-kind={line.kind}
+      data-level={line.level}
+    >
+      <a className="lyra-log-text-number" href={`#L${line.number}`}>
         {line.number}
-      </span>
+      </a>
       <span className="lyra-log-text-content">
         {line.level && <b>{line.level[0].toUpperCase() + line.level.slice(1)}: </b>}
         {line.title && `${line.title} · `}
@@ -49,7 +54,7 @@ function Line({ line }: LineProps) {
   );
 }
 
-export function LogText({ lines, start, end, query, empty }: LogTextProps) {
+export function LogText({ lines, start, end, query, target, empty }: LogTextProps) {
   const { blocks } = useLogic({ lines, start, end, query });
 
   if (!blocks.length) {
@@ -64,20 +69,23 @@ export function LogText({ lines, start, end, query, empty }: LogTextProps) {
             className="lyra-log-text-group"
             open={block.group.failed || undefined}
           >
-            <summary className="lyra-log-text-line">
-              <span className="lyra-log-text-number" aria-hidden="true">
+            <summary
+              className="lyra-log-text-line"
+              data-target={target === block.group.number || undefined}
+            >
+              <a className="lyra-log-text-number" href={`#L${block.group.number}`}>
                 {block.group.number}
-              </span>
+              </a>
               <span className="lyra-log-text-content">
                 <Spans spans={block.group.title} />
               </span>
             </summary>
             {block.group.lines.map((line) => (
-              <Line key={line.number} line={line} />
+              <Line key={line.number} line={line} targeted={target === line.number} />
             ))}
           </details>
         ) : (
-          <Line key={block.line.number} line={block.line} />
+          <Line key={block.line.number} line={block.line} targeted={target === block.line.number} />
         ),
       )}
     </div>
