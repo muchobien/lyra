@@ -11,6 +11,7 @@ export const itemDetailPaths = {
 export const diffPaths = {
   ...itemDetailPaths,
   commit: "/$owner/$repo/commit/$sha",
+  compare: "/$owner/$repo/compare/$",
 } as const;
 
 export function splitSource(target: string, branches: string[], tags: string[]) {

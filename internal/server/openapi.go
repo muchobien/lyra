@@ -622,6 +622,10 @@ func (s *Server) registerWorkspaces(api huma.API) {
 		Summary: "Read a commit with checks and structured diffs", Description: "Scope: read.",
 	}, s.handleCommitWorkspace)
 	register(api, huma.Operation{
+		OperationID: "getCompareWorkspace", Method: http.MethodGet, Path: repository + "/compare", Tags: tags,
+		Summary: "Compare two refs: the commits head adds and structured diffs", Description: "Scope: read.",
+	}, s.handleCompareWorkspace)
+	register(api, huma.Operation{
 		OperationID: "listWorkflows", Method: http.MethodGet, Path: repository + "/workflows", Tags: tags,
 		Summary: "Discover workflows and declared manual inputs at a ref", Description: "Scope: read.",
 	}, s.handleWorkflows)

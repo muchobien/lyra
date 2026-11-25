@@ -105,6 +105,54 @@ func TestBranches(test *testing.T) {
 	}
 }
 
+func TestCompare(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	src := pushDemo(test, srv, token)
+	mainSHA := strings.TrimSpace(mustGit(test, src, "rev-parse", "main"))
+	var comparison struct {
+		MergeBase string `json:"merge_base"`
+		Commits   []struct {
+			Subject string `json:"subject"`
+		} `json:"commits"`
+		Files []struct {
+			Path string `json:"path"`
+		} `json:"files"`
+	}
+	compare := func(base, head string) int {
+		query := url.Values{"base": {base}, "head": {head}}.Encode()
+		status, body := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/compare?"+query, bearer(token), "")
+		if status == http.StatusOK {
+			comparison.Commits, comparison.Files = nil, nil
+			if err := json.Unmarshal(body, &comparison); err != nil {
+				test.Fatal(err)
+			}
+		}
+		return status
+	}
+	if status := compare("main", "feature/nested"); status != http.StatusOK || comparison.MergeBase != mainSHA ||
+		len(comparison.Commits) != 1 || comparison.Commits[0].Subject != "Branch commit" ||
+		len(comparison.Files) != 1 || comparison.Files[0].Path != "branch.txt" {
+		test.Fatalf("compare main...feature/nested: HTTP %d, %+v", status, comparison)
+	}
+	if status := compare("feature/nested", "main"); status != http.StatusOK || len(comparison.Commits) != 0 || len(comparison.Files) != 0 {
+		test.Fatalf("compare feature/nested...main: HTTP %d, %+v", status, comparison)
+	}
+	if status := compare("main", "missing"); status != http.StatusNotFound {
+		test.Fatalf("compare with an unknown ref: HTTP %d", status)
+	}
+	for target, want := range map[string]int{
+		"/acme/demo/compare":                       http.StatusOK,
+		"/acme/demo/compare/feature/nested":        http.StatusOK,
+		"/acme/demo/compare/main...feature/nested": http.StatusOK,
+		"/acme/demo/compare/main...missing":        http.StatusNotFound,
+	} {
+		if status, _ := call(test, http.MethodGet, srv.url+target, tailnet(), ""); status != want {
+			test.Fatalf("%s: HTTP %d", target, status)
+		}
+	}
+}
+
 func TestGoImport(test *testing.T) {
 	srv := startServer(test, "127.0.0.1")
 	token := adminToken(test, srv)

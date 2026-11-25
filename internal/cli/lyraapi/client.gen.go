@@ -284,6 +284,21 @@ type CommitWorkspace struct {
 	Files  []DiffFile `json:"files"`
 }
 
+// CompareWorkspace defines model for CompareWorkspace.
+type CompareWorkspace struct {
+	BaseSha string `json:"base_sha"`
+
+	// Commits Commits on head that aren't on base, newest first, at most 250.
+	Commits []Commit `json:"commits"`
+
+	// Files Changes on head since the merge base, or since base without one.
+	Files   []DiffFile `json:"files"`
+	HeadSha string     `json:"head_sha"`
+
+	// MergeBase Empty when the two refs share no history.
+	MergeBase string `json:"merge_base"`
+}
+
 // CreateIssueRequest defines model for CreateIssueRequest.
 type CreateIssueRequest struct {
 	// Assignees Logins or agent names; @me is the caller.
@@ -1312,6 +1327,15 @@ type ListCommitsParams struct {
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetCompareWorkspaceParams defines parameters for GetCompareWorkspace.
+type GetCompareWorkspaceParams struct {
+	// Base Branch, tag, or commit to compare against.
+	Base string `form:"base" json:"base"`
+
+	// Head Branch, tag, or commit with the changes.
+	Head string `form:"head" json:"head"`
+}
+
 // ListRepositoryFilesParams defines parameters for ListRepositoryFiles.
 type ListRepositoryFilesParams struct {
 	// Ref Branch, tag, or commit; defaults to the repository's default branch.
@@ -1840,6 +1864,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 	GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCompareWorkspace Compare two refs: the commits head adds and structured diffs
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `GetCompareWorkspace` operationId).
+	GetCompareWorkspace(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRepositoryFiles List recursive file paths for the file finder
 	//
@@ -3084,6 +3115,23 @@ func (c *Client) GetCommit(ctx context.Context, owner string, repo string, rev s
 // Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 func (c *Client) GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCommitWorkspaceRequest(c.Server, owner, repo, rev)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCompareWorkspace Compare two refs: the commits head adds and structured diffs
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `GetCompareWorkspace` operationId).
+func (c *Client) GetCompareWorkspace(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCompareWorkspaceRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5852,6 +5900,78 @@ func NewGetCommitWorkspaceRequest(server string, owner string, repo string, rev 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCompareWorkspaceRequest constructs an http.Request for the GetCompareWorkspace method
+func NewGetCompareWorkspaceRequest(server string, owner string, repo string, params *GetCompareWorkspaceParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/compare"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9923,6 +10043,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 	GetCommitWorkspaceWithResponse(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*GetCommitWorkspaceResponse, error)
 
+	// GetCompareWorkspaceWithResponse Compare two refs: the commits head adds and structured diffs
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `GetCompareWorkspace` operationId).
+	GetCompareWorkspaceWithResponse(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*GetCompareWorkspaceResponse, error)
+
 	// ListRepositoryFilesWithResponse List recursive file paths for the file finder
 	//
 	// Scope: read.
@@ -12006,6 +12135,54 @@ func (r GetCommitWorkspaceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCommitWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCompareWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CompareWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCompareWorkspaceResponse) GetJSON200() *CompareWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetCompareWorkspaceResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCompareWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCompareWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCompareWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCompareWorkspaceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15669,6 +15846,21 @@ func (c *ClientWithResponses) GetCommitWorkspaceWithResponse(ctx context.Context
 	return ParseGetCommitWorkspaceResponse(rsp)
 }
 
+// GetCompareWorkspaceWithResponse Compare two refs: the commits head adds and structured diffs
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `GetCompareWorkspace` operationId).
+func (c *ClientWithResponses) GetCompareWorkspaceWithResponse(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*GetCompareWorkspaceResponse, error) {
+	rsp, err := c.GetCompareWorkspace(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCompareWorkspaceResponse(rsp)
+}
+
 // ListRepositoryFilesWithResponse List recursive file paths for the file finder
 //
 // Scope: read.
@@ -17830,6 +18022,39 @@ func ParseGetCommitWorkspaceResponse(rsp *http.Response) (*GetCommitWorkspaceRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CommitWorkspace
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCompareWorkspaceResponse parses an HTTP response from a GetCompareWorkspaceWithResponse call
+func ParseGetCompareWorkspaceResponse(rsp *http.Response) (*GetCompareWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCompareWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CompareWorkspace
 		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

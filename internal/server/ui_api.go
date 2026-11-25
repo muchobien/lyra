@@ -86,6 +86,17 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 				if _, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), r.PathValue("sha")); err != nil {
 					return notFound("commit not found")
 				}
+			case "compare":
+				dir := s.repoDir(repo.Name)
+				base, head, found := strings.Cut(pathParam(r, "*"), "...")
+				if !found {
+					base, head = s.git.DefaultBranch(r.Context(), dir), base
+				}
+				for _, ref := range []string{base, head} {
+					if _, err := s.git.ResolveCommit(r.Context(), dir, ref); ref != "" && err != nil {
+						return notFound("unknown ref " + ref)
+					}
+				}
 			case "releases":
 				if tag := pathParam(r, "*"); tag != "" {
 					if _, err := s.releaseByTag(r, repo.Name, tag); err != nil {

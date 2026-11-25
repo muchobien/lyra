@@ -26,6 +26,7 @@ import type {
   CommentWrite,
   Commit,
   CommitWorkspace,
+  CompareWorkspace,
   CreateIssueRequest,
   CreateKeyRequest,
   CreateLabelRequest,
@@ -47,6 +48,7 @@ import type {
   ErrorBody,
   Event,
   FileChange,
+  GetCompareWorkspaceParams,
   GetJobLogsParams,
   GetRepositoryBlobParams,
   GetRepositoryRawFileParams,
@@ -2921,6 +2923,143 @@ export function useGetCommitWorkspace<TData = Awaited<ReturnType<typeof getCommi
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetCommitWorkspaceQueryOptions(owner,repo,rev,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCompareWorkspaceUrl = (owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare`
+}
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export const getCompareWorkspace = async (owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: Parameters<typeof orvalFetch>[1]): Promise<CompareWorkspace> => {
+
+  return orvalFetch<CompareWorkspace>(getGetCompareWorkspaceUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompareWorkspaceQueryKey = (owner: string,
+    repo: string,
+    params?: GetCompareWorkspaceParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCompareWorkspaceQueryOptions = <TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompareWorkspaceQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompareWorkspace>>> = ({ signal }) => getCompareWorkspace(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCompareWorkspaceQueryResult = NonNullable<Awaited<ReturnType<typeof getCompareWorkspace>>>
+export type GetCompareWorkspaceQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareWorkspace>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareWorkspace>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareWorkspace>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareWorkspace>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCompareWorkspaceQueryOptions(owner,repo,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

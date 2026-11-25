@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowLeftIcon,
   FileDirectoryIcon,
   GitBranchIcon,
+  GitCompareIcon,
   TagIcon,
   TrashIcon,
   VerifiedIcon,
@@ -26,6 +28,7 @@ const breadcrumbLabels = {
   commit: "Commits",
   tags: "Tags",
   branches: "Branches",
+  compare: "Compare",
 };
 
 export function CodeScreens({ section, target }: CodeScreenProps) {
@@ -41,8 +44,12 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
     canWrite,
     deleting,
     removing,
+    compareBase,
+    compareHead,
+    comparison,
     detail,
     branchChanged,
+    compareChanged,
     prepareDelete,
     deleteBranch,
     retry,
@@ -153,6 +160,22 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
             >
               {branch.commit.sha.slice(0, 7)}
             </Link>
+            {!branch.default && (
+              <Link
+                className="lyra-workspace-browse"
+                to="/$owner/$repo/compare/$"
+                params={{
+                  owner,
+                  repo,
+                  _splat: `${metadata.data?.default_branch || "main"}...${branch.name}`,
+                }}
+                search={{}}
+                aria-label={`Compare ${branch.name}`}
+                title="Compare"
+              >
+                <GitCompareIcon size={16} />
+              </Link>
+            )}
             {canWrite && !branch.default && !branch.protected && (
               <button
                 className="lyra-workspace-browse"
@@ -173,6 +196,91 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       </div>
     ) : (
       <output className="lyra-workspace-empty">Loading branches…</output>
+    );
+  } else if (section === "compare") {
+    const refs = metadata.data?.branches.map((branch) => branch.name) || [];
+    content = (
+      <>
+        <div className="lyra-workspace-toolbar">
+          <GitCompareIcon size={16} />
+          <label className="lyra-controls-srOnly" htmlFor="compare-base">
+            Base
+          </label>
+          <select
+            id="compare-base"
+            name="base"
+            className="lyra-controls-select"
+            value={compareBase}
+            onChange={compareChanged}
+          >
+            {!refs.includes(compareBase) && <option value={compareBase}>{compareBase}</option>}
+            {refs.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <ArrowLeftIcon size={16} />
+          <label className="lyra-controls-srOnly" htmlFor="compare-head">
+            Compare
+          </label>
+          <select
+            id="compare-head"
+            name="head"
+            className="lyra-controls-select"
+            value={compareHead}
+            onChange={compareChanged}
+          >
+            {!compareHead && <option value="">Choose a branch</option>}
+            {compareHead && !refs.includes(compareHead) && (
+              <option value={compareHead}>{compareHead}</option>
+            )}
+            {refs.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!compareHead && (
+          <div className="lyra-workspace-panel">
+            <p className="lyra-workspace-empty">Choose a branch to compare with {compareBase}.</p>
+          </div>
+        )}
+        {compareHead && !comparison.data && (
+          <output className="lyra-workspace-empty">Loading comparison…</output>
+        )}
+        {comparison.data && (
+          <>
+            <p className="lyra-workspace-meta">
+              {comparison.data.commits.length}{" "}
+              {comparison.data.commits.length === 1 ? "commit" : "commits"} on {compareHead} that
+              aren't on {compareBase}
+              {!comparison.data.merge_base && " · the two refs share no history"}
+            </p>
+            {comparison.data.commits.length === 0 && comparison.data.files.length === 0 ? (
+              <div className="lyra-workspace-panel">
+                <p className="lyra-workspace-empty">
+                  {compareHead} has no changes that aren't on {compareBase}.
+                </p>
+              </div>
+            ) : (
+              <>
+                <CommitRows commits={comparison.data.commits} owner={owner} repo={repo} />
+                <DiffViewer
+                  key={`${comparison.data.base_sha}...${comparison.data.head_sha}`}
+                  files={comparison.data.files}
+                  owner={owner}
+                  repo={repo}
+                  section="compare"
+                  target={target}
+                  head={comparison.data.head_sha}
+                />
+              </>
+            )}
+          </>
+        )}
+      </>
     );
   } else if (section === "commits") {
     if (metadata.data?.branches.length === 0) {

@@ -260,6 +260,17 @@ export interface CommitWorkspace {
   files: DiffFile[];
 }
 
+export interface CompareWorkspace {
+  base_sha: string;
+  /** Commits on head that aren't on base, newest first, at most 250. */
+  commits: Commit[];
+  /** Changes on head since the merge base, or since base without one. */
+  files: DiffFile[];
+  head_sha: string;
+  /** Empty when the two refs share no history. */
+  merge_base: string;
+}
+
 export interface Image {
   digest: string;
   media_type: string;
@@ -1095,6 +1106,13 @@ export type ListCommitsParams = {
   ref?: string;
   /** 1 to 500; defaults to 30. */
   limit?: number;
+};
+
+export type GetCompareWorkspaceParams = {
+  /** Branch, tag, or commit to compare against. */
+  base: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
 };
 
 export type ListRepositoryFilesParams = {

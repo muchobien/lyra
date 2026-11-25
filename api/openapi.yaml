@@ -342,6 +342,33 @@ components:
         - checks
         - files
       type: object
+    CompareWorkspace:
+      additionalProperties: false
+      properties:
+        base_sha:
+          type: string
+        commits:
+          description: Commits on head that aren't on base, newest first, at most 250.
+          items:
+            $ref: "#/components/schemas/Commit"
+          type: array
+        files:
+          description: Changes on head since the merge base, or since base without one.
+          items:
+            $ref: "#/components/schemas/DiffFile"
+          type: array
+        head_sha:
+          type: string
+        merge_base:
+          description: Empty when the two refs share no history.
+          type: string
+      required:
+        - base_sha
+        - head_sha
+        - merge_base
+        - commits
+        - files
+      type: object
     CreateIssueRequest:
       additionalProperties: false
       properties:
@@ -3580,6 +3607,53 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
           description: Error
       summary: Read a commit with checks and structured diffs
+      tags:
+        - Workspaces
+  /api/repos/{owner}/{repo}/compare:
+    get:
+      description: "Scope: read."
+      operationId: getCompareWorkspace
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against.
+          explode: false
+          in: query
+          name: base
+          required: true
+          schema:
+            description: Branch, tag, or commit to compare against.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareWorkspace"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: "Compare two refs: the commits head adds and structured diffs"
       tags:
         - Workspaces
   /api/repos/{owner}/{repo}/files:
