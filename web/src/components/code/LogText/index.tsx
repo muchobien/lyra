@@ -49,7 +49,7 @@ function Line({ line }: LineProps) {
   );
 }
 
-export function LogText({ lines, start, end, query, empty }: LogTextProps) {
+export function LogText({ lines, start, end, query, empty, live }: LogTextProps) {
   const { blocks } = useLogic({ lines, start, end, query });
 
   if (!blocks.length) {
@@ -62,7 +62,7 @@ export function LogText({ lines, start, end, query, empty }: LogTextProps) {
           <details
             key={block.group.number}
             className="lyra-log-text-group"
-            open={block.group.failed || undefined}
+            open={block.group.failed || (live && !block.group.ended) || undefined}
           >
             <summary className="lyra-log-text-line">
               <span className="lyra-log-text-number" aria-hidden="true">
