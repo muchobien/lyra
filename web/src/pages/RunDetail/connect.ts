@@ -13,6 +13,7 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
+import { stripAnsi } from "@/components/code/LogText/logic";
 
 type Logs = { lines: string[]; offset: number; done: boolean };
 
@@ -134,9 +135,11 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       return;
     }
     const step = selected.steps.find((entry) => entry.result === "failure");
-    let lines = step
-      ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
-      : logs.data.lines;
+    let lines = (
+      step
+        ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
+        : logs.data.lines
+    ).map(stripAnsi);
     setExplainedJob(selected.id);
     void explanation.run(async (signal, monitor) => {
       const session = await LanguageModel.create({

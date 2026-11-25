@@ -1,0 +1,196 @@
+.lyra-log-text {
+  --ansi-0: light-dark(#24292f, #484f58);
+  --ansi-1: light-dark(#cf222e, #ff7b72);
+  --ansi-2: light-dark(#116329, #3fb950);
+  --ansi-3: light-dark(#4d2d00, #d29922);
+  --ansi-4: light-dark(#0969da, #58a6ff);
+  --ansi-5: light-dark(#8250df, #bc8cff);
+  --ansi-6: light-dark(#1b7c83, #39c5cf);
+  --ansi-7: light-dark(#6e7781, #b1bac4);
+  --ansi-8: light-dark(#57606a, #6e7681);
+  --ansi-9: light-dark(#a40e26, #ffa198);
+  --ansi-10: light-dark(#1a7f37, #56d364);
+  --ansi-11: light-dark(#633c01, #e3b341);
+  --ansi-12: light-dark(#218bff, #79c0ff);
+  --ansi-13: light-dark(#a475f9, #d2a8ff);
+  --ansi-14: light-dark(#3192aa, #56d4dd);
+  --ansi-15: light-dark(#8c959f, #ffffff);
+  font: var(--text-xs) / 1.9 var(--mono);
+  padding: 0.5rem 0;
+  tab-size: 4;
+  color: var(--text);
+  & span[data-bold] {
+    font-weight: var(--weight-semibold);
+  }
+  & span[data-dim] {
+    opacity: 0.65;
+  }
+  & span[data-italic] {
+    font-style: italic;
+  }
+  & span[data-underline] {
+    text-decoration: underline;
+  }
+  & span[data-color="0"] {
+    color: var(--ansi-0);
+  }
+  & span[data-background="0"] {
+    background: var(--ansi-0);
+  }
+  & span[data-color="1"] {
+    color: var(--ansi-1);
+  }
+  & span[data-background="1"] {
+    background: var(--ansi-1);
+  }
+  & span[data-color="2"] {
+    color: var(--ansi-2);
+  }
+  & span[data-background="2"] {
+    background: var(--ansi-2);
+  }
+  & span[data-color="3"] {
+    color: var(--ansi-3);
+  }
+  & span[data-background="3"] {
+    background: var(--ansi-3);
+  }
+  & span[data-color="4"] {
+    color: var(--ansi-4);
+  }
+  & span[data-background="4"] {
+    background: var(--ansi-4);
+  }
+  & span[data-color="5"] {
+    color: var(--ansi-5);
+  }
+  & span[data-background="5"] {
+    background: var(--ansi-5);
+  }
+  & span[data-color="6"] {
+    color: var(--ansi-6);
+  }
+  & span[data-background="6"] {
+    background: var(--ansi-6);
+  }
+  & span[data-color="7"] {
+    color: var(--ansi-7);
+  }
+  & span[data-background="7"] {
+    background: var(--ansi-7);
+  }
+  & span[data-color="8"] {
+    color: var(--ansi-8);
+  }
+  & span[data-background="8"] {
+    background: var(--ansi-8);
+  }
+  & span[data-color="9"] {
+    color: var(--ansi-9);
+  }
+  & span[data-background="9"] {
+    background: var(--ansi-9);
+  }
+  & span[data-color="10"] {
+    color: var(--ansi-10);
+  }
+  & span[data-background="10"] {
+    background: var(--ansi-10);
+  }
+  & span[data-color="11"] {
+    color: var(--ansi-11);
+  }
+  & span[data-background="11"] {
+    background: var(--ansi-11);
+  }
+  & span[data-color="12"] {
+    color: var(--ansi-12);
+  }
+  & span[data-background="12"] {
+    background: var(--ansi-12);
+  }
+  & span[data-color="13"] {
+    color: var(--ansi-13);
+  }
+  & span[data-background="13"] {
+    background: var(--ansi-13);
+  }
+  & span[data-color="14"] {
+    color: var(--ansi-14);
+  }
+  & span[data-background="14"] {
+    background: var(--ansi-14);
+  }
+  & span[data-color="15"] {
+    color: var(--ansi-15);
+  }
+  & span[data-background="15"] {
+    background: var(--ansi-15);
+  }
+}
+
+.lyra-log-text-line {
+  display: flex;
+  padding-right: 1.2rem;
+  &:hover {
+    background: var(--hover);
+  }
+  &[data-kind="command"] {
+    color: var(--accent);
+  }
+  &[data-level="warning"] {
+    color: var(--attention);
+  }
+  &[data-level="error"] {
+    color: var(--danger);
+  }
+  &[data-level="notice"] {
+    color: var(--accent);
+  }
+  & b {
+    font-weight: var(--weight-semibold);
+  }
+}
+
+.lyra-log-text-number {
+  flex: 0 0 4.5rem;
+  padding-right: 1rem;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.lyra-log-text-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.lyra-log-text-location {
+  margin-left: 0.6rem;
+  color: var(--muted);
+}
+
+.lyra-log-text-group {
+  & > summary {
+    list-style: none;
+    cursor: pointer;
+    & .lyra-log-text-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-weight: var(--weight-semibold);
+      &::before {
+        content: "";
+        width: 0.9rem;
+        height: 0.9rem;
+        flex-shrink: 0;
+        background: var(--muted);
+        mask: var(--chevron) center / contain no-repeat;
+      }
+    }
+  }
+  &[open] > summary .lyra-log-text-content::before {
+    rotate: 90deg;
+  }
+}
