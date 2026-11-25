@@ -213,6 +213,17 @@
   }
 }
 
+.lyra-actions-pendingStep {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.8rem 1rem 0.8rem 2.7rem;
+  border-bottom: 1px solid var(--soft-border);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 .lyra-actions-completedSteps {
   & > summary {
     padding: 0.85rem 1rem;

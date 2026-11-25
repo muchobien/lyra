@@ -110,7 +110,7 @@ export function RunDetail({ number }: RunDetailProps) {
         {active ? "Waiting for log output…" : "No log output for this job."}
       </p>
     );
-  } else if (active || !selected?.steps.length) {
+  } else if (!selected?.steps.length) {
     logContent = (
       <LogText
         lines={logLines}
@@ -121,6 +121,58 @@ export function RunDetail({ number }: RunDetailProps) {
         target={targetLine}
         empty="No matching log lines."
       />
+    );
+  } else if (active) {
+    logContent = (
+      <div>
+        {selected.steps.map((step) =>
+          step.started_at ? (
+            <details
+              className="lyra-actions-step"
+              key={step.id}
+              open={!step.stopped_at || step.result === "failure"}
+              data-running={!step.stopped_at || undefined}
+            >
+              <summary>
+                <Status value={step.result || "running"} />
+                {step.name}
+                <span className="lyra-workspace-meta lyra-actions-stepDuration">
+                  {duration(step.started_at, step.stopped_at)}
+                </span>
+              </summary>
+              <LogText
+                lines={logLines}
+                times={logTimes}
+                start={step.log_index}
+                end={step.stopped_at ? step.log_index + step.log_length : logLines.length}
+                query={search.q}
+                target={targetLine}
+                empty="No log lines for this step."
+                live={!step.stopped_at}
+              />
+            </details>
+          ) : (
+            <p className="lyra-actions-pendingStep" key={step.id}>
+              <Status value="pending" />
+              {step.name}
+            </p>
+          ),
+        )}
+        <details className="lyra-actions-step" open={showFullLog} onToggle={fullLogToggled}>
+          <summary>Full log</summary>
+          {showFullLog && (
+            <LogText
+              lines={logLines}
+              times={logTimes}
+              start={0}
+              end={logLines.length}
+              query={search.q}
+              target={targetStep ? undefined : targetLine}
+              empty="No matching log lines."
+            />
+          )}
+        </details>
+      </div>
     );
   } else {
     logContent = (

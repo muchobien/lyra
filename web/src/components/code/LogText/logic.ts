@@ -8,6 +8,7 @@ export type LogTextProps = {
   query?: string;
   target?: number;
   empty: string;
+  live?: boolean;
 };
 
 type LogStyle = {
@@ -30,7 +31,13 @@ export type LogLine = {
   location?: string;
 };
 
-export type LogGroup = { number: number; title: LogSpan[]; lines: LogLine[]; failed: boolean };
+export type LogGroup = {
+  number: number;
+  title: LogSpan[];
+  lines: LogLine[];
+  failed: boolean;
+  ended: boolean;
+};
 
 type LogBlock = { line: LogLine; group?: undefined } | { group: LogGroup; line?: undefined };
 
@@ -267,11 +274,20 @@ export function useLogic({
         continue;
       }
       if (entry.kind === "endgroup") {
+        if (group) {
+          group.ended = true;
+        }
         group = undefined;
         continue;
       }
       if (entry.kind === "group") {
-        group = { number: index + 1, title: ansiSpans(entry.text), lines: [], failed: false };
+        group = {
+          number: index + 1,
+          title: ansiSpans(entry.text),
+          lines: [],
+          failed: false,
+          ended: false,
+        };
         result.push({ group });
         continue;
       }

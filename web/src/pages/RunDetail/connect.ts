@@ -21,6 +21,16 @@ type Logs = { lines: string[]; times: string[]; offset: number; done: boolean };
 
 export type RunDetailProps = { number: number };
 
+function followedBottom(panel: HTMLElement) {
+  const running = panel.querySelector("[data-running]");
+  if (!running) {
+    return panel.scrollHeight;
+  }
+  return (
+    running.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + panel.scrollTop
+  );
+}
+
 export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
   const search = useSearch({ from: "/$owner/$repo/runs/$number" });
@@ -137,7 +147,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
 
   useEffect(() => {
     if (following && active && logPanel.current) {
-      logPanel.current.scrollTop = logPanel.current.scrollHeight;
+      logPanel.current.scrollTop = followedBottom(logPanel.current) - logPanel.current.clientHeight;
     }
   }, [logs.data?.offset, following, active]);
 
@@ -271,7 +281,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
 
   function logScrolled(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
-    if (element.scrollHeight - element.scrollTop - element.clientHeight > 40) {
+    if (followedBottom(element) - element.scrollTop - element.clientHeight > 40) {
       setFollowing(false);
     }
   }
