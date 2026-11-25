@@ -88,6 +88,14 @@ func api(handle handler) http.HandlerFunc {
 
 func (s *Server) page(handle handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if name, found := strings.CutSuffix(r.PathValue("repo"), ".git"); found {
+			prefix := "/" + r.PathValue("owner") + "/"
+			target := *r.URL
+			target.Path = prefix + name + strings.TrimPrefix(r.URL.Path, prefix+r.PathValue("repo"))
+			target.RawPath = ""
+			http.Redirect(w, r, target.RequestURI(), http.StatusMovedPermanently)
+			return
+		}
 		if err := handle(w, detached(r)); err != nil {
 			status, message := errorStatus(err)
 			s.renderError(w, r, status, message)

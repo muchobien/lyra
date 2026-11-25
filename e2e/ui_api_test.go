@@ -147,6 +147,28 @@ func TestEmbeddedUI(test *testing.T) {
 			test.Fatalf("workspace shell %s: HTTP %d", target, status)
 		}
 	}
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for target, location := range map[string]string{
+		"/acme/demo.git":                     "/acme/demo",
+		"/acme/demo.git/":                    "/acme/demo/",
+		"/acme/demo.git/tree/main/src?plain": "/acme/demo/tree/main/src?plain",
+		"/acme/demo.git/pulls/1":             "/acme/demo/pulls/1",
+	} {
+		request, _ := http.NewRequest(http.MethodGet, srv.url+target, nil)
+		request.Header.Set("Tailscale-User-Login", login)
+		response, err := noRedirect.Do(request)
+		if err != nil {
+			test.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusMovedPermanently || response.Header.Get("Location") != location {
+			test.Fatalf("redirect %s: HTTP %d, Location %q", target, response.StatusCode, response.Header.Get("Location"))
+		}
+	}
+	status, body = call(test, http.MethodGet, srv.url+"/acme/demo.git", tailnet(), "")
+	if status != http.StatusOK || !strings.Contains(string(body), `<div id="root"></div>`) {
+		test.Fatalf("followed .git redirect: HTTP %d", status)
+	}
 	for _, target := range []string{"/acme/missing", "/acme/demo/issues/100", "/acme/demo/pulls/100", "/acme/demo/runs/100", "/acme/demo/commit/missing", "/acme/demo/commits/missing", "/acme/demo/releases/tag/missing", "/acme/demo/tree/missing", "/acme/demo/tree/main/missing", "/acme/demo/blob/main/missing", "/acme/demo/blob/feature/branch.txt"} {
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			status, body := call(test, method, srv.url+target, tailnet(), "")
