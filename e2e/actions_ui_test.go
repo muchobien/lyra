@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/muchobien/lyra/internal/store"
 )
@@ -73,6 +74,18 @@ func TestActionsUI(test *testing.T) {
 	current = run()
 	if len(current.Jobs[0].Steps) != 3 || current.Jobs[0].Steps[0].Name != "Say hello" || current.Jobs[0].Steps[0].Result != "success" || !strings.Contains(string(read("/api/repos/acme/demo/runs/1/jobs/1/logs")), "bye <b>tag</b>") {
 		test.Fatalf("completed job workspace: %+v", current.Jobs[0])
+	}
+	plain := strings.Split(string(read("/api/repos/acme/demo/runs/1/jobs/1/logs")), "\n")
+	stamped := strings.Split(string(read("/api/repos/acme/demo/runs/1/jobs/1/logs?timestamps=true&offset=1")), "\n")
+	if len(stamped) != len(plain)-1 {
+		test.Fatalf("timestamped log has %d lines, want %d:\n%s", len(stamped), len(plain)-1, strings.Join(stamped, "\n"))
+	}
+	for index, line := range stamped[:len(stamped)-1] {
+		stamp, content, _ := strings.Cut(line, " ")
+		at, err := time.Parse(time.RFC3339Nano, stamp)
+		if err != nil || time.Since(at) > time.Minute || content != plain[index+1] {
+			test.Fatalf("timestamped line %d: %q, want a time and %q", index+1, line, plain[index+1])
+		}
 	}
 	var commit struct {
 		Checks store.Checks `json:"checks"`

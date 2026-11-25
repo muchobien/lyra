@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"code.forgejo.org/forgejo/runner/v13/act/jobparser"
 
@@ -87,8 +88,9 @@ type listRunsInput struct {
 
 type runLogsInput struct {
 	RunPath
-	Job    int64 `path:"job"`
-	Offset int64 `query:"offset" doc:"The first line to return."`
+	Job        int64 `path:"job"`
+	Offset     int64 `query:"offset" doc:"The first line to return."`
+	Timestamps bool  `query:"timestamps" doc:"Prefix each line with the RFC 3339 time it was logged and a space."`
 }
 
 type runLogsOutput struct {
@@ -171,6 +173,9 @@ func (s *Server) handleRunLogs(r *http.Request, input *runLogsInput) (*runLogsOu
 	}
 	var text strings.Builder
 	for _, line := range lines {
+		if input.Timestamps {
+			text.WriteString(line.At.UTC().Format(time.RFC3339Nano) + " ")
+		}
 		text.WriteString(line.Content + "\n")
 	}
 	return &runLogsOutput{
