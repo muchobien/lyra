@@ -36,6 +36,7 @@ export type LogGroup = {
   title: LogSpan[];
   lines: LogLine[];
   failed: boolean;
+  matched: boolean;
   ended: boolean;
 };
 
@@ -242,7 +243,23 @@ function logLine(number: number, entry: LogEntry): LogLine {
 }
 
 function visibleText(line: LogLine) {
-  return [line.title, ...line.spans.map((span) => span.text), line.location].join(" ");
+  return [line.title, line.spans.map((span) => span.text).join(""), line.location].join(" ");
+}
+
+export function matchesQuery(lines: string[], start: number, end: number, query: string) {
+  const needle = query.toLowerCase();
+  return lines.slice(start, end).some((raw, index) => {
+    const entry = classify(raw);
+    if (entry.kind === "hidden" || entry.kind === "endgroup") {
+      return false;
+    }
+    if (entry.kind === "group") {
+      return stripAnsi(entry.text).toLowerCase().includes(needle);
+    }
+    return visibleText(logLine(start + index + 1, entry))
+      .toLowerCase()
+      .includes(needle);
+  });
 }
 
 export function useLogic({
@@ -260,19 +277,6 @@ export function useLogic({
       if (entry.kind === "hidden") {
         continue;
       }
-      if (needle) {
-        if (entry.kind === "endgroup") {
-          continue;
-        }
-        const line =
-          entry.kind === "group"
-            ? { number: index + 1, kind: "text" as const, spans: ansiSpans(entry.text) }
-            : logLine(index + 1, entry);
-        if (visibleText(line).toLowerCase().includes(needle)) {
-          result.push({ line });
-        }
-        continue;
-      }
       if (entry.kind === "endgroup") {
         if (group) {
           group.ended = true;
@@ -286,6 +290,7 @@ export function useLogic({
           title: ansiSpans(entry.text),
           lines: [],
           failed: false,
+          matched: false,
           ended: false,
         };
         result.push({ group });
@@ -295,6 +300,7 @@ export function useLogic({
       if (group) {
         group.lines.push(line);
         group.failed ||= line.level === "error";
+        group.matched ||= !!needle && visibleText(line).toLowerCase().includes(needle);
       } else {
         result.push({ line });
       }

@@ -92,7 +92,9 @@ export function LogText({ lines, times, start, end, query, target, empty, live }
           <details
             key={block.group.number}
             className="lyra-log-text-group"
-            open={block.group.failed || (live && !block.group.ended) || undefined}
+            open={
+              block.group.failed || block.group.matched || (live && !block.group.ended) || undefined
+            }
           >
             <summary
               className="lyra-log-text-line"

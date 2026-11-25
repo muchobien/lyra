@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import {
+  ChevronDownIcon,
+  ChevronUpIcon,
   AlertIcon,
   DownloadIcon,
   GitBranchIcon,
@@ -22,6 +24,7 @@ import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { FormError } from "@/components/forms/FormError";
 import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import { LogText } from "@/components/code/LogText";
+import { matchesQuery } from "@/components/code/LogText/logic";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
 import "./styles.css";
@@ -46,6 +49,8 @@ export function RunDetail({ number }: RunDetailProps) {
     timestamps,
     fullLogOpen,
     logPanel,
+    matches,
+    matchIndex,
     cancel,
     rerun,
     explanation,
@@ -61,6 +66,8 @@ export function RunDetail({ number }: RunDetailProps) {
     timestampsChanged,
     fullLogToggled,
     jobChanged,
+    matchClicked,
+    searchKeyDown,
     searchChanged,
   } = useConnect({ number });
 
@@ -119,7 +126,7 @@ export function RunDetail({ number }: RunDetailProps) {
         end={logLines.length}
         query={search.q}
         target={targetLine}
-        empty="No matching log lines."
+        empty="No log lines."
       />
     );
   } else if (active) {
@@ -168,13 +175,20 @@ export function RunDetail({ number }: RunDetailProps) {
               end={logLines.length}
               query={search.q}
               target={targetStep ? undefined : targetLine}
-              empty="No matching log lines."
+              empty="No log lines."
             />
           )}
         </details>
       </div>
     );
   } else {
+    const query = search.q;
+    const matchedSteps = selected.steps.filter(
+      (step) =>
+        step.id !== highlightedStep?.id &&
+        !!query &&
+        matchesQuery(logLines, step.log_index, step.log_index + step.log_length, query),
+    );
     logContent = (
       <div>
         {highlightedStep && (
@@ -194,12 +208,20 @@ export function RunDetail({ number }: RunDetailProps) {
             />
           </details>
         )}
-        <details className="lyra-actions-completedSteps" open={!highlightedStep}>
+        <details
+          className="lyra-actions-completedSteps"
+          open={!highlightedStep || matchedSteps.length > 0}
+        >
           <summary>All steps · {selected.steps.length}</summary>
           {selected.steps
             .filter((step) => step.id !== highlightedStep?.id)
             .map((step) => (
-              <details className="lyra-actions-step" key={step.id} data-step={step.id}>
+              <details
+                className="lyra-actions-step"
+                key={step.id}
+                data-step={step.id}
+                open={matchedSteps.includes(step)}
+              >
                 <summary>
                   <Status value={step.result || "skipped"} />
                   {step.name}
@@ -229,7 +251,7 @@ export function RunDetail({ number }: RunDetailProps) {
               end={logLines.length}
               query={search.q}
               target={targetStep ? undefined : targetLine}
-              empty="No matching log lines."
+              empty="No log lines."
             />
           )}
         </details>
@@ -396,11 +418,41 @@ export function RunDetail({ number }: RunDetailProps) {
             <input
               className="lyra-workspace-search"
               type="search"
-              aria-label="Filter log lines"
-              placeholder="Filter log lines…"
+              aria-label="Search logs"
+              placeholder="Search logs…"
               value={search.q || ""}
               onChange={searchChanged}
+              onKeyDown={searchKeyDown}
             />
+            {search.q && (
+              <span className="lyra-actions-logMatches">
+                <output className="lyra-workspace-meta" aria-live="polite">
+                  {matches.length ? `${matchIndex + 1} of ${matches.length}` : "No matches"}
+                </output>
+                <button
+                  type="button"
+                  className="lyra-controls-button"
+                  aria-label="Previous match"
+                  title="Previous match (Shift+Enter)"
+                  data-offset="-1"
+                  disabled={!matches.length}
+                  onClick={matchClicked}
+                >
+                  <ChevronUpIcon size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="lyra-controls-button"
+                  aria-label="Next match"
+                  title="Next match (Enter)"
+                  data-offset="1"
+                  disabled={!matches.length}
+                  onClick={matchClicked}
+                >
+                  <ChevronDownIcon size={16} />
+                </button>
+              </span>
+            )}
             <label className="lyra-workspace-checkbox">
               <input type="checkbox" checked={timestamps} onChange={timestampsChanged} />
               Show timestamps

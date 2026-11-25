@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent,
   type MouseEvent,
   type ToggleEvent,
   type UIEvent,
@@ -123,6 +124,9 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const [timestamps, setTimestamps] = useState(false);
   const [fullLogOpen, setFullLogOpen] = useState(false);
   const logPanel = useRef<HTMLDivElement>(null);
+  const [matches, setMatches] = useState<Range[]>([]);
+  const [matchIndex, setMatchIndex] = useState(0);
+  const scrolledQuery = useRef<string>(undefined);
   const targetLine = Number(/^L(\d+)$/.exec(hash)?.[1] || 0);
   const logsLoaded = !!logs.data;
   const locatedLog = useRef("");
@@ -150,6 +154,68 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       logPanel.current.scrollTop = followedBottom(logPanel.current) - logPanel.current.clientHeight;
     }
   }, [logs.data?.offset, following, active]);
+
+  useEffect(() => {
+    const panel = logPanel.current;
+    const needle = search.q?.toLowerCase();
+    if (!panel || !needle) {
+      scrolledQuery.current = undefined;
+      setMatches([]);
+      return;
+    }
+    const findMatches = () => {
+      const ranges: Range[] = [];
+      for (const content of panel.querySelectorAll(".lyra-log-text-content")) {
+        if (!content.checkVisibility()) {
+          continue;
+        }
+        const nodes: { node: Node; start: number }[] = [];
+        const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+        let text = "";
+        while (walker.nextNode()) {
+          nodes.push({ node: walker.currentNode, start: text.length });
+          text += walker.currentNode.nodeValue;
+        }
+        const lower = text.toLowerCase();
+        for (
+          let start = lower.indexOf(needle);
+          start !== -1;
+          start = lower.indexOf(needle, start + needle.length)
+        ) {
+          const end = start + needle.length;
+          const first = nodes.findLast((entry) => entry.start <= start)!;
+          const last = nodes.findLast((entry) => entry.start < end)!;
+          const range = new Range();
+          range.setStart(first.node, start - first.start);
+          range.setEnd(last.node, end - last.start);
+          ranges.push(range);
+        }
+      }
+      setMatches(ranges);
+      setMatchIndex((index) => Math.min(index, Math.max(ranges.length - 1, 0)));
+      if (ranges.length && scrolledQuery.current !== needle) {
+        scrolledQuery.current = needle;
+        ranges[0].startContainer.parentElement?.scrollIntoView({
+          block: "center",
+        });
+      }
+    };
+    findMatches();
+    panel.addEventListener("toggle", findMatches, true);
+    return () => panel.removeEventListener("toggle", findMatches, true);
+  }, [search.q, run.data, logs.data, selected?.id]);
+
+  useEffect(() => {
+    CSS.highlights.set("lyra-log-match", new Highlight(...matches));
+    CSS.highlights.set(
+      "lyra-log-current",
+      new Highlight(...matches.slice(matchIndex, matchIndex + 1)),
+    );
+    return () => {
+      CSS.highlights.delete("lyra-log-match");
+      CSS.highlights.delete("lyra-log-current");
+    };
+  }, [matches, matchIndex]);
 
   useEffect(() => {
     const element = document.querySelector("[data-target]");
@@ -299,7 +365,30 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     setFollowing(true);
   }
 
+  function showMatch(offset: number) {
+    if (!matches.length) {
+      return;
+    }
+    const index = (matchIndex + offset + matches.length) % matches.length;
+    setMatchIndex(index);
+    matches[index].startContainer.parentElement?.scrollIntoView({
+      block: "center",
+    });
+  }
+
+  function matchClicked(event: MouseEvent<HTMLButtonElement>) {
+    showMatch(Number(event.currentTarget.dataset.offset));
+  }
+
+  function searchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      showMatch(event.shiftKey ? -1 : 1);
+    }
+  }
+
   function searchChanged(event: ChangeEvent<HTMLInputElement>) {
+    setMatchIndex(0);
     void navigate({
       search: { ...search, q: event.target.value },
       replace: true,
@@ -325,6 +414,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     timestamps,
     fullLogOpen,
     logPanel,
+    matches,
+    matchIndex,
     cancel,
     rerun,
     explanation,
@@ -340,6 +431,8 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     timestampsChanged,
     fullLogToggled,
     jobChanged,
+    matchClicked,
+    searchKeyDown,
     searchChanged,
   };
 }
