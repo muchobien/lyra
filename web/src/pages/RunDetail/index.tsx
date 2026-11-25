@@ -1,11 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import {
+  AlertIcon,
   DownloadIcon,
   GitBranchIcon,
+  InfoIcon,
   PauseIcon,
   PlayIcon,
   SparkleIcon,
   SyncIcon,
+  XCircleIcon,
 } from "@primer/octicons-react";
 import { CopyButton } from "@/components/controls/CopyButton";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
@@ -38,7 +41,10 @@ export function RunDetail({ number }: RunDetailProps) {
     logsURL,
     logs,
     targetLine,
+    annotations,
     following,
+    timestamps,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -49,8 +55,11 @@ export function RunDetail({ number }: RunDetailProps) {
     rerunClicked,
     cancelRun,
     explainFailure,
+    annotationClicked,
     toggleFollow,
     logScrolled,
+    timestampsChanged,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   } = useConnect({ number });
@@ -65,6 +74,7 @@ export function RunDetail({ number }: RunDetailProps) {
   const data = run.data;
   const canWrite = identity?.scope !== "read";
   const logLines = logs.data?.lines || [];
+  const logTimes = timestamps ? logs.data?.times : undefined;
   const highlightedStep = selected?.started_at
     ? selected.steps.find((step) => step.result === "failure") ||
       selected.steps.find((step) => !!step.started_at && !step.stopped_at)
@@ -72,6 +82,7 @@ export function RunDetail({ number }: RunDetailProps) {
   const targetStep = selected?.steps.find(
     (step) => targetLine > step.log_index && targetLine <= step.log_index + step.log_length,
   );
+  const showFullLog = fullLogOpen || (!!targetLine && !targetStep);
   const triggerLabels: Record<string, string> = {
     workflow_dispatch: "Manual",
     pull_request: "Pull request",
@@ -79,6 +90,7 @@ export function RunDetail({ number }: RunDetailProps) {
     release: "Release",
     push: "Push",
   };
+  const annotationIcons = { error: XCircleIcon, warning: AlertIcon, notice: InfoIcon };
   let logContent;
   if (selected && !selected.started_at) {
     let waiting = "This job did not start.";
@@ -102,6 +114,7 @@ export function RunDetail({ number }: RunDetailProps) {
     logContent = (
       <LogText
         lines={logLines}
+        times={logTimes}
         start={0}
         end={logLines.length}
         query={search.q}
@@ -113,13 +126,14 @@ export function RunDetail({ number }: RunDetailProps) {
     logContent = (
       <div>
         {highlightedStep && (
-          <details open className="lyra-actions-step">
+          <details open className="lyra-actions-step" data-step={highlightedStep.id}>
             <summary>
               <Status value={highlightedStep.result || "running"} />
               {highlightedStep.name}
             </summary>
             <LogText
               lines={logLines}
+              times={logTimes}
               start={highlightedStep.log_index}
               end={highlightedStep.log_index + highlightedStep.log_length}
               query={search.q}
@@ -133,7 +147,7 @@ export function RunDetail({ number }: RunDetailProps) {
           {selected.steps
             .filter((step) => step.id !== highlightedStep?.id)
             .map((step) => (
-              <details className="lyra-actions-step" key={step.id}>
+              <details className="lyra-actions-step" key={step.id} data-step={step.id}>
                 <summary>
                   <Status value={step.result || "skipped"} />
                   {step.name}
@@ -143,6 +157,7 @@ export function RunDetail({ number }: RunDetailProps) {
                 </summary>
                 <LogText
                   lines={logLines}
+                  times={logTimes}
                   start={step.log_index}
                   end={step.log_index + step.log_length}
                   query={search.q}
@@ -152,16 +167,19 @@ export function RunDetail({ number }: RunDetailProps) {
               </details>
             ))}
         </details>
-        <details className="lyra-actions-step">
+        <details className="lyra-actions-step" open={showFullLog} onToggle={fullLogToggled}>
           <summary>Full log</summary>
-          <LogText
-            lines={logLines}
-            start={0}
-            end={logLines.length}
-            query={search.q}
-            target={targetStep ? undefined : targetLine}
-            empty="No matching log lines."
-          />
+          {showFullLog && (
+            <LogText
+              lines={logLines}
+              times={logTimes}
+              start={0}
+              end={logLines.length}
+              query={search.q}
+              target={targetStep ? undefined : targetLine}
+              empty="No matching log lines."
+            />
+          )}
         </details>
       </div>
     );
@@ -331,6 +349,10 @@ export function RunDetail({ number }: RunDetailProps) {
               value={search.q || ""}
               onChange={searchChanged}
             />
+            <label className="lyra-workspace-checkbox">
+              <input type="checkbox" checked={timestamps} onChange={timestampsChanged} />
+              Show timestamps
+            </label>
           </div>
           {explainedJob === selected?.id && (
             <OnDeviceOutput
@@ -348,6 +370,41 @@ export function RunDetail({ number }: RunDetailProps) {
               <Status value="running" />
               {highlightedStep.name}
             </p>
+          )}
+          {annotations.length > 0 && (
+            <details open className="lyra-actions-annotations">
+              <summary>Annotations · {annotations.length}</summary>
+              <ul>
+                {annotations.map((annotation) => {
+                  const Icon = annotationIcons[annotation.level];
+                  return (
+                    <li key={annotation.line}>
+                      <button
+                        type="button"
+                        data-level={annotation.level}
+                        data-step={annotation.step?.id}
+                        data-line={annotation.line}
+                        onClick={annotationClicked}
+                      >
+                        <Icon size={16} />
+                        <span>
+                          <strong>
+                            {annotation.level[0].toUpperCase() + annotation.level.slice(1)}
+                            {annotation.title && ` · ${annotation.title}`}
+                          </strong>
+                          <span>{annotation.text}</span>
+                          <span className="lyra-workspace-meta">
+                            {annotation.location && `${annotation.location} · `}
+                            {annotation.step ? annotation.step.name : "Full log"} · line{" "}
+                            {annotation.line}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
           )}
           <div className="lyra-actions-logPanel" ref={logPanel} onScroll={logScrolled}>
             {logContent}

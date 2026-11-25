@@ -1,10 +1,12 @@
 import {
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type ToggleEvent,
   type UIEvent,
 } from "react";
 import { useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -13,9 +15,9 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { stripAnsi } from "@/components/code/LogText/logic";
+import { classify, readableText } from "@/components/code/LogText/logic";
 
-type Logs = { lines: string[]; offset: number; done: boolean };
+type Logs = { lines: string[]; times: string[]; offset: number; done: boolean };
 
 export type RunDetailProps = { number: number };
 
@@ -59,13 +61,21 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       const response = await request(
         getGetJobLogsUrl(owner, repo, number, selected?.id || 0, {
           offset: previous?.offset || 0,
+          timestamps: true,
         }),
         signal,
       );
       const text = await response.text();
-      const lines = text ? text.replace(/\n$/, "").split("\n") : [];
+      const entries = text ? text.replace(/\n$/, "").split("\n") : [];
       return {
-        lines: [...(previous?.lines || []), ...lines],
+        lines: [
+          ...(previous?.lines || []),
+          ...entries.map((entry) => entry.slice(entry.indexOf(" ") + 1)),
+        ],
+        times: [
+          ...(previous?.times || []),
+          ...entries.map((entry) => entry.slice(0, entry.indexOf(" "))),
+        ],
         offset: Number(response.headers.get("Lyra-Log-Next") || 0),
         done: response.headers.get("Lyra-Log-Done") === "true",
       };
@@ -78,15 +88,34 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     },
   });
 
+  const annotations = useMemo(
+    () =>
+      (logs.data?.lines || []).flatMap((raw, index) => {
+        const entry = classify(raw);
+        if (entry.kind !== "annotation") {
+          return [];
+        }
+        const step = selected?.steps.find(
+          (candidate) =>
+            index >= candidate.log_index && index < candidate.log_index + candidate.log_length,
+        );
+        return [{ ...entry, line: index + 1, step }];
+      }),
+    [logs.data?.lines, selected],
+  );
+
   const explanation = useOnDeviceModel("language-model", async () =>
     "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
   );
   const [explainedJob, setExplainedJob] = useState(0);
 
   const [following, setFollowing] = useState(true);
+  const [timestamps, setTimestamps] = useState(false);
+  const [fullLogOpen, setFullLogOpen] = useState(false);
   const logPanel = useRef<HTMLDivElement>(null);
   const targetLine = Number(/^L(\d+)$/.exec(hash)?.[1] || 0);
   const logsLoaded = !!logs.data;
+  const locatedLog = useRef("");
 
   const cancel = useCancelRun({
     mutation: {
@@ -127,6 +156,34 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     element.scrollIntoView({ block: "nearest" });
   }, [targetLine, logsLoaded]);
 
+  useEffect(() => {
+    const logID = logKey.join(" ");
+    const failed = selected?.steps.some((step) => step.result === "failure");
+    if (
+      active ||
+      !failed ||
+      !logs.data?.done ||
+      !logPanel.current ||
+      locatedLog.current === logID
+    ) {
+      return;
+    }
+    locatedLog.current = logID;
+    const stepLog = logPanel.current.querySelector(".lyra-actions-step");
+    const line =
+      stepLog?.querySelector<HTMLElement>('.lyra-log-text-line[data-level="error"]') ||
+      [...(stepLog?.querySelectorAll<HTMLElement>(".lyra-log-text-line") || [])].at(-1);
+    if (!line) {
+      return;
+    }
+    line.closest("details")?.setAttribute("open", "");
+    line.scrollIntoView({ block: "center", container: "nearest" } as ScrollIntoViewOptions);
+    line.animate([{ background: "var(--danger-border)" }, { background: "transparent" }], {
+      duration: 2000,
+      easing: "ease-in",
+    });
+  });
+
   function retry() {
     void run.refetch();
   }
@@ -157,7 +214,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       step
         ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
         : logs.data.lines
-    ).map(stripAnsi);
+    ).flatMap((line) => readableText(line) ?? []);
     setExplainedJob(selected.id);
     void explanation.run(async (signal, monitor) => {
       const session = await LanguageModel.create({
@@ -186,6 +243,28 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     });
   }
 
+  function annotationClicked(event: MouseEvent<HTMLButtonElement>) {
+    const { step, line } = event.currentTarget.dataset;
+    const panel = logPanel.current;
+    const target =
+      panel?.querySelector<HTMLElement>(`[data-step="${step}"] [data-line="${line}"]`) ||
+      panel?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+    if (!panel || !target) {
+      return;
+    }
+    for (
+      let details = target.closest("details");
+      details;
+      details = details.parentElement?.closest("details") || null
+    ) {
+      details.open = true;
+    }
+    panel.querySelector("[data-selected]")?.removeAttribute("data-selected");
+    target.setAttribute("data-selected", "");
+    setFollowing(false);
+    target.scrollIntoView({ block: "center" });
+  }
+
   function toggleFollow() {
     setFollowing(!following);
   }
@@ -195,6 +274,14 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     if (element.scrollHeight - element.scrollTop - element.clientHeight > 40) {
       setFollowing(false);
     }
+  }
+
+  function timestampsChanged(event: ChangeEvent<HTMLInputElement>) {
+    setTimestamps(event.target.checked);
+  }
+
+  function fullLogToggled(event: ToggleEvent<HTMLDetailsElement>) {
+    setFullLogOpen(event.newState === "open");
   }
 
   function jobChanged(event: ChangeEvent<HTMLSelectElement>) {
@@ -223,7 +310,10 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     logsURL,
     logs,
     targetLine,
+    annotations,
     following,
+    timestamps,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -234,8 +324,11 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     rerunClicked,
     cancelRun,
     explainFailure,
+    annotationClicked,
     toggleFollow,
     logScrolled,
+    timestampsChanged,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   };
