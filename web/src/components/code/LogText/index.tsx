@@ -1,10 +1,14 @@
 import { type CSSProperties } from "react";
 import "./styles.css";
-import { useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic";
+import { linkPattern, useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic";
 
 type SpansProps = { spans: LogSpan[] };
 
-type LineProps = { line: LogLine };
+type LineProps = { line: LogLine; targeted: boolean; at?: string };
+
+type TimeProps = { at?: string };
+
+const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "medium", hourCycle: "h23" });
 
 function Spans({ spans }: SpansProps) {
   return spans.map((span, index) => {
@@ -27,18 +31,44 @@ function Spans({ spans }: SpansProps) {
         data-color={typeof color === "number" ? color : undefined}
         data-background={typeof background === "number" ? background : undefined}
       >
-        {span.text}
+        {span.text.split(linkPattern).map((part, partIndex) =>
+          partIndex % 2 ? (
+            <a key={partIndex} href={part} target="_blank" rel="noopener noreferrer">
+              {part}
+            </a>
+          ) : (
+            part
+          ),
+        )}
       </span>
     );
   });
 }
 
-function Line({ line }: LineProps) {
+function Time({ at }: TimeProps) {
+  if (!at) {
+    return null;
+  }
   return (
-    <div className="lyra-log-text-line" data-kind={line.kind} data-level={line.level}>
-      <span className="lyra-log-text-number" aria-hidden="true">
+    <time className="lyra-log-text-time" dateTime={at} title={at}>
+      {timeFormat.format(new Date(at))}
+    </time>
+  );
+}
+
+function Line({ line, targeted, at }: LineProps) {
+  return (
+    <div
+      className="lyra-log-text-line"
+      data-target={targeted || undefined}
+      data-kind={line.kind}
+      data-level={line.level}
+      data-line={line.number}
+    >
+      <a className="lyra-log-text-number" href={`#L${line.number}`}>
         {line.number}
-      </span>
+      </a>
+      <Time at={at} />
       <span className="lyra-log-text-content">
         {line.level && <b>{line.level[0].toUpperCase() + line.level.slice(1)}: </b>}
         {line.title && `${line.title} · `}
@@ -49,7 +79,7 @@ function Line({ line }: LineProps) {
   );
 }
 
-export function LogText({ lines, start, end, query, empty, live }: LogTextProps) {
+export function LogText({ lines, times, start, end, query, target, empty, live }: LogTextProps) {
   const { blocks } = useLogic({ lines, start, end, query });
 
   if (!blocks.length) {
@@ -64,20 +94,34 @@ export function LogText({ lines, start, end, query, empty, live }: LogTextProps)
             className="lyra-log-text-group"
             open={block.group.failed || (live && !block.group.ended) || undefined}
           >
-            <summary className="lyra-log-text-line">
-              <span className="lyra-log-text-number" aria-hidden="true">
+            <summary
+              className="lyra-log-text-line"
+              data-target={target === block.group.number || undefined}
+            >
+              <a className="lyra-log-text-number" href={`#L${block.group.number}`}>
                 {block.group.number}
-              </span>
+              </a>
+              <Time at={times?.[block.group.number - 1]} />
               <span className="lyra-log-text-content">
                 <Spans spans={block.group.title} />
               </span>
             </summary>
             {block.group.lines.map((line) => (
-              <Line key={line.number} line={line} />
+              <Line
+                key={line.number}
+                line={line}
+                targeted={target === line.number}
+                at={times?.[line.number - 1]}
+              />
             ))}
           </details>
         ) : (
-          <Line key={block.line.number} line={block.line} />
+          <Line
+            key={block.line.number}
+            line={block.line}
+            targeted={target === block.line.number}
+            at={times?.[block.line.number - 1]}
+          />
         ),
       )}
     </div>

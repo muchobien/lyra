@@ -262,6 +262,56 @@ func TestActions(test *testing.T) {
 	}
 }
 
+func TestRunLogsPlain(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	createRepo(test, srv, token, "acme/demo")
+	src := newSource(test)
+	if err := os.MkdirAll(filepath.Join(src, ".forgejo", "workflows"), 0o755); err != nil {
+		test.Fatal(err)
+	}
+	workflow := `on: workflow_dispatch
+jobs:
+  markup:
+    runs-on: test
+    steps:
+      - run: echo started && sleep 3
+      - run: printf '\033[1;32mgreen\033[0m text\n'
+      - run: echo "::group::Build things" && echo "inside the group" && echo "::endgroup::"
+      - run: echo "::debug::hidden debug" && echo "::add-matcher::matcher.json"
+      - run: echo "::warning file=main.go,line=3,col=7,title=Vet::bad%0Athing" && echo "##[error]plain error"
+      - run: echo "[command]/usr/bin/true --flag"
+`
+	commitFile(test, src, ".forgejo/workflows/markup.yml", workflow, "Markup")
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main")
+	hostRunner(test, srv, token)
+	runLyra(test, srv, token, "workflow", "run", "-R", "acme/demo", "markup.yml")
+	eventually(test, "the job to start", func() bool {
+		return strings.Contains(runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout, "started")
+	})
+	followed := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1", "--follow").stdout
+	plain := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1").stdout
+	raw := runLyra(test, srv, token, "run", "logs", "-R", "acme/demo", "1", "--raw").stdout
+	if followed != plain {
+		test.Fatalf("--follow printed:\n%s\nwant:\n%s", followed, plain)
+	}
+	for _, want := range []string{"\ngreen text\n", "\nBuild things\ninside the group\n", "\nwarning: main.go:3:7: Vet: bad\nthing\n", "\nerror: plain error\n", "\n/usr/bin/true --flag\n"} {
+		if !strings.Contains(plain, want) {
+			test.Fatalf("plain log lacks %q:\n%s", want, plain)
+		}
+	}
+	for _, unwanted := range []string{"\x1b", "::", "##[", "[command]", "hidden debug", "matcher.json"} {
+		if strings.Contains(plain, unwanted) {
+			test.Fatalf("plain log has %q:\n%s", unwanted, plain)
+		}
+	}
+	for _, want := range []string{"\x1b[1;32mgreen\x1b[0m text", "::warning file=main.go,line=3,col=7,title=Vet::bad%0Athing", "[command]/usr/bin/true --flag"} {
+		if !strings.Contains(raw, want) {
+			test.Fatalf("raw log lacks %q:\n%s", want, raw)
+		}
+	}
+}
+
 func hostRunner(test *testing.T, srv server, token string) runnerProcess {
 	test.Helper()
 	var created struct {

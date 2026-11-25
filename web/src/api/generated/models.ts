@@ -1158,6 +1158,8 @@ export type ListRunsParams = {
 export type GetJobLogsParams = {
   /** The first line to return. */
   offset?: number;
+  /** Prefix each line with the RFC 3339 time it was logged and a space. */
+  timestamps?: boolean;
 };
 
 export type RerunRunParams = {
