@@ -62,7 +62,7 @@ export function LogText({ lines, start, end, query, empty }: LogTextProps) {
           <details
             key={block.group.number}
             className="lyra-log-text-group"
-            open={block.group.failed || undefined}
+            open={block.group.failed || block.group.matched || undefined}
           >
             <summary className="lyra-log-text-line">
               <span className="lyra-log-text-number" aria-hidden="true">

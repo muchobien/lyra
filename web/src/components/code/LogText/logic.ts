@@ -28,7 +28,13 @@ export type LogLine = {
   location?: string;
 };
 
-export type LogGroup = { number: number; title: LogSpan[]; lines: LogLine[]; failed: boolean };
+export type LogGroup = {
+  number: number;
+  title: LogSpan[];
+  lines: LogLine[];
+  failed: boolean;
+  matched: boolean;
+};
 
 type LogBlock = { line: LogLine; group?: undefined } | { group: LogGroup; line?: undefined };
 
@@ -214,7 +220,23 @@ function logLine(number: number, entry: LogEntry): LogLine {
 }
 
 function visibleText(line: LogLine) {
-  return [line.title, ...line.spans.map((span) => span.text), line.location].join(" ");
+  return [line.title, line.spans.map((span) => span.text).join(""), line.location].join(" ");
+}
+
+export function matchesQuery(lines: string[], start: number, end: number, query: string) {
+  const needle = query.toLowerCase();
+  return lines.slice(start, end).some((raw, index) => {
+    const entry = classify(raw);
+    if (entry.kind === "hidden" || entry.kind === "endgroup") {
+      return false;
+    }
+    if (entry.kind === "group") {
+      return stripAnsi(entry.text).toLowerCase().includes(needle);
+    }
+    return visibleText(logLine(start + index + 1, entry))
+      .toLowerCase()
+      .includes(needle);
+  });
 }
 
 export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty">) {
@@ -227,25 +249,18 @@ export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty
       if (entry.kind === "hidden") {
         continue;
       }
-      if (needle) {
-        if (entry.kind === "endgroup") {
-          continue;
-        }
-        const line =
-          entry.kind === "group"
-            ? { number: index + 1, kind: "text" as const, spans: ansiSpans(entry.text) }
-            : logLine(index + 1, entry);
-        if (visibleText(line).toLowerCase().includes(needle)) {
-          result.push({ line });
-        }
-        continue;
-      }
       if (entry.kind === "endgroup") {
         group = undefined;
         continue;
       }
       if (entry.kind === "group") {
-        group = { number: index + 1, title: ansiSpans(entry.text), lines: [], failed: false };
+        group = {
+          number: index + 1,
+          title: ansiSpans(entry.text),
+          lines: [],
+          failed: false,
+          matched: false,
+        };
         result.push({ group });
         continue;
       }
@@ -253,6 +268,7 @@ export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty
       if (group) {
         group.lines.push(line);
         group.failed ||= line.level === "error";
+        group.matched ||= !!needle && visibleText(line).toLowerCase().includes(needle);
       } else {
         result.push({ line });
       }
