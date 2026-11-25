@@ -178,6 +178,8 @@ export interface BlameRange {
   lines: string[];
   /** Line number of the range's first line. */
   start: number;
+  /** The same lines as plain text. */
+  text: string[];
 }
 
 export interface BlameResponse {

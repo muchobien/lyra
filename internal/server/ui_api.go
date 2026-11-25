@@ -37,6 +37,7 @@ type blameRange struct {
 	Commit repos.BlameCommit `json:"commit"`
 	Start  int               `json:"start" doc:"Line number of the range's first line."`
 	Lines  []string          `json:"lines" doc:"Highlighted HTML, one entry per line."`
+	Text   []string          `json:"text" doc:"The same lines as plain text."`
 }
 
 type blameResponse struct {
@@ -316,6 +317,7 @@ func (s *Server) handleBlame(r *http.Request, input *sourceInput) (*body[blameRe
 			last++
 		}
 		view.Ranges[last].Lines = append(view.Ranges[last].Lines, highlighted[index].HTML)
+		view.Ranges[last].Text = append(view.Ranges[last].Text, line.Text)
 	}
 	return reply(view)
 }

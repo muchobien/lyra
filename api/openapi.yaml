@@ -144,10 +144,16 @@ components:
           description: Line number of the range's first line.
           format: int64
           type: integer
+        text:
+          description: The same lines as plain text.
+          items:
+            type: string
+          type: array
       required:
         - commit
         - start
         - lines
+        - text
       type: object
     BlameResponse:
       additionalProperties: false

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -237,6 +238,23 @@ func TestBlame(test *testing.T) {
 	if status, _ := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/blame?path=missing", bearer(token), ""); status != http.StatusNotFound {
 		test.Fatalf("missing file blame: HTTP %d", status)
 	}
+	var cliBlame struct {
+		Ranges []struct {
+			Start  int      `json:"start"`
+			Lines  []string `json:"lines"`
+			Commit struct {
+				Summary string `json:"summary"`
+			} `json:"commit"`
+		} `json:"ranges"`
+	}
+	lyraJSON(test, srv, token, &cliBlame, "blame", "-R", "acme/demo", "README.md")
+	if len(cliBlame.Ranges) != 2 || cliBlame.Ranges[1].Commit.Summary != "Expand README" || !slices.Equal(cliBlame.Ranges[1].Lines, []string{"", "More <b>text</b>"}) {
+		test.Fatalf("lyra blame: %+v", cliBlame)
+	}
+	lyraJSON(test, srv, token, &cliBlame, "blame", "-R", "acme/demo", "--ref", "feature/nested", "README.md")
+	if len(cliBlame.Ranges) != 1 || !slices.Equal(cliBlame.Ranges[0].Lines, []string{"# Demo"}) {
+		test.Fatalf("lyra blame --ref: %+v", cliBlame)
+	}
 	for target, want := range map[string]int{
 		"/acme/demo/blame/main/README.md":            http.StatusOK,
 		"/acme/demo/blame/feature/nested/branch.txt": http.StatusOK,
@@ -326,6 +344,21 @@ func TestArchives(test *testing.T) {
 		if status, body := call(test, http.MethodGet, srv.url+target, bearer(token), ""); status != http.StatusNotFound {
 			test.Fatalf("%s: HTTP %d, %s", target, status, body)
 		}
+	}
+	output := filepath.Join(test.TempDir(), "demo.zip")
+	var saved struct {
+		Path string `json:"path"`
+		Size int64  `json:"size"`
+	}
+	lyraJSON(test, srv, token, &saved, "repo", "archive", "-R", "acme/demo", "feature/nested", "--format", "zip", "--output", output)
+	if archive, err := zip.OpenReader(output); err != nil || saved.Path != output || saved.Size == 0 || len(archive.File) == 0 || archive.File[0].Name != "demo-feature-nested/" {
+		test.Fatalf("repo archive: %+v, %v", saved, err)
+	}
+	if result := runLyra(test, srv, token, "repo", "archive", "-R", "acme/demo", "--output", "-"); result.code != 0 || !strings.HasPrefix(result.stdout, "\x1f\x8b") {
+		test.Fatalf("repo archive to stdout: exit %d, %s", result.code, result.stderr)
+	}
+	if result := runLyra(test, srv, token, "repo", "archive", "-R", "acme/demo", "--format", "rar"); result.code == 0 {
+		test.Fatalf("repo archive with an unknown format: %+v", result)
 	}
 	outsider := createToken(test, srv, `{"name":"other","scope":"read","repos":["other/*"]}`)
 	if status, _ := call(test, http.MethodGet, srv.url+"/acme/demo/archive/main.zip", bearer(outsider), ""); status != http.StatusForbidden {

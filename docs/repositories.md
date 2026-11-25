@@ -16,7 +16,8 @@ Every repository belongs to an owner, a namespace such as `krosf`, and is named
 ## Choosing the repository in the CLI
 
 Commands that act on one repository (`pr`, `issue`, `run`, `release`, `label`, `rule`,
-`secret`, `variable`, `commit`, `branch`, `compare`, `tag`, `workflow`, `image list`) take it from, in order:
+`secret`, `variable`, `commit`, `branch`, `compare`, `blame`, `tag`, `workflow`, `image list`,
+`repo archive`) take it from, in order:
 
 1. `-R owner/repo` or `--repo owner/repo`;
 2. `LYRA_REPO`;
@@ -51,7 +52,7 @@ printf 'machine lyra.example login token password %s\n' "$LYRA_TOKEN" >> ~/.netr
 `https://lyra.example/<owner>/<repo>/archive/<ref>.tar.gz` and `…/<ref>.zip` download the
 files at a branch, tag or commit, without history, inside a `<repo>-<ref>` directory (slashes
 in the ref become `-`). They need `read`; the repository's Clone menu links both for the
-ref on screen.
+ref on screen, and `lyra repo archive [<ref>]` downloads one.
 
 ## Signatures
 

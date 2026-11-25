@@ -191,6 +191,9 @@ type BlameRange struct {
 
 	// Start Line number of the range's first line.
 	Start int64 `json:"start"`
+
+	// Text The same lines as plain text.
+	Text []string `json:"text"`
 }
 
 // BlameResponse defines model for BlameResponse.
