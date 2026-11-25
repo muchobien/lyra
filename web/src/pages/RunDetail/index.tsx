@@ -18,6 +18,7 @@ import { Status } from "@/components/status/Status";
 import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { FormError } from "@/components/forms/FormError";
 import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
+import { LogText } from "@/components/code/LogText";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
 import "./styles.css";
@@ -67,9 +68,6 @@ export function RunDetail({ number }: RunDetailProps) {
     ? selected.steps.find((step) => step.result === "failure") ||
       selected.steps.find((step) => !!step.started_at && !step.stopped_at)
     : undefined;
-  const filteredLines = logLines.filter(
-    (line) => !search.q || line.toLowerCase().includes(search.q.toLowerCase()),
-  );
   const triggerLabels: Record<string, string> = {
     workflow_dispatch: "Manual",
     pull_request: "Pull request",
@@ -98,9 +96,13 @@ export function RunDetail({ number }: RunDetailProps) {
     );
   } else if (active || !selected?.steps.length) {
     logContent = (
-      <pre className="lyra-actions-logText">
-        {filteredLines.join("\n") || "No matching log lines."}
-      </pre>
+      <LogText
+        lines={logLines}
+        start={0}
+        end={logLines.length}
+        query={search.q}
+        empty="No matching log lines."
+      />
     );
   } else {
     logContent = (
@@ -111,15 +113,13 @@ export function RunDetail({ number }: RunDetailProps) {
               <Status value={highlightedStep.result || "running"} />
               {highlightedStep.name}
             </summary>
-            <pre className="lyra-actions-logText">
-              {logLines
-                .slice(
-                  highlightedStep.log_index,
-                  highlightedStep.log_index + highlightedStep.log_length,
-                )
-                .filter((line) => !search.q || line.toLowerCase().includes(search.q.toLowerCase()))
-                .join("\n") || "No log lines for this step."}
-            </pre>
+            <LogText
+              lines={logLines}
+              start={highlightedStep.log_index}
+              end={highlightedStep.log_index + highlightedStep.log_length}
+              query={search.q}
+              empty="No log lines for this step."
+            />
           </details>
         )}
         <details className="lyra-actions-completedSteps" open={!highlightedStep}>
@@ -135,22 +135,25 @@ export function RunDetail({ number }: RunDetailProps) {
                     {duration(step.started_at, step.stopped_at)}
                   </span>
                 </summary>
-                <pre className="lyra-actions-logText">
-                  {logLines
-                    .slice(step.log_index, step.log_index + step.log_length)
-                    .filter(
-                      (line) => !search.q || line.toLowerCase().includes(search.q.toLowerCase()),
-                    )
-                    .join("\n") || "No log lines for this step."}
-                </pre>
+                <LogText
+                  lines={logLines}
+                  start={step.log_index}
+                  end={step.log_index + step.log_length}
+                  query={search.q}
+                  empty="No log lines for this step."
+                />
               </details>
             ))}
         </details>
         <details className="lyra-actions-step">
           <summary>Full log</summary>
-          <pre className="lyra-actions-logText">
-            {filteredLines.join("\n") || "No matching log lines."}
-          </pre>
+          <LogText
+            lines={logLines}
+            start={0}
+            end={logLines.length}
+            query={search.q}
+            empty="No matching log lines."
+          />
         </details>
       </div>
     );
