@@ -6,7 +6,7 @@ type CodeBreadcrumbProps = {
   owner: string;
   repo: string;
   reference: string;
-  section: "commits" | "tags" | "releases" | "images";
+  section: "commits" | "tags" | "branches" | "releases" | "images";
   label: string;
   current?: string;
   children?: ReactNode;

@@ -1,14 +1,20 @@
 import {
+  useDeleteBranch,
   useGetRepo,
+  useListBranches,
   useListCommits,
   useListTags,
   useGetCommitWorkspace,
 } from "@/api/generated/lyra";
-import { type ChangeEvent } from "react";
+import { useContext, useState, type ChangeEvent, type MouseEvent } from "react";
+import { IdentityContext } from "@/api";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { searchLimit } from "@/routing/search";
 
-export type CodeScreenProps = { section: "commits" | "commit" | "tags"; target: string };
+export type CodeScreenProps = {
+  section: "commits" | "commit" | "tags" | "branches";
+  target: string;
+};
 
 export function useConnect({ section, target }: Pick<CodeScreenProps, "section" | "target">) {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -24,6 +30,19 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
     { query: { enabled: section === "commits" && !!metadata.data?.branches.length } },
   );
   const tags = useListTags(owner, repo, { query: { enabled: section === "tags" } });
+  const branches = useListBranches(owner, repo, { query: { enabled: section === "branches" } });
+  const identity = useContext(IdentityContext);
+  const canWrite = identity?.scope !== "read";
+  const [deleting, setDeleting] = useState("");
+  const removing = useDeleteBranch({
+    mutation: {
+      onSuccess: () => {
+        document.querySelector<HTMLDialogElement>("#delete-branch")?.close();
+        void branches.refetch();
+        void metadata.refetch();
+      },
+    },
+  });
   const detail = useGetCommitWorkspace(owner, repo, target, {
     query: { enabled: section === "commit" && !!target },
   });
@@ -36,6 +55,15 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
     });
   }
 
+  function prepareDelete(event: MouseEvent<HTMLButtonElement>) {
+    setDeleting(event.currentTarget.dataset.name || "");
+    removing.reset();
+  }
+
+  function deleteBranch() {
+    removing.mutate({ owner, repo, params: { name: deleting } });
+  }
+
   function retry() {
     if (section === "commits") {
       void commits.refetch();
@@ -46,10 +74,13 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
     if (section === "tags") {
       void tags.refetch();
     }
+    if (section === "branches") {
+      void branches.refetch();
+    }
     void metadata.refetch();
   }
 
-  const error = metadata.error || commits.error || tags.error || detail.error;
+  const error = metadata.error || commits.error || tags.error || branches.error || detail.error;
 
   return {
     owner,
@@ -59,8 +90,14 @@ export function useConnect({ section, target }: Pick<CodeScreenProps, "section" 
     limit,
     commits,
     tags,
+    branches,
+    canWrite,
+    deleting,
+    removing,
     detail,
     branchChanged,
+    prepareDelete,
+    deleteBranch,
     retry,
     error,
   };

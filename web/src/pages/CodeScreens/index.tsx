@@ -1,6 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { FileDirectoryIcon, TagIcon, VerifiedIcon } from "@primer/octicons-react";
+import {
+  FileDirectoryIcon,
+  GitBranchIcon,
+  TagIcon,
+  TrashIcon,
+  VerifiedIcon,
+} from "@primer/octicons-react";
 import { CopyButton } from "@/components/controls/CopyButton";
+import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
 import { DateTime } from "@/components/metadata/DateTime";
 import { Status } from "@/components/status/Status";
@@ -14,6 +21,13 @@ import "@/components/markdown/RichText/styles.css";
 import { CodeBreadcrumb } from "@/components/code/CodeBreadcrumb";
 import { useConnect, type CodeScreenProps } from "./connect";
 
+const breadcrumbLabels = {
+  commits: "Commits",
+  commit: "Commits",
+  tags: "Tags",
+  branches: "Branches",
+};
+
 export function CodeScreens({ section, target }: CodeScreenProps) {
   const {
     owner,
@@ -23,8 +37,14 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
     limit,
     commits,
     tags,
+    branches,
+    canWrite,
+    deleting,
+    removing,
     detail,
     branchChanged,
+    prepareDelete,
+    deleteBranch,
     retry,
     error,
   } = useConnect({ section, target });
@@ -93,6 +113,66 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       </div>
     ) : (
       <output className="lyra-workspace-empty">Loading tags…</output>
+    );
+  } else if (section === "branches") {
+    content = branches.data ? (
+      <div className="lyra-workspace-panel lyra-workspace-commits">
+        {branches.data.map((branch) => (
+          <article className="lyra-workspace-row" key={branch.name}>
+            <GitBranchIcon size={16} />
+            <div className="lyra-workspace-grow">
+              <Link
+                className="lyra-workspace-rowTitle"
+                to="/$owner/$repo/tree/$"
+                params={{ owner, repo, _splat: branch.name }}
+              >
+                {branch.name}
+              </Link>{" "}
+              {branch.default && <span className="lyra-workspace-label">default</span>}
+              {branch.protected && !branch.default && (
+                <span className="lyra-workspace-count">protected</span>
+              )}
+              <p className="lyra-workspace-meta">
+                <strong>{branch.commit.author.name}</strong> committed{" "}
+                <DateTime value={branch.commit.committer.date} /> · {branch.commit.subject}
+              </p>
+            </div>
+            {!branch.default && (
+              <span
+                className="lyra-workspace-count"
+                title={`Compared with ${metadata.data?.default_branch || "the default branch"}`}
+              >
+                {branch.behind} behind · {branch.ahead} ahead
+              </span>
+            )}
+            <Link
+              className="lyra-workspace-sha"
+              to="/$owner/$repo/commit/$sha"
+              params={{ owner, repo, sha: branch.commit.sha }}
+              search={{}}
+            >
+              {branch.commit.sha.slice(0, 7)}
+            </Link>
+            {canWrite && !branch.default && !branch.protected && (
+              <button
+                className="lyra-workspace-browse"
+                type="button"
+                data-name={branch.name}
+                onClick={prepareDelete}
+                commandfor="delete-branch"
+                command="show-modal"
+                aria-label={`Delete ${branch.name}`}
+                title="Delete branch"
+              >
+                <TrashIcon size={16} />
+              </button>
+            )}
+          </article>
+        ))}
+        {branches.data.length === 0 && <p className="lyra-workspace-empty">No branches yet.</p>}
+      </div>
+    ) : (
+      <output className="lyra-workspace-empty">Loading branches…</output>
     );
   } else if (section === "commits") {
     if (metadata.data?.branches.length === 0) {
@@ -229,12 +309,24 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        section={section === "tags" ? "tags" : "commits"}
-        label={section === "tags" ? "Tags" : "Commits"}
+        section={section === "commit" ? "commits" : section}
+        label={breadcrumbLabels[section]}
         current={section === "commit" ? target.slice(0, 7) : undefined}
       />
 
       {content}
+
+      <ConfirmDialog
+        id="delete-branch"
+        title={`Delete ${deleting}?`}
+        confirm="Delete branch"
+        onConfirm={deleteBranch}
+        pending={removing.isPending}
+        error={removing.error}
+        danger
+      >
+        <p>This removes the branch from the repository.</p>
+      </ConfirmDialog>
     </>
   );
 }

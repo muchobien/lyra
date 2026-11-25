@@ -81,6 +81,7 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/commits/{ref}", s.page(s.uiApplication))
 	repo.Get("/commit/{sha}", s.page(s.uiApplication))
 	repo.Get("/tags", s.page(s.uiApplication))
+	repo.Get("/branches", s.page(s.uiApplication))
 	repo.Get("/releases", s.page(s.uiApplication))
 	repo.Get("/runs", s.page(s.uiApplication))
 	repo.Get("/runs/{number}", s.page(s.uiApplication))

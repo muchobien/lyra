@@ -88,11 +88,11 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
                   </option>
                 ))}
               </select>
-              <span>
+              <Link to="/$owner/$repo/branches" params={{ owner, repo }} search={{}}>
                 <GitBranchIcon size={16} />
                 <strong>{metadata.data.branches.length}</strong>
                 {metadata.data.branches.length === 1 ? "branch" : "branches"}
-              </span>
+              </Link>
               {tags.data && (
                 <Link to="/$owner/$repo/tags" params={{ owner, repo }} search={{}}>
                   <TagIcon size={16} />

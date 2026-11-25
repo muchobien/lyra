@@ -172,6 +172,17 @@ func (s *Server) registerRepos(api huma.API) {
 		Tags: tags, Summary: "Get a commit", Description: "Scope: read.",
 	}, s.handleGetCommit)
 	register(api, huma.Operation{
+		OperationID: "listBranches", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/branches",
+		Tags: tags, Summary: "List branches with their last commit and distance from the default branch",
+		Description: "Scope: read. The default branch comes first, then the most recently updated.",
+	}, s.handleListBranches)
+	register(api, huma.Operation{
+		OperationID: "deleteBranch", Method: http.MethodDelete, Path: "/api/repos/{owner}/{repo}/branches",
+		Tags: tags, Summary: "Delete a branch",
+		Description: "Scope: write. Refuses the default branch and branches a rule protects from deletion. " +
+			"Records a push event, so pull requests and workflows see the deletion as they would a git push.",
+	}, s.handleDeleteBranch)
+	register(api, huma.Operation{
 		OperationID: "listTags", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/tags", Tags: tags,
 		Summary: "List tags", Description: "Scope: read.",
 	}, s.handleListTags)

@@ -509,6 +509,20 @@ func (g Git) Blob(ctx context.Context, dir, sha, path string) ([]byte, error) {
 	return stdout, nil
 }
 
+func (g Git) AheadBehind(ctx context.Context, dir, base, head string) (int, int, error) {
+	stdout, stderr, err := g.run(ctx, dir, "rev-list", "--left-right", "--count", base+"..."+head, "--")
+	if err != nil {
+		return 0, 0, fmt.Errorf("rev-list --left-right: %v: %s", err, stderr)
+	}
+	counts := strings.Fields(string(stdout))
+	if len(counts) != 2 {
+		return 0, 0, fmt.Errorf("rev-list --left-right: unexpected output %q", stdout)
+	}
+	behind, _ := strconv.Atoi(counts[0])
+	ahead, _ := strconv.Atoi(counts[1])
+	return ahead, behind, nil
+}
+
 func (g Git) Archive(ctx context.Context, dir, format, prefix, sha string, output io.Writer) error {
 	cmd := exec.CommandContext(ctx, "git", "archive", "--format="+format, "--prefix="+prefix, sha)
 	cmd.Dir = dir

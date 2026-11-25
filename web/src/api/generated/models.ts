@@ -198,6 +198,18 @@ export interface Commit {
   subject: string;
 }
 
+export interface BranchView {
+  /** Commits on the branch that aren't on the default branch. */
+  ahead: number;
+  /** Commits on the default branch that aren't on the branch. */
+  behind: number;
+  commit: Commit;
+  default: boolean;
+  name: string;
+  /** A branch rule forbids deleting it. */
+  protected: boolean;
+}
+
 export interface Check {
   event: string;
   job_id: number;
@@ -1071,6 +1083,11 @@ export type GetRepositoryBlobParams = {
   ref?: string;
   /** Path relative to the repository root. */
   path?: string;
+};
+
+export type DeleteBranchParams = {
+  /** The branch name, such as feature/login. */
+  name: string;
 };
 
 export type ListCommitsParams = {

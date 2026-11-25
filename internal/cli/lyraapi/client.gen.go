@@ -185,6 +185,21 @@ type BlobResponse struct {
 	Size     int64  `json:"size"`
 }
 
+// BranchView defines model for BranchView.
+type BranchView struct {
+	// Ahead Commits on the branch that aren't on the default branch.
+	Ahead int64 `json:"ahead"`
+
+	// Behind Commits on the default branch that aren't on the branch.
+	Behind  int64  `json:"behind"`
+	Commit  Commit `json:"commit"`
+	Default bool   `json:"default"`
+	Name    string `json:"name"`
+
+	// Protected A branch rule forbids deleting it.
+	Protected bool `json:"protected"`
+}
+
 // Check defines model for Check.
 type Check struct {
 	Event    string `json:"event"`
@@ -1282,6 +1297,12 @@ type GetRepositoryBlobParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// DeleteBranchParams defines parameters for DeleteBranch.
+type DeleteBranchParams struct {
+	// Name The branch name, such as feature/login.
+	Name string `form:"name" json:"name"`
+}
+
 // ListCommitsParams defines parameters for ListCommits.
 type ListCommitsParams struct {
 	// Ref Defaults to the default branch.
@@ -1784,6 +1805,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 	GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteBranch Delete a branch
+	//
+	// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+	//
+	// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+	DeleteBranch(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListBranches List branches with their last commit and distance from the default branch
+	//
+	// Scope: read. The default branch comes first, then the most recently updated.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+	ListBranches(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCommits List commits
 	//
@@ -2964,6 +2999,40 @@ func (c *Client) UploadAttachmentWithBody(ctx context.Context, owner string, rep
 // Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 func (c *Client) GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRepositoryBlobRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteBranch Delete a branch
+//
+// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+//
+// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+func (c *Client) DeleteBranch(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteBranchRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListBranches List branches with their last commit and distance from the default branch
+//
+// Scope: read. The default branch comes first, then the most recently updated.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+func (c *Client) ListBranches(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListBranchesRequest(c.Server, owner, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -5502,6 +5571,111 @@ func NewGetRepositoryBlobRequest(server string, owner string, repo string, param
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteBranchRequest constructs an http.Request for the DeleteBranch method
+func NewDeleteBranchRequest(server string, owner string, repo string, params *DeleteBranchParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/branches"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListBranchesRequest constructs an http.Request for the ListBranches method
+func NewListBranchesRequest(server string, owner string, repo string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/branches"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9704,6 +9878,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 	GetRepositoryBlobWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlobResponse, error)
 
+	// DeleteBranchWithResponse Delete a branch
+	//
+	// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+	DeleteBranchWithResponse(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*DeleteBranchResponse, error)
+
+	// ListBranchesWithResponse List branches with their last commit and distance from the default branch
+	//
+	// Scope: read. The default branch comes first, then the most recently updated.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+	ListBranchesWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*ListBranchesResponse, error)
+
 	// ListCommitsWithResponse List commits
 	//
 	// Scope: read.
@@ -11574,6 +11766,102 @@ func (r GetRepositoryBlobResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetRepositoryBlobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteBranchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeletedWithEvent
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteBranchResponse) GetJSON200() *DeletedWithEvent {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteBranchResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteBranchResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteBranchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteBranchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteBranchResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListBranchesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]BranchView
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListBranchesResponse) GetJSON200() *[]BranchView {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListBranchesResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListBranchesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListBranchesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListBranchesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListBranchesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15306,6 +15594,36 @@ func (c *ClientWithResponses) GetRepositoryBlobWithResponse(ctx context.Context,
 	return ParseGetRepositoryBlobResponse(rsp)
 }
 
+// DeleteBranchWithResponse Delete a branch
+//
+// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+func (c *ClientWithResponses) DeleteBranchWithResponse(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*DeleteBranchResponse, error) {
+	rsp, err := c.DeleteBranch(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteBranchResponse(rsp)
+}
+
+// ListBranchesWithResponse List branches with their last commit and distance from the default branch
+//
+// Scope: read. The default branch comes first, then the most recently updated.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+func (c *ClientWithResponses) ListBranchesWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*ListBranchesResponse, error) {
+	rsp, err := c.ListBranches(ctx, owner, repo, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListBranchesResponse(rsp)
+}
+
 // ListCommitsWithResponse List commits
 //
 // Scope: read.
@@ -17347,6 +17665,72 @@ func ParseGetRepositoryBlobResponse(rsp *http.Response) (*GetRepositoryBlobRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest BlobResponse
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteBranchResponse parses an HTTP response from a DeleteBranchWithResponse call
+func ParseDeleteBranchResponse(rsp *http.Response) (*DeleteBranchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteBranchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeletedWithEvent
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListBranchesResponse parses an HTTP response from a ListBranchesWithResponse call
+func ParseListBranchesResponse(rsp *http.Response) (*ListBranchesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListBranchesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []BranchView
 		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

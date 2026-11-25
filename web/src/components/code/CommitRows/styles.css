@@ -43,7 +43,9 @@ div:not(:first-child) > .lyra-workspace-dayHeading {
 .lyra-workspace-browse {
   display: inline-flex;
   padding: 0.25rem;
+  border: 0;
   border-radius: var(--radius-md);
+  background: transparent;
   color: var(--muted);
   &:hover {
     background: var(--hover);

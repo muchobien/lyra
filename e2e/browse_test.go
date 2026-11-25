@@ -5,8 +5,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +24,85 @@ func pushDemo(test *testing.T, srv server, token string) string {
 	mustGit(test, src, "checkout", "-q", "main")
 	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main", "feature/nested")
 	return src
+}
+
+func TestBranches(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	src := pushDemo(test, srv, token)
+	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main:release/one")
+	if status, body := call(test, http.MethodPost, srv.url+"/api/repos/acme/demo/rules", bearer(token), `{"pattern":"release/*"}`); status != http.StatusOK {
+		test.Fatalf("set rule: HTTP %d, %s", status, body)
+	}
+	type branch struct {
+		Name      string `json:"name"`
+		Default   bool   `json:"default"`
+		Protected bool   `json:"protected"`
+		Ahead     int    `json:"ahead"`
+		Behind    int    `json:"behind"`
+		Commit    struct {
+			Subject string `json:"subject"`
+		} `json:"commit"`
+	}
+	list := func() []branch {
+		status, body := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/branches", bearer(token), "")
+		var branches []branch
+		if err := json.Unmarshal(body, &branches); err != nil || status != http.StatusOK {
+			test.Fatalf("list branches: HTTP %d, %s, %v", status, body, err)
+		}
+		return branches
+	}
+	branches := list()
+	if len(branches) != 3 || branches[0].Name != "main" || !branches[0].Default || branches[0].Protected {
+		test.Fatalf("branches: %+v", branches)
+	}
+	for _, entry := range branches[1:] {
+		switch entry.Name {
+		case "feature/nested":
+			if entry.Ahead != 1 || entry.Behind != 0 || entry.Protected || entry.Commit.Subject != "Branch commit" {
+				test.Fatalf("feature branch: %+v", entry)
+			}
+		case "release/one":
+			if entry.Ahead != 0 || entry.Behind != 0 || !entry.Protected {
+				test.Fatalf("protected branch: %+v", entry)
+			}
+		default:
+			test.Fatalf("unexpected branch: %+v", entry)
+		}
+	}
+
+	reader := createToken(test, srv, `{"name":"reader","scope":"read"}`)
+	for _, attempt := range []struct {
+		name  string
+		token string
+		want  int
+	}{
+		{"main", token, http.StatusConflict},
+		{"release/one", token, http.StatusConflict},
+		{"missing", token, http.StatusNotFound},
+		{"feature/nested", reader, http.StatusForbidden},
+	} {
+		if status, body := call(test, http.MethodDelete, srv.url+"/api/repos/acme/demo/branches?name="+url.QueryEscape(attempt.name), bearer(attempt.token), ""); status != attempt.want {
+			test.Fatalf("delete %s: HTTP %d, %s", attempt.name, status, body)
+		}
+	}
+	status, body := call(test, http.MethodDelete, srv.url+"/api/repos/acme/demo/branches?name=feature%2Fnested", bearer(token), "")
+	if status != http.StatusOK || !strings.Contains(compactJSON(test, body), `"deleted":"feature/nested"`) {
+		test.Fatalf("delete branch: HTTP %d, %s", status, body)
+	}
+	if branches := list(); len(branches) != 2 || slices.ContainsFunc(branches, func(entry branch) bool { return entry.Name == "feature/nested" }) {
+		test.Fatalf("branches after delete: %+v", branches)
+	}
+	if output := mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "ls-remote", "--heads", srv.url+"/acme/demo.git"); strings.Contains(output, "feature/nested") {
+		test.Fatalf("deleted branch still on the server: %s", output)
+	}
+	status, body = call(test, http.MethodGet, srv.url+"/api/events?repo=acme/demo&action=push", bearer(token), "")
+	if status != http.StatusOK || !strings.Contains(compactJSON(test, body), `"ref":"refs/heads/feature/nested"`) {
+		test.Fatalf("push event for deletion: HTTP %d, %s", status, body)
+	}
+	if status, body := call(test, http.MethodGet, srv.url+"/acme/demo/branches", tailnet(), ""); status != http.StatusOK || !strings.Contains(string(body), `<div id="root"></div>`) {
+		test.Fatalf("branches page: HTTP %d", status)
+	}
 }
 
 func TestGoImport(test *testing.T) {

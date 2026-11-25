@@ -21,6 +21,7 @@ import type {
   AssetWrite,
   Attachment,
   BlobResponse,
+  BranchView,
   CommentRequest,
   CommentWrite,
   Commit,
@@ -33,6 +34,7 @@ import type {
   CreateReleaseRequest,
   CreateRepoRequest,
   CreateTokenRequest,
+  DeleteBranchParams,
   DeleteReleaseParams,
   DeleteRuleParams,
   DeletedID,
@@ -2313,6 +2315,215 @@ export function useGetRepositoryBlob<TData = Awaited<ReturnType<typeof getReposi
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetRepositoryBlobQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteBranchUrl = (owner: string,
+    repo: string,
+    params: DeleteBranchParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches`
+}
+
+/**
+ * Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+ * @summary Delete a branch
+ */
+export const deleteBranch = async (owner: string,
+    repo: string,
+    params: DeleteBranchParams, options?: Parameters<typeof orvalFetch>[1]): Promise<DeletedWithEvent> => {
+
+  return orvalFetch<DeletedWithEvent>(getDeleteBranchUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteBranchMutationKey = () => ['deleteBranch'] as const;
+
+export const getDeleteBranchMutationOptions = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext> => {
+
+const mutationKey = getDeleteBranchMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteBranch>>, DeleteBranchMutationVariables> = (props) => {
+          const {owner,repo,params} = props ?? {};
+
+          return  deleteBranch(owner,repo,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteBranchMutationResult = NonNullable<Awaited<ReturnType<typeof deleteBranch>>>
+
+    export type DeleteBranchMutationError = ErrorType<ErrorBody>
+    export type DeleteBranchMutationVariables = {owner: string;repo: string;params: DeleteBranchParams}
+
+    /**
+ * Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+ * @summary Delete a branch
+ */
+export const useDeleteBranch = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteBranch>>,
+        TError,
+        DeleteBranchMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteBranchMutationOptions(options), queryClient);
+    }
+
+export const getListBranchesUrl = (owner: string,
+    repo: string,) => {
+
+
+
+
+  return `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches`
+}
+
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export const listBranches = async (owner: string,
+    repo: string, options?: Parameters<typeof orvalFetch>[1]): Promise<BranchView[]> => {
+
+  return orvalFetch<BranchView[]>(getListBranchesUrl(owner,repo),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBranchesQueryKey = (owner: string,
+    repo: string,) => {
+    return [
+    `/api/repos/${owner}/${repo}/branches`
+    ] as const;
+    }
+
+
+export const getListBranchesQueryOptions = <TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBranchesQueryKey(owner,repo);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBranches>>> = ({ signal }) => listBranches(owner,repo, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListBranchesQueryResult = NonNullable<Awaited<ReturnType<typeof listBranches>>>
+export type ListBranchesQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBranches>>,
+          TError,
+          Awaited<ReturnType<typeof listBranches>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBranches>>,
+          TError,
+          Awaited<ReturnType<typeof listBranches>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListBranchesQueryOptions(owner,repo,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

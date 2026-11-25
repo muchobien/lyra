@@ -15,6 +15,7 @@ import { Route as OwnerIndexRouteImport } from "./routes/$owner/index"
 import { Route as OwnerRepoRouteRouteImport } from "./routes/$owner/$repo/route"
 import { Route as OwnerRepoIndexRouteImport } from "./routes/$owner/$repo/index"
 import { Route as OwnerRepoActivityRouteImport } from "./routes/$owner/$repo/activity"
+import { Route as OwnerRepoBranchesRouteImport } from "./routes/$owner/$repo/branches"
 import { Route as OwnerRepoImagesRouteImport } from "./routes/$owner/$repo/images"
 import { Route as OwnerRepoSettingsRouteImport } from "./routes/$owner/$repo/settings"
 import { Route as OwnerRepoTagsRouteImport } from "./routes/$owner/$repo/tags"
@@ -60,6 +61,11 @@ const OwnerRepoIndexRoute = OwnerRepoIndexRouteImport.update({
 const OwnerRepoActivityRoute = OwnerRepoActivityRouteImport.update({
   id: "/activity",
   path: "/activity",
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoBranchesRoute = OwnerRepoBranchesRouteImport.update({
+  id: "/branches",
+  path: "/branches",
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoImagesRoute = OwnerRepoImagesRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   "/$owner/$repo": typeof OwnerRepoRouteRouteWithChildren
   "/$owner/": typeof OwnerIndexRoute
   "/$owner/$repo/activity": typeof OwnerRepoActivityRoute
+  "/$owner/$repo/branches": typeof OwnerRepoBranchesRoute
   "/$owner/$repo/images": typeof OwnerRepoImagesRoute
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   "/settings": typeof SettingsRoute
   "/$owner": typeof OwnerIndexRoute
   "/$owner/$repo/activity": typeof OwnerRepoActivityRoute
+  "/$owner/$repo/branches": typeof OwnerRepoBranchesRoute
   "/$owner/$repo/images": typeof OwnerRepoImagesRoute
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   "/$owner/$repo": typeof OwnerRepoRouteRouteWithChildren
   "/$owner/": typeof OwnerIndexRoute
   "/$owner/$repo/activity": typeof OwnerRepoActivityRoute
+  "/$owner/$repo/branches": typeof OwnerRepoBranchesRoute
   "/$owner/$repo/images": typeof OwnerRepoImagesRoute
   "/$owner/$repo/settings": typeof OwnerRepoSettingsRoute
   "/$owner/$repo/tags": typeof OwnerRepoTagsRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | "/$owner/$repo"
     | "/$owner/"
     | "/$owner/$repo/activity"
+    | "/$owner/$repo/branches"
     | "/$owner/$repo/images"
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | "/settings"
     | "/$owner"
     | "/$owner/$repo/activity"
+    | "/$owner/$repo/branches"
     | "/$owner/$repo/images"
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | "/$owner/$repo"
     | "/$owner/"
     | "/$owner/$repo/activity"
+    | "/$owner/$repo/branches"
     | "/$owner/$repo/images"
     | "/$owner/$repo/settings"
     | "/$owner/$repo/tags"
@@ -339,6 +351,13 @@ declare module "@tanstack/react-router" {
       path: "/activity"
       fullPath: "/$owner/$repo/activity"
       preLoaderRoute: typeof OwnerRepoActivityRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
+    "/$owner/$repo/branches": {
+      id: "/$owner/$repo/branches"
+      path: "/branches"
+      fullPath: "/$owner/$repo/branches"
+      preLoaderRoute: typeof OwnerRepoBranchesRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
     "/$owner/$repo/images": {
@@ -458,6 +477,7 @@ declare module "@tanstack/react-router" {
 
 interface OwnerRepoRouteRouteChildren {
   OwnerRepoActivityRoute: typeof OwnerRepoActivityRoute
+  OwnerRepoBranchesRoute: typeof OwnerRepoBranchesRoute
   OwnerRepoImagesRoute: typeof OwnerRepoImagesRoute
   OwnerRepoSettingsRoute: typeof OwnerRepoSettingsRoute
   OwnerRepoTagsRoute: typeof OwnerRepoTagsRoute
@@ -479,6 +499,7 @@ interface OwnerRepoRouteRouteChildren {
 
 const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
   OwnerRepoActivityRoute: OwnerRepoActivityRoute,
+  OwnerRepoBranchesRoute: OwnerRepoBranchesRoute,
   OwnerRepoImagesRoute: OwnerRepoImagesRoute,
   OwnerRepoSettingsRoute: OwnerRepoSettingsRoute,
   OwnerRepoTagsRoute: OwnerRepoTagsRoute,

@@ -10,7 +10,9 @@ browser. Dialogs, select menus and popovers use the browser's native controls.
 Pull requests, Issues, Actions, Activity and repository settings. On narrow screens,
 navigation scrolls horizontally and keeps the selected section visible.
 
-Code contains files, commit history and tags. Directories open at
+Code contains files, commit history, branches and tags. Branches shows each branch's last
+commit and how many commits it is behind and ahead of the default branch; writers can delete
+branches other than the default one that no rule protects from deletion. Directories open at
 `/<owner>/<repo>/tree/<ref>/<path>` and files at `/<owner>/<repo>/blob/<ref>/<path>`; the
 ref is the longest branch or tag name the path starts with, or else a commit. Add `?raw`
 to a file URL to download it. Markdown files open rendered; Code, or `?plain=1`, shows
