@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 export type LogTextProps = {
   lines: string[];
+  times?: string[];
   start: number;
   end: number;
   query?: string;
@@ -236,7 +237,7 @@ function visibleText(line: LogLine) {
   return [line.title, ...line.spans.map((span) => span.text), line.location].join(" ");
 }
 
-export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty">) {
+export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "times" | "empty">) {
   const blocks = useMemo(() => {
     const result: LogBlock[] = [];
     const needle = query?.toLowerCase();

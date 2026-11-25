@@ -163,6 +163,13 @@
   user-select: none;
 }
 
+.lyra-log-text-time {
+  flex: none;
+  padding-right: 1rem;
+  color: var(--muted);
+  user-select: none;
+}
+
 .lyra-log-text-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
