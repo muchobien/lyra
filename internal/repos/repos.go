@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -506,6 +507,19 @@ func (g Git) Blob(ctx context.Context, dir, sha, path string) ([]byte, error) {
 		return nil, fmt.Errorf("cat-file: %v: %s", err, stderr)
 	}
 	return stdout, nil
+}
+
+func (g Git) Archive(ctx context.Context, dir, format, prefix, sha string, output io.Writer) error {
+	cmd := exec.CommandContext(ctx, "git", "archive", "--format="+format, "--prefix="+prefix, sha)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	cmd.Stdout = output
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git archive: %v: %s", err, stderr.Bytes())
+	}
+	return nil
 }
 
 func (g Git) ValidRef(ctx context.Context, ref string) bool {

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
+  FileZipIcon,
   GitBranchIcon,
   HistoryIcon,
   PackageIcon,
@@ -44,6 +45,7 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
     closeFinder,
     retry,
     retryFiles,
+    archiveURL,
     failure,
   } = useConnect({ view, target });
   if (failure) {
@@ -409,6 +411,18 @@ export function RepositoryPage({ view, target, plain = false }: RepositoryPagePr
           <code>{metadata.data.clone_url}</code>
           <CopyButton value={metadata.data.clone_url} label="Copy clone URL" compact />
         </div>
+        {hasBranches && (
+          <div className="lyra-repository-page-downloads">
+            <a className="lyra-controls-button" href={`${archiveURL}.zip`} download>
+              <FileZipIcon size={16} />
+              Download ZIP
+            </a>
+            <a className="lyra-controls-button" href={`${archiveURL}.tar.gz`} download>
+              <FileZipIcon size={16} />
+              Download tar.gz
+            </a>
+          </div>
+        )}
       </div>
       <dialog
         id="file-finder"

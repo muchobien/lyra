@@ -471,6 +471,13 @@
   }
 }
 
+.lyra-repository-page-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .lyra-repository-page-finder {
   width: min(40rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 3rem);

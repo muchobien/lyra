@@ -70,6 +70,7 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/settings", s.page(s.uiApplication))
 	repo.Get("/activity", s.page(s.uiApplication))
 	repo.Get("/releases/tag/*", s.page(s.uiApplication))
+	repo.Get("/archive/*", api(s.handleArchive))
 	repo.Get("/releases/download/*", api(s.handleStableDownload))
 	repo.Get("/releases/latest/download/{name}", api(s.handleLatestDownload))
 	repo.Get("/attachments/{id}/{name}", api(s.handleDownloadAttachment))

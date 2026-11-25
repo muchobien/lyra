@@ -111,6 +111,7 @@ export function useConnect({ view, target }: RepositoryPageProps) {
   }
 
   const failure = metadata.error || (view === "blob" ? blob.error : tree.error);
+  const archiveURL = `/${owner}/${repo}/archive/${ref.split("/").map(encodeURIComponent).join("/")}`;
 
   return {
     owner,
@@ -137,6 +138,7 @@ export function useConnect({ view, target }: RepositoryPageProps) {
     closeFinder,
     retry,
     retryFiles,
+    archiveURL,
     failure,
   };
 }

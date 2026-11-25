@@ -5950,6 +5950,43 @@ paths:
       summary: Revoke a token
       tags:
         - Account
+  /{owner}/{repo}/archive/{archive}:
+    get:
+      description: "Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory."
+      operationId: downloadArchive
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: archive
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/gzip:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            application/zip:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The archive
+      summary: Download the files at a ref as a .tar.gz or .zip archive
+      tags:
+        - Workspaces
   /{owner}/{repo}/attachments/{id}/{name}:
     get:
       description: "Scope: read. Supports range requests."

@@ -2447,6 +2447,13 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeToken(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DownloadArchive Download the files at a ref as a .tar.gz or .zip archive
+	//
+	// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+	//
+	// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+	DownloadArchive(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DownloadAttachment Download an attachment
 	//
 	// Scope: read. Supports range requests.
@@ -4459,6 +4466,23 @@ func (c *Client) CreateToken(ctx context.Context, body CreateTokenJSONRequestBod
 // Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 func (c *Client) RevokeToken(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeTokenRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DownloadArchive Download the files at a ref as a .tar.gz or .zip archive
+//
+// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+//
+// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+func (c *Client) DownloadArchive(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadArchiveRequest(c.Server, owner, repo, archive)
 	if err != nil {
 		return nil, err
 	}
@@ -9178,6 +9202,54 @@ func NewRevokeTokenRequest(server string, id int64) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDownloadArchiveRequest constructs an http.Request for the DownloadArchive method
+func NewDownloadArchiveRequest(server string, owner string, repo string, archive string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "archive", archive, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/" + pathParam0 + "/" + pathParam1 + "/archive/" + pathParam2
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDownloadAttachmentRequest constructs an http.Request for the DownloadAttachment method
 func NewDownloadAttachmentRequest(server string, owner string, repo string, id string, name string) (*http.Request, error) {
 	var err error
@@ -10387,6 +10459,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeTokenWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*RevokeTokenResponse, error)
+
+	// DownloadArchiveWithResponse Download the files at a ref as a .tar.gz or .zip archive
+	//
+	// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+	DownloadArchiveWithResponse(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*DownloadArchiveResponse, error)
 
 	// DownloadAttachmentWithResponse Download an attachment
 	//
@@ -14648,6 +14729,40 @@ func (r RevokeTokenResponse) ContentType() string {
 	return ""
 }
 
+type DownloadArchiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r DownloadArchiveResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadArchiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadArchiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DownloadArchiveResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DownloadAttachmentResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -16449,6 +16564,21 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, id in
 		return nil, err
 	}
 	return ParseRevokeTokenResponse(rsp)
+}
+
+// DownloadArchiveWithResponse Download the files at a ref as a .tar.gz or .zip archive
+//
+// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+func (c *ClientWithResponses) DownloadArchiveWithResponse(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*DownloadArchiveResponse, error) {
+	rsp, err := c.DownloadArchive(ctx, owner, repo, archive, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadArchiveResponse(rsp)
 }
 
 // DownloadAttachmentWithResponse Download an attachment
@@ -19412,6 +19542,22 @@ func ParseRevokeTokenResponse(rsp *http.Response) (*RevokeTokenResponse, error) 
 		}
 		response.JSONDefault = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseDownloadArchiveResponse parses an HTTP response from a DownloadArchiveWithResponse call
+func ParseDownloadArchiveResponse(rsp *http.Response) (*DownloadArchiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadArchiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

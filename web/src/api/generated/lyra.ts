@@ -9621,6 +9621,136 @@ export const useRevokeToken = <TError = ErrorType<ErrorBody>,
       return useMutation(getRevokeTokenMutationOptions(options), queryClient);
     }
 
+export const getDownloadArchiveUrl = (owner: string,
+    repo: string,
+    archive: string,) => {
+
+
+
+
+  return `/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/archive/${encodeURIComponent(String(archive))}`
+}
+
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export const downloadArchive = async (owner: string,
+    repo: string,
+    archive: string, options?: Parameters<typeof orvalFetch>[1]): Promise<Blob> => {
+
+  return orvalFetch<Blob>(getDownloadArchiveUrl(owner,repo,archive),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadArchiveQueryKey = (owner: string,
+    repo: string,
+    archive: string,) => {
+    return [
+    `/${owner}/${repo}/archive/${archive}`
+    ] as const;
+    }
+
+
+export const getDownloadArchiveQueryOptions = <TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadArchiveQueryKey(owner,repo,archive);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadArchive>>> = ({ signal }) => downloadArchive(owner,repo,archive, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined && archive !== null && archive !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadArchiveQueryResult = NonNullable<Awaited<ReturnType<typeof downloadArchive>>>
+export type DownloadArchiveQueryError = ErrorType<unknown>
+
+
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArchive>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArchive>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArchive>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArchive>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadArchiveQueryOptions(owner,repo,archive,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getDownloadAttachmentUrl = (owner: string,
     repo: string,
     id: string,

@@ -574,6 +574,20 @@ func (s *Server) registerWorkspaces(api huma.API) {
 			},
 		}},
 	}, stream[sourceInput](s.handleRawBlob))
+	api.OpenAPI().AddOperation(&huma.Operation{
+		OperationID: "downloadArchive", Method: http.MethodGet, Path: "/{owner}/{repo}/archive/{archive}",
+		Tags: tags, Summary: "Download the files at a ref as a .tar.gz or .zip archive",
+		Description: "Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; " +
+			"the ref may contain slashes. Files sit in a <repo>-<ref> directory.",
+		Parameters: pathParams("owner", "repo", "archive"),
+		Responses: map[string]*huma.Response{"200": {
+			Description: "The archive",
+			Content: map[string]*huma.MediaType{
+				"application/gzip": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+				"application/zip":  {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+			},
+		}},
+	})
 	register(api, huma.Operation{
 		OperationID: "listRepositoryFiles", Method: http.MethodGet, Path: repository + "/files", Tags: tags,
 		Summary: "List recursive file paths for the file finder", Description: "Scope: read.",

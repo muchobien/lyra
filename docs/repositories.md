@@ -34,6 +34,13 @@ git -c http.extraHeader="Lyra-Agent: claude" push
 Pushing needs `write`; cloning and fetching need `read`. Over HTTPS, use a token as the
 password with any user name. Git prints what a push changed as `remote: lyra: …` lines.
 
+## Archives
+
+`https://lyra.example/<owner>/<repo>/archive/<ref>.tar.gz` and `…/<ref>.zip` download the
+files at a branch, tag or commit, without history, inside a `<repo>-<ref>` directory (slashes
+in the ref become `-`). They need `read`; the repository's Clone menu links both for the
+ref on screen.
+
 ## Signatures
 
 Register SSH signing keys with `lyra key add --signing [--agent NAME] key.pub`. Commits and
