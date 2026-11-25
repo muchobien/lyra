@@ -47,6 +47,7 @@ type LogEntry =
 
 // oxlint-disable-next-line no-control-regex
 const escapes = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9])/g;
+export const linkPattern = /(\bhttps?:\/\/[^\s"'<>`]*[^\s"'<>`.,;:!?)\]}])/;
 const workflowCommand = /^(?:::([a-z-]+)(?: ([^:]*))?::(.*)|##\[([a-z]+)\](.*))$/;
 const hiddenCommands = new Set([
   "add-matcher",

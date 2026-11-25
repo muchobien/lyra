@@ -1,6 +1,6 @@
 import { type CSSProperties } from "react";
 import "./styles.css";
-import { useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic";
+import { linkPattern, useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic";
 
 type SpansProps = { spans: LogSpan[] };
 
@@ -27,7 +27,15 @@ function Spans({ spans }: SpansProps) {
         data-color={typeof color === "number" ? color : undefined}
         data-background={typeof background === "number" ? background : undefined}
       >
-        {span.text}
+        {span.text.split(linkPattern).map((part, partIndex) =>
+          partIndex % 2 ? (
+            <a key={partIndex} href={part} target="_blank" rel="noopener noreferrer">
+              {part}
+            </a>
+          ) : (
+            part
+          ),
+        )}
       </span>
     );
   });
