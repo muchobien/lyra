@@ -8,12 +8,14 @@ require (
 	connectrpc.com/connect v1.21.1
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/bluekeyes/go-gitdiff v0.9.0
+	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/distribution/distribution/v3 v3.1.2
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/go-containerregistry v0.22.1
 	github.com/gorilla/mux v1.8.1
 	github.com/hiddeco/sshsig v0.2.0
 	github.com/itchyny/gojq v0.12.20
+	github.com/oapi-codegen/runtime v1.9.1
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/robfig/cron/v3 v3.0.1
@@ -36,7 +38,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
-	github.com/danielgtaylor/huma/v2 v2.40.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
@@ -66,7 +67,6 @@ require (
 	github.com/mfridman/interpolate v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
-	github.com/oapi-codegen/runtime v1.9.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
