@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +22,26 @@ func pushDemo(test *testing.T, srv server, token string) string {
 	mustGit(test, src, "checkout", "-q", "main")
 	mustGit(test, src, "-c", "http.extraHeader=Authorization: Bearer "+token, "push", "-q", srv.url+"/acme/demo.git", "main", "feature/nested")
 	return src
+}
+
+func TestGoImport(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	pushDemo(test, srv, token)
+	host := strings.TrimPrefix(srv.url, "http://")
+	meta := `<meta name="go-import" content="` + host + `/acme/demo git ` + srv.url + `/acme/demo.git">`
+	for _, target := range []string{"/acme/demo", "/acme/demo.git", "/acme/demo/internal/pkg", "/acme/demo/tree/main"} {
+		status, body := call(test, http.MethodGet, srv.url+target+"?go-get=1", bearer(token), "")
+		if status != http.StatusOK || !strings.Contains(string(body), meta) {
+			test.Fatalf("go-import for %s: HTTP %d, %s", target, status, body)
+		}
+	}
+	if status, body := call(test, http.MethodGet, srv.url+"/acme/demo?go-get=1", nil, ""); status != http.StatusUnauthorized {
+		test.Fatalf("go-import without credentials: HTTP %d, %s", status, body)
+	}
+	if status, body := call(test, http.MethodGet, srv.url+"/acme/demo/internal/pkg", bearer(token), ""); status != http.StatusNotFound || strings.Contains(string(body), "go-import") {
+		test.Fatalf("package path without go-get: HTTP %d", status)
+	}
 }
 
 func TestArchives(test *testing.T) {

@@ -34,6 +34,18 @@ git -c http.extraHeader="Lyra-Agent: claude" push
 Pushing needs `write`; cloning and fetching need `read`. Over HTTPS, use a token as the
 password with any user name. Git prints what a push changed as `remote: lyra: …` lines.
 
+## Go modules
+
+`go get lyra.example/<owner>/<repo>` works: requests with `?go-get=1` for a repository or
+any path inside it get a `go-import` tag pointing at the clone URL. Every request needs a
+token, so keep the module out of the public proxy and checksum database and give Go and Git
+the token through `~/.netrc`:
+
+```sh
+go env -w GOPRIVATE=lyra.example
+printf 'machine lyra.example login token password %s\n' "$LYRA_TOKEN" >> ~/.netrc
+```
+
 ## Archives
 
 `https://lyra.example/<owner>/<repo>/archive/<ref>.tar.gz` and `…/<ref>.zip` download the
