@@ -14,7 +14,7 @@ import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { stripAnsi } from "@/components/code/LogText/logic";
+import { readableText } from "@/components/code/LogText/logic";
 
 type Logs = { lines: string[]; offset: number; done: boolean };
 
@@ -141,7 +141,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       step
         ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
         : logs.data.lines
-    ).map(stripAnsi);
+    ).flatMap((line) => readableText(line) ?? []);
     setExplainedJob(selected.id);
     void explanation.run(async (signal, monitor) => {
       const session = await LanguageModel.create({
