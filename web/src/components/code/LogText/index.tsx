@@ -58,7 +58,12 @@ function Time({ at }: TimeProps) {
 
 function Line({ line, at }: LineProps) {
   return (
-    <div className="lyra-log-text-line" data-kind={line.kind} data-level={line.level}>
+    <div
+      className="lyra-log-text-line"
+      data-kind={line.kind}
+      data-level={line.level}
+      data-line={line.number}
+    >
       <span className="lyra-log-text-number" aria-hidden="true">
         {line.number}
       </span>
