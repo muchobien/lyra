@@ -1,6 +1,6 @@
 import { createRootRouteWithContext } from "@tanstack/react-router";
 import { type QueryClient } from "@tanstack/react-query";
-import { getGetMeQueryOptions } from "@/api/generated/lyra";
+import { getGetMeQueryOptions, getMe } from "@/api/generated/lyra";
 import { App, initialPageError } from "@/pages/App";
 import { NotFound } from "@/pages/NotFound";
 import { stripEmptySearch } from "@/routing/search";
@@ -14,7 +14,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     if (initialPageError && initialPageError.pathname === location.pathname) {
       throw initialPageError.error;
     }
-    await context.queryClient.query({ ...getGetMeQueryOptions(), staleTime: "static" });
+    await context.queryClient.query({
+      ...getGetMeQueryOptions(),
+      queryFn: () => getMe(),
+      staleTime: "static",
+    });
   },
   head: ({ matches }) => ({
     meta: matches.length === 1 ? [{ title: "Lyra" }] : [],
