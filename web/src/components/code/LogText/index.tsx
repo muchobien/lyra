@@ -4,7 +4,11 @@ import { useLogic, type LogLine, type LogSpan, type LogTextProps } from "./logic
 
 type SpansProps = { spans: LogSpan[] };
 
-type LineProps = { line: LogLine };
+type LineProps = { line: LogLine; at?: string };
+
+type TimeProps = { at?: string };
+
+const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "medium", hourCycle: "h23" });
 
 function Spans({ spans }: SpansProps) {
   return spans.map((span, index) => {
@@ -33,12 +37,24 @@ function Spans({ spans }: SpansProps) {
   });
 }
 
-function Line({ line }: LineProps) {
+function Time({ at }: TimeProps) {
+  if (!at) {
+    return null;
+  }
+  return (
+    <time className="lyra-log-text-time" dateTime={at} title={at}>
+      {timeFormat.format(new Date(at))}
+    </time>
+  );
+}
+
+function Line({ line, at }: LineProps) {
   return (
     <div className="lyra-log-text-line" data-kind={line.kind} data-level={line.level}>
       <span className="lyra-log-text-number" aria-hidden="true">
         {line.number}
       </span>
+      <Time at={at} />
       <span className="lyra-log-text-content">
         {line.level && <b>{line.level[0].toUpperCase() + line.level.slice(1)}: </b>}
         {line.title && `${line.title} · `}
@@ -49,7 +65,7 @@ function Line({ line }: LineProps) {
   );
 }
 
-export function LogText({ lines, start, end, query, empty }: LogTextProps) {
+export function LogText({ lines, times, start, end, query, empty }: LogTextProps) {
   const { blocks } = useLogic({ lines, start, end, query });
 
   if (!blocks.length) {
@@ -68,16 +84,17 @@ export function LogText({ lines, start, end, query, empty }: LogTextProps) {
               <span className="lyra-log-text-number" aria-hidden="true">
                 {block.group.number}
               </span>
+              <Time at={times?.[block.group.number - 1]} />
               <span className="lyra-log-text-content">
                 <Spans spans={block.group.title} />
               </span>
             </summary>
             {block.group.lines.map((line) => (
-              <Line key={line.number} line={line} />
+              <Line key={line.number} line={line} at={times?.[line.number - 1]} />
             ))}
           </details>
         ) : (
-          <Line key={block.line.number} line={block.line} />
+          <Line key={block.line.number} line={block.line} at={times?.[block.line.number - 1]} />
         ),
       )}
     </div>

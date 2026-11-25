@@ -88,10 +88,15 @@
   gap: 0.5rem;
   padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--soft-border);
-  & input {
+  & input[type="search"] {
     min-width: 5rem;
     min-height: 2rem;
     font-size: var(--text-xs);
+  }
+  & label {
+    margin-block: 0;
+    font-size: var(--text-xs);
+    white-space: nowrap;
   }
 }
 
