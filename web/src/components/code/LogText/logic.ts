@@ -2,10 +2,13 @@ import { useMemo } from "react";
 
 export type LogTextProps = {
   lines: string[];
+  times?: string[];
   start: number;
   end: number;
   query?: string;
+  target?: number;
   empty: string;
+  live?: boolean;
 };
 
 type LogStyle = {
@@ -34,6 +37,7 @@ export type LogGroup = {
   lines: LogLine[];
   failed: boolean;
   matched: boolean;
+  ended: boolean;
 };
 
 type LogBlock = { line: LogLine; group?: undefined } | { group: LogGroup; line?: undefined };
@@ -53,6 +57,7 @@ type LogEntry =
 
 // oxlint-disable-next-line no-control-regex
 const escapes = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9])/g;
+export const linkPattern = /(\bhttps?:\/\/[^\s"'<>`]*[^\s"'<>`.,;:!?)\]}])/;
 const workflowCommand = /^(?:::([a-z-]+)(?: ([^:]*))?::(.*)|##\[([a-z]+)\](.*))$/;
 const hiddenCommands = new Set([
   "add-matcher",
@@ -64,7 +69,7 @@ const hiddenCommands = new Set([
 ]);
 const annotationLevels = new Set(["warning", "error", "notice"]);
 
-export function stripAnsi(text: string) {
+function stripAnsi(text: string) {
   return text.replace(escapes, "");
 }
 
@@ -158,7 +163,7 @@ function ansiSpans(text: string) {
   return spans;
 }
 
-function classify(raw: string): LogEntry {
+export function classify(raw: string): LogEntry {
   const plain = stripAnsi(raw);
   const match = plain.match(workflowCommand);
   if (match) {
@@ -192,7 +197,7 @@ function classify(raw: string): LogEntry {
         level: name as "warning" | "error" | "notice",
         text,
         title: fields.get("title"),
-        location: location && !text.includes(location) ? location : undefined,
+        location: location || undefined,
       };
     }
   }
@@ -200,6 +205,24 @@ function classify(raw: string): LogEntry {
     return { kind: "command", text: raw.slice(raw.indexOf("[command]") + "[command]".length) };
   }
   return { kind: "text", text: raw };
+}
+
+export function readableText(raw: string) {
+  const entry = classify(raw);
+  if (entry.kind === "hidden" || entry.kind === "endgroup") {
+    return undefined;
+  }
+  if (entry.kind === "annotation") {
+    return [
+      `${entry.level[0].toUpperCase() + entry.level.slice(1)}:`,
+      entry.title && `${entry.title} ·`,
+      entry.text,
+      entry.location,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return stripAnsi(entry.text);
 }
 
 function logLine(number: number, entry: LogEntry): LogLine {
@@ -210,7 +233,7 @@ function logLine(number: number, entry: LogEntry): LogLine {
       spans: [{ text: entry.text, style: {} }],
       level: entry.level,
       title: entry.title,
-      location: entry.location,
+      location: entry.location && !entry.text.includes(entry.location) ? entry.location : undefined,
     };
   }
   if (entry.kind === "command" || entry.kind === "text") {
@@ -239,7 +262,12 @@ export function matchesQuery(lines: string[], start: number, end: number, query:
   });
 }
 
-export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty">) {
+export function useLogic({
+  lines,
+  start,
+  end,
+  query,
+}: Omit<LogTextProps, "times" | "target" | "empty">) {
   const blocks = useMemo(() => {
     const result: LogBlock[] = [];
     const needle = query?.toLowerCase();
@@ -250,6 +278,9 @@ export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty
         continue;
       }
       if (entry.kind === "endgroup") {
+        if (group) {
+          group.ended = true;
+        }
         group = undefined;
         continue;
       }
@@ -260,6 +291,7 @@ export function useLogic({ lines, start, end, query }: Omit<LogTextProps, "empty
           lines: [],
           failed: false,
           matched: false,
+          ended: false,
         };
         result.push({ group });
         continue;

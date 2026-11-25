@@ -5237,6 +5237,13 @@ paths:
             description: The first line to return.
             format: int64
             type: integer
+        - description: Prefix each line with the RFC 3339 time it was logged and a space.
+          explode: false
+          in: query
+          name: timestamps
+          schema:
+            description: Prefix each line with the RFC 3339 time it was logged and a space.
+            type: boolean
       responses:
         "200":
           content:

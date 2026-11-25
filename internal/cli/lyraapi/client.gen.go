@@ -1397,6 +1397,9 @@ type ListRunsParams struct {
 type GetJobLogsParams struct {
 	// Offset The first line to return.
 	Offset *int64 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Timestamps Prefix each line with the RFC 3339 time it was logged and a space.
+	Timestamps *bool `form:"timestamps,omitempty" json:"timestamps,omitempty"`
 }
 
 // RerunRunParams defines parameters for RerunRun.
@@ -8182,6 +8185,18 @@ func NewGetJobLogsRequest(server string, owner string, repo string, number int64
 		if params.Offset != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Timestamps != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "timestamps", *params.Timestamps, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
