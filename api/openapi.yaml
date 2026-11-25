@@ -394,6 +394,33 @@ components:
         - checks
         - files
       type: object
+    CompareView:
+      additionalProperties: false
+      properties:
+        base_sha:
+          type: string
+        commits:
+          description: Commits on head that aren't on base, newest first, at most 250.
+          items:
+            $ref: "#/components/schemas/Commit"
+          type: array
+        files:
+          description: Files head changed since the merge base, or base without one.
+          items:
+            $ref: "#/components/schemas/FileChange"
+          type: array
+        head_sha:
+          type: string
+        merge_base:
+          description: Empty when the two refs share no history.
+          type: string
+      required:
+        - base_sha
+        - head_sha
+        - merge_base
+        - commits
+        - files
+      type: object
     CompareWorkspace:
       additionalProperties: false
       properties:
@@ -3709,6 +3736,102 @@ paths:
   /api/repos/{owner}/{repo}/compare:
     get:
       description: "Scope: read."
+      operationId: compareRefs
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: "Compare two refs: the commits head adds and the files it changes"
+      tags:
+        - Repositories
+  /api/repos/{owner}/{repo}/compare/diff:
+    get:
+      description: "Scope: read."
+      operationId: getCompareDiff
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            text/x-diff:
+              schema:
+                type: string
+          description: The diff
+          headers:
+            Content-Type:
+              schema:
+                type: string
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: The unified diff of head since its merge base with base
+      tags:
+        - Repositories
+  /api/repos/{owner}/{repo}/compare/view:
+    get:
+      description: "Scope: read."
       operationId: getCompareWorkspace
       parameters:
         - in: path
@@ -3721,13 +3844,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: Branch, tag, or commit to compare against.
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
           explode: false
           in: query
           name: base
-          required: true
           schema:
-            description: Branch, tag, or commit to compare against.
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
             type: string
         - description: Branch, tag, or commit with the changes.
           explode: false

@@ -183,6 +183,15 @@ func (s *Server) registerRepos(api huma.API) {
 			"Records a push event, so pull requests and workflows see the deletion as they would a git push.",
 	}, s.handleDeleteBranch)
 	register(api, huma.Operation{
+		OperationID: "compareRefs", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/compare", Tags: tags,
+		Summary: "Compare two refs: the commits head adds and the files it changes", Description: "Scope: read.",
+	}, s.handleCompare)
+	register(api, huma.Operation{
+		OperationID: "getCompareDiff", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/compare/diff",
+		Tags: tags, Summary: "The unified diff of head since its merge base with base", Description: "Scope: read.",
+		Responses: map[string]*huma.Response{"200": text("text/x-diff", "The diff")},
+	}, s.handleCompareDiff)
+	register(api, huma.Operation{
 		OperationID: "listTags", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/tags", Tags: tags,
 		Summary: "List tags", Description: "Scope: read.",
 	}, s.handleListTags)
@@ -626,7 +635,7 @@ func (s *Server) registerWorkspaces(api huma.API) {
 		Summary: "Read a commit with checks and structured diffs", Description: "Scope: read.",
 	}, s.handleCommitWorkspace)
 	register(api, huma.Operation{
-		OperationID: "getCompareWorkspace", Method: http.MethodGet, Path: repository + "/compare", Tags: tags,
+		OperationID: "getCompareWorkspace", Method: http.MethodGet, Path: repository + "/compare/view", Tags: tags,
 		Summary: "Compare two refs: the commits head adds and structured diffs", Description: "Scope: read.",
 	}, s.handleCompareWorkspace)
 	register(api, huma.Operation{

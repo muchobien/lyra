@@ -121,7 +121,7 @@ func TestCompare(test *testing.T) {
 	}
 	compare := func(base, head string) int {
 		query := url.Values{"base": {base}, "head": {head}}.Encode()
-		status, body := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/compare?"+query, bearer(token), "")
+		status, body := call(test, http.MethodGet, srv.url+"/api/repos/acme/demo/compare/view?"+query, bearer(token), "")
 		if status == http.StatusOK {
 			comparison.Commits, comparison.Files = nil, nil
 			if err := json.Unmarshal(body, &comparison); err != nil {
@@ -150,6 +150,47 @@ func TestCompare(test *testing.T) {
 		if status, _ := call(test, http.MethodGet, srv.url+target, tailnet(), ""); status != want {
 			test.Fatalf("%s: HTTP %d", target, status)
 		}
+	}
+}
+
+func TestBranchAndCompareCLI(test *testing.T) {
+	srv := startServer(test, "127.0.0.1")
+	token := adminToken(test, srv)
+	pushDemo(test, srv, token)
+	if result := runLyra(test, srv, token, "branch", "list", "-R", "acme/demo", "--jq", `[.[].name] | join(",")`); result.code != 0 || result.stdout != "main,feature/nested\n" {
+		test.Fatalf("branch list: %+v", result)
+	}
+	var comparison struct {
+		Commits []struct {
+			Subject string `json:"subject"`
+		} `json:"commits"`
+		Files []struct {
+			Path      string `json:"path"`
+			Status    string `json:"status"`
+			Additions int    `json:"additions"`
+		} `json:"files"`
+	}
+	for _, spec := range []string{"main...feature/nested", "feature/nested"} {
+		lyraJSON(test, srv, token, &comparison, "compare", "-R", "acme/demo", spec)
+		if len(comparison.Commits) != 1 || comparison.Commits[0].Subject != "Branch commit" || len(comparison.Files) != 1 ||
+			comparison.Files[0].Path != "branch.txt" || comparison.Files[0].Status != "added" || comparison.Files[0].Additions != 1 {
+			test.Fatalf("compare %s: %+v", spec, comparison)
+		}
+	}
+	if result := runLyra(test, srv, token, "compare", "-R", "acme/demo", "feature/nested", "--diff"); result.code != 0 || !strings.Contains(result.stdout, "+branch content") {
+		test.Fatalf("compare --diff: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "compare", "-R", "acme/demo", "main...missing"); result.code == 0 || !strings.Contains(result.stderr, "unknown ref missing") {
+		test.Fatalf("compare with an unknown ref: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "branch", "delete", "-R", "acme/demo", "main"); result.code != 1 || !strings.Contains(result.stderr, "default branch") {
+		test.Fatalf("delete the default branch: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "branch", "delete", "-R", "acme/demo", "feature/nested"); result.code != 0 {
+		test.Fatalf("branch delete: %+v", result)
+	}
+	if result := runLyra(test, srv, token, "branch", "list", "-R", "acme/demo", "--jq", `[.[].name] | join(",")`); result.stdout != "main\n" {
+		test.Fatalf("branch list after delete: %+v", result)
 	}
 }
 

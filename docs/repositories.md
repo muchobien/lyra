@@ -16,7 +16,7 @@ Every repository belongs to an owner, a namespace such as `krosf`, and is named
 ## Choosing the repository in the CLI
 
 Commands that act on one repository (`pr`, `issue`, `run`, `release`, `label`, `rule`,
-`secret`, `variable`, `commit`, `tag`, `workflow`, `image list`) take it from, in order:
+`secret`, `variable`, `commit`, `branch`, `compare`, `tag`, `workflow`, `image list`) take it from, in order:
 
 1. `-R owner/repo` or `--repo owner/repo`;
 2. `LYRA_REPO`;

@@ -281,6 +281,26 @@ export interface CommitWorkspace {
   files: DiffFile[];
 }
 
+export interface FileChange {
+  additions: number;
+  binary?: boolean;
+  deletions: number;
+  old_path?: string;
+  path: string;
+  status: string;
+}
+
+export interface CompareView {
+  base_sha: string;
+  /** Commits on head that aren't on base, newest first, at most 250. */
+  commits: Commit[];
+  /** Files head changed since the merge base, or base without one. */
+  files: FileChange[];
+  head_sha: string;
+  /** Empty when the two refs share no history. */
+  merge_base: string;
+}
+
 export interface CompareWorkspace {
   base_sha: string;
   /** Commits on head that aren't on base, newest first, at most 250. */
@@ -601,15 +621,6 @@ export interface PullView {
   state: string;
   title: string;
   updated_at: string;
-}
-
-export interface FileChange {
-  additions: number;
-  binary?: boolean;
-  deletions: number;
-  old_path?: string;
-  path: string;
-  status: string;
 }
 
 export type MergeRequestMethod = typeof MergeRequestMethod[keyof typeof MergeRequestMethod];
@@ -1136,9 +1147,23 @@ export type ListCommitsParams = {
   limit?: number;
 };
 
+export type CompareRefsParams = {
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
+};
+
+export type GetCompareDiffParams = {
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
+};
+
 export type GetCompareWorkspaceParams = {
-  /** Branch, tag, or commit to compare against. */
-  base: string;
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
   /** Branch, tag, or commit with the changes. */
   head: string;
 };

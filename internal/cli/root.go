@@ -54,6 +54,8 @@ LYRA_REPO, then the git remote of the working directory that points at the Lyra 
 		app.meCommand(),
 		app.repoCommand(),
 		app.commitCommand(),
+		app.branchCommand(),
+		app.compareCommand(),
 		app.tagCommand(),
 		app.tokenCommand(),
 		app.keyCommand(),

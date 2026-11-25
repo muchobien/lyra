@@ -27,6 +27,8 @@ import type {
   CommentWrite,
   Commit,
   CommitWorkspace,
+  CompareRefsParams,
+  CompareView,
   CompareWorkspace,
   CreateIssueRequest,
   CreateKeyRequest,
@@ -49,6 +51,7 @@ import type {
   ErrorBody,
   Event,
   FileChange,
+  GetCompareDiffParams,
   GetCompareWorkspaceParams,
   GetJobLogsParams,
   GetRepositoryBlameParams,
@@ -3074,6 +3077,280 @@ export function useGetCommitWorkspace<TData = Awaited<ReturnType<typeof getCommi
 
 
 
+export const getCompareRefsUrl = (owner: string,
+    repo: string,
+    params: CompareRefsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare`
+}
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export const compareRefs = async (owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: Parameters<typeof orvalFetch>[1]): Promise<CompareView> => {
+
+  return orvalFetch<CompareView>(getCompareRefsUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompareRefsQueryKey = (owner: string,
+    repo: string,
+    params?: CompareRefsParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCompareRefsQueryOptions = <TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCompareRefsQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof compareRefs>>> = ({ signal }) => compareRefs(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CompareRefsQueryResult = NonNullable<Awaited<ReturnType<typeof compareRefs>>>
+export type CompareRefsQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof compareRefs>>,
+          TError,
+          Awaited<ReturnType<typeof compareRefs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof compareRefs>>,
+          TError,
+          Awaited<ReturnType<typeof compareRefs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCompareRefsQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCompareDiffUrl = (owner: string,
+    repo: string,
+    params: GetCompareDiffParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/diff?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/diff`
+}
+
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export const getCompareDiff = async (owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: Parameters<typeof orvalFetch>[1]): Promise<string> => {
+
+  return orvalFetch<string>(getGetCompareDiffUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompareDiffQueryKey = (owner: string,
+    repo: string,
+    params?: GetCompareDiffParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare/diff`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCompareDiffQueryOptions = <TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompareDiffQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompareDiff>>> = ({ signal }) => getCompareDiff(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCompareDiffQueryResult = NonNullable<Awaited<ReturnType<typeof getCompareDiff>>>
+export type GetCompareDiffQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareDiff>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareDiff>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareDiff>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareDiff>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCompareDiffQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetCompareWorkspaceUrl = (owner: string,
     repo: string,
     params: GetCompareWorkspaceParams,) => {
@@ -3088,7 +3365,7 @@ export const getGetCompareWorkspaceUrl = (owner: string,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare`
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/view?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/view`
 }
 
 /**
@@ -3116,7 +3393,7 @@ export const getGetCompareWorkspaceQueryKey = (owner: string,
     repo: string,
     params?: GetCompareWorkspaceParams,) => {
     return [
-    `/api/repos/${owner}/${repo}/compare`, ...(params ? [params] : [])
+    `/api/repos/${owner}/${repo}/compare/view`, ...(params ? [params] : [])
     ] as const;
     }
 

@@ -45,12 +45,6 @@ type pullPatch struct {
 	Files   []diffFile `json:"files"`
 }
 
-type compareInput struct {
-	RepoPath
-	Base string `query:"base" required:"true" doc:"Branch, tag, or commit to compare against."`
-	Head string `query:"head" required:"true" doc:"Branch, tag, or commit with the changes."`
-}
-
 type compareWorkspace struct {
 	BaseSHA   string         `json:"base_sha"`
 	HeadSHA   string         `json:"head_sha"`
@@ -271,27 +265,15 @@ func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*bo
 }
 
 func (s *Server) handleCompareWorkspace(r *http.Request, input *compareInput) (*body[compareWorkspace], error) {
-	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
+	comparison, err := s.resolveCompare(r, input)
 	if err != nil {
 		return nil, err
 	}
-	ctx := r.Context()
-	dir := s.repoDir(repo.Name)
-	view := compareWorkspace{}
-	if view.BaseSHA, err = s.git.ResolveCommit(ctx, dir, input.Base); err != nil {
-		return nil, notFound("unknown ref " + input.Base)
-	}
-	if view.HeadSHA, err = s.git.ResolveCommit(ctx, dir, input.Head); err != nil {
-		return nil, notFound("unknown ref " + input.Head)
-	}
-	from := view.BaseSHA
-	if mergeBase, err := s.git.MergeBase(ctx, dir, view.BaseSHA, view.HeadSHA); err == nil {
-		view.MergeBase, from = mergeBase, mergeBase
-	}
-	if view.Commits, err = s.commits(ctx, repo.Name, view.HeadSHA, 250, view.BaseSHA); err != nil {
+	view := compareWorkspace{BaseSHA: comparison.baseSHA, HeadSHA: comparison.headSHA, MergeBase: comparison.mergeBase}
+	if view.Commits, err = s.commits(r.Context(), comparison.repo, view.HeadSHA, 250, view.BaseSHA); err != nil {
 		return nil, err
 	}
-	patch, err := s.git.Diff(ctx, dir, from, view.HeadSHA)
+	patch, err := s.git.Diff(r.Context(), s.repoDir(comparison.repo), comparison.from, view.HeadSHA)
 	if err != nil {
 		return nil, err
 	}
