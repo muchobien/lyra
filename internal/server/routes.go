@@ -21,6 +21,9 @@ func headAsGet(next http.Handler) http.Handler {
 
 func (s *Server) Handler() http.Handler {
 	router := chi.NewRouter()
+	router.NotFound(s.page(func(http.ResponseWriter, *http.Request) error {
+		return notFound("page not found")
+	}))
 	router.Use(
 		http.NewCrossOriginProtection().Handler,
 		headAsGet,
