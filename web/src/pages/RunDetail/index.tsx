@@ -38,6 +38,7 @@ export function RunDetail({ number }: RunDetailProps) {
     logsURL,
     logs,
     following,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -50,6 +51,7 @@ export function RunDetail({ number }: RunDetailProps) {
     explainFailure,
     toggleFollow,
     logScrolled,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   } = useConnect({ number });
@@ -145,15 +147,17 @@ export function RunDetail({ number }: RunDetailProps) {
               </details>
             ))}
         </details>
-        <details className="lyra-actions-step">
+        <details className="lyra-actions-step" open={fullLogOpen} onToggle={fullLogToggled}>
           <summary>Full log</summary>
-          <LogText
-            lines={logLines}
-            start={0}
-            end={logLines.length}
-            query={search.q}
-            empty="No matching log lines."
-          />
+          {fullLogOpen && (
+            <LogText
+              lines={logLines}
+              start={0}
+              end={logLines.length}
+              query={search.q}
+              empty="No matching log lines."
+            />
+          )}
         </details>
       </div>
     );

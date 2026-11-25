@@ -5,6 +5,7 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type ToggleEvent,
   type UIEvent,
 } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -83,6 +84,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
   const [explainedJob, setExplainedJob] = useState(0);
 
   const [following, setFollowing] = useState(true);
+  const [fullLogOpen, setFullLogOpen] = useState(false);
   const logPanel = useRef<HTMLDivElement>(null);
 
   const cancel = useCancelRun({
@@ -179,6 +181,10 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     }
   }
 
+  function fullLogToggled(event: ToggleEvent<HTMLDetailsElement>) {
+    setFullLogOpen(event.newState === "open");
+  }
+
   function jobChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({ search: { ...search, job: event.target.value }, resetScroll: false });
     setFollowing(true);
@@ -205,6 +211,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     logsURL,
     logs,
     following,
+    fullLogOpen,
     logPanel,
     cancel,
     rerun,
@@ -217,6 +224,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     explainFailure,
     toggleFollow,
     logScrolled,
+    fullLogToggled,
     jobChanged,
     searchChanged,
   };
