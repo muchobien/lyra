@@ -436,6 +436,41 @@ SELECT id, repo FROM runs WHERE stopped_at IS NOT NULL AND stopped_at < ? ORDER 
 -- name: ListRunLogObjects :many
 SELECT tasks.log_object FROM tasks JOIN jobs ON jobs.id = tasks.job_id WHERE jobs.run_id = ? AND tasks.log_object != '';
 
+-- name: ListRunArtifactObjects :many
+SELECT object FROM artifacts WHERE run_id = ?;
+
+-- name: CreateArtifact :one
+INSERT INTO artifacts (run_id, job_id, name, object, status, created_at, expires_at)
+VALUES (?, ?, ?, ?, 'pending', ?, ?)
+RETURNING *;
+
+-- name: GetArtifactByName :one
+SELECT * FROM artifacts WHERE run_id = ? AND name = ?;
+
+-- name: GetArtifact :one
+SELECT * FROM artifacts WHERE id = ?;
+
+-- name: ListRunArtifacts :many
+SELECT * FROM artifacts WHERE run_id = ? AND status = 'ready' ORDER BY name;
+
+-- name: UpdateArtifact :exec
+UPDATE artifacts SET size = ?, sha256 = ?, status = ? WHERE id = ?;
+
+-- name: DeleteArtifact :execrows
+DELETE FROM artifacts WHERE id = ?;
+
+-- name: ListExpiredArtifacts :many
+SELECT artifacts.*, runs.repo FROM artifacts JOIN runs ON runs.id = artifacts.run_id
+WHERE (artifacts.expires_at IS NOT NULL AND artifacts.expires_at < ?)
+	OR (artifacts.status = 'pending' AND artifacts.created_at < ?)
+ORDER BY artifacts.id;
+
+-- name: ListAllArtifacts :many
+SELECT runs.repo, runs.number, artifacts.name, artifacts.object, artifacts.size, artifacts.sha256
+FROM artifacts JOIN runs ON runs.id = artifacts.run_id
+WHERE artifacts.status = 'ready'
+ORDER BY runs.repo, runs.number, artifacts.name;
+
 -- name: DeleteRun :exec
 DELETE FROM runs WHERE id = ?;
 
