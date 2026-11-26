@@ -165,6 +165,29 @@ export interface Attachment {
   url: string;
 }
 
+export interface BlameCommit {
+  author: string;
+  date: string;
+  sha: string;
+  summary: string;
+}
+
+export interface BlameRange {
+  commit: BlameCommit;
+  /** Highlighted HTML, one entry per line. */
+  lines: string[];
+  /** Line number of the range's first line. */
+  start: number;
+  /** The same lines as plain text. */
+  text: string[];
+}
+
+export interface BlameResponse {
+  binary: boolean;
+  path: string;
+  ranges: BlameRange[];
+}
+
 export interface BlobResponse {
   binary: boolean;
   code: string;
@@ -196,6 +219,18 @@ export interface Commit {
   sha: string;
   signature: Signature;
   subject: string;
+}
+
+export interface BranchView {
+  /** Commits on the branch that aren't on the default branch. */
+  ahead: number;
+  /** Commits on the default branch that aren't on the branch. */
+  behind: number;
+  commit: Commit;
+  default: boolean;
+  name: string;
+  /** A branch rule forbids deleting it. */
+  protected: boolean;
 }
 
 export interface Check {
@@ -246,6 +281,37 @@ export interface CommitWorkspace {
   checks: Checks;
   commit: Commit;
   files: DiffFile[];
+}
+
+export interface FileChange {
+  additions: number;
+  binary?: boolean;
+  deletions: number;
+  old_path?: string;
+  path: string;
+  status: string;
+}
+
+export interface CompareView {
+  base_sha: string;
+  /** Commits on head that aren't on base, newest first, at most 250. */
+  commits: Commit[];
+  /** Files head changed since the merge base, or base without one. */
+  files: FileChange[];
+  head_sha: string;
+  /** Empty when the two refs share no history. */
+  merge_base: string;
+}
+
+export interface CompareWorkspace {
+  base_sha: string;
+  /** Commits on head that aren't on base, newest first, at most 250. */
+  commits: Commit[];
+  /** Changes on head since the merge base, or since base without one. */
+  files: DiffFile[];
+  head_sha: string;
+  /** Empty when the two refs share no history. */
+  merge_base: string;
 }
 
 export interface Image {
@@ -557,15 +623,6 @@ export interface PullView {
   state: string;
   title: string;
   updated_at: string;
-}
-
-export interface FileChange {
-  additions: number;
-  binary?: boolean;
-  deletions: number;
-  old_path?: string;
-  path: string;
-  status: string;
 }
 
 export type MergeRequestMethod = typeof MergeRequestMethod[keyof typeof MergeRequestMethod];
@@ -1066,6 +1123,13 @@ export type UploadAttachmentParams = {
   name: string;
 };
 
+export type GetRepositoryBlameParams = {
+  /** Branch, tag, or commit; defaults to the repository's default branch. */
+  ref?: string;
+  /** Path relative to the repository root. */
+  path?: string;
+};
+
 export type GetRepositoryBlobParams = {
   /** Branch, tag, or commit; defaults to the repository's default branch. */
   ref?: string;
@@ -1073,11 +1137,37 @@ export type GetRepositoryBlobParams = {
   path?: string;
 };
 
+export type DeleteBranchParams = {
+  /** The branch name, such as feature/login. */
+  name: string;
+};
+
 export type ListCommitsParams = {
   /** Defaults to the default branch. */
   ref?: string;
   /** 1 to 500; defaults to 30. */
   limit?: number;
+};
+
+export type CompareRefsParams = {
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
+};
+
+export type GetCompareDiffParams = {
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
+};
+
+export type GetCompareWorkspaceParams = {
+  /** Branch, tag, or commit to compare against; defaults to the default branch. */
+  base?: string;
+  /** Branch, tag, or commit with the changes. */
+  head: string;
 };
 
 export type ListRepositoryFilesParams = {

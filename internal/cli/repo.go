@@ -1,8 +1,13 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
+	"fmt"
+	"io"
+	"mime"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +22,77 @@ func (app *app) repoCommand() *cobra.Command {
 		app.repoViewCommand(),
 		app.repoDeleteCommand(),
 	)
+	repo.AddCommand(app.repoScoped(app.repoArchiveCommand())...)
 	return repo
+}
+
+type downloadedArchive struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
+func (app *app) repoArchiveCommand() *cobra.Command {
+	var format, output string
+	archive := &cobra.Command{
+		Use:   "archive [<ref>]",
+		Short: "Download the files at a ref as a .tar.gz or .zip archive",
+		Long: `Download the files at a branch, tag or commit (default: the default branch), without
+history, inside a <repo>-<ref> directory. The archive is saved as <repo>-<ref>.<format> in
+the current directory, or where --output says; --output - writes it to stdout. Prints the
+saved file's path and size.`,
+		Args: MaximumArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if format != "tar.gz" && format != "zip" {
+				return UsageError{fmt.Errorf("--format is tar.gz or zip, not %q", format)}
+			}
+			owner, repo := splitRepo(args[0])
+			ref := ""
+			if len(args) > 1 {
+				ref = args[1]
+			} else {
+				view, _, err := decode[lyraapi.RepoView](app.client.api.GetRepo(cmd.Context(), owner, repo))
+				if err != nil {
+					return err
+				}
+				ref = view.DefaultBranch
+			}
+			response, err := app.client.streaming.DownloadArchive(cmd.Context(), owner, repo, ref+"."+format)
+			if err != nil {
+				return err
+			}
+			defer response.Body.Close()
+			if response.StatusCode >= 400 {
+				return responseError(response)
+			}
+			if output == "-" {
+				_, err := io.Copy(cmd.OutOrStdout(), response.Body)
+				return err
+			}
+			if output == "" {
+				_, params, _ := mime.ParseMediaType(response.Header.Get("Content-Disposition"))
+				output = filepath.Base(cmp.Or(params["filename"], repo+"."+format))
+			}
+			temporary, err := os.CreateTemp(filepath.Dir(output), ".lyra-download-*")
+			if err != nil {
+				return err
+			}
+			defer os.Remove(temporary.Name())
+			size, err := io.Copy(temporary, response.Body)
+			if closeErr := temporary.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				return err
+			}
+			if err := os.Rename(temporary.Name(), output); err != nil {
+				return err
+			}
+			return app.emitIndented(cmd, downloadedArchive{Path: output, Size: size})
+		},
+	}
+	archive.Flags().StringVar(&format, "format", "tar.gz", "tar.gz or zip")
+	archive.Flags().StringVarP(&output, "output", "O", "", "file to save the archive to, or - for stdout")
+	return archive
 }
 
 func (app *app) repoCreateCommand() *cobra.Command {

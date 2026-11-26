@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -506,6 +508,81 @@ func (g Git) Blob(ctx context.Context, dir, sha, path string) ([]byte, error) {
 		return nil, fmt.Errorf("cat-file: %v: %s", err, stderr)
 	}
 	return stdout, nil
+}
+
+func (g Git) AheadBehind(ctx context.Context, dir, base, head string) (int, int, error) {
+	stdout, stderr, err := g.run(ctx, dir, "rev-list", "--left-right", "--count", base+"..."+head, "--")
+	if err != nil {
+		return 0, 0, fmt.Errorf("rev-list --left-right: %v: %s", err, stderr)
+	}
+	counts := strings.Fields(string(stdout))
+	if len(counts) != 2 {
+		return 0, 0, fmt.Errorf("rev-list --left-right: unexpected output %q", stdout)
+	}
+	behind, _ := strconv.Atoi(counts[0])
+	ahead, _ := strconv.Atoi(counts[1])
+	return ahead, behind, nil
+}
+
+type BlameCommit struct {
+	SHA     string `json:"sha"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Summary string `json:"summary"`
+}
+
+type BlameLine struct {
+	SHA  string
+	Text string
+}
+
+var blameHeader = regexp.MustCompile(`^([0-9a-f]{40,64}) \d+ \d+`)
+
+func (g Git) Blame(ctx context.Context, dir, sha, path string) ([]BlameLine, map[string]BlameCommit, error) {
+	stdout, stderr, err := g.run(ctx, dir, "blame", "--porcelain", sha, "--", path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("git blame: %v: %s", err, stderr)
+	}
+	lines := []BlameLine{}
+	commits := map[string]BlameCommit{}
+	current := BlameCommit{}
+	for _, line := range strings.Split(strings.TrimSuffix(string(stdout), "\n"), "\n") {
+		if text, found := strings.CutPrefix(line, "\t"); found {
+			lines = append(lines, BlameLine{SHA: current.SHA, Text: text})
+			continue
+		}
+		if match := blameHeader.FindStringSubmatch(line); match != nil {
+			current = commits[match[1]]
+			current.SHA = match[1]
+			commits[current.SHA] = current
+			continue
+		}
+		key, value, _ := strings.Cut(line, " ")
+		switch key {
+		case "author":
+			current.Author = value
+		case "author-time":
+			seconds, _ := strconv.ParseInt(value, 10, 64)
+			current.Date = time.Unix(seconds, 0).UTC().Format(time.RFC3339)
+		case "summary":
+			current.Summary = value
+		}
+		commits[current.SHA] = current
+	}
+	return lines, commits, nil
+}
+
+func (g Git) Archive(ctx context.Context, dir, format, prefix, sha string, output io.Writer) error {
+	cmd := exec.CommandContext(ctx, "git", "archive", "--format="+format, "--prefix="+prefix, sha)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	cmd.Stdout = output
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git archive: %v: %s", err, stderr.Bytes())
+	}
+	return nil
 }
 
 func (g Git) ValidRef(ctx context.Context, ref string) bool {

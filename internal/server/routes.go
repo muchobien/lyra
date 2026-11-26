@@ -1,7 +1,10 @@
 package server
 
 import (
+	"fmt"
+	"html"
 	"net/http"
+	"strings"
 
 	"code.forgejo.org/forgejo/actions-proto/ping/v1/pingv1connect"
 	"code.forgejo.org/forgejo/actions-proto/runner/v1/runnerv1connect"
@@ -19,8 +22,25 @@ func headAsGet(next http.Handler) http.Handler {
 	})
 }
 
+func goImport(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("go-get") != "1" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		name := chi.URLParam(r, "owner") + "/" + strings.TrimSuffix(chi.URLParam(r, "repo"), ".git")
+		root := r.Host + "/" + name
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, "<!doctype html>\n<meta name=\"go-import\" content=\"%s git %s\">\n",
+			html.EscapeString(root), html.EscapeString(cloneURL(r, name)))
+	})
+}
+
 func (s *Server) Handler() http.Handler {
 	router := chi.NewRouter()
+	router.NotFound(s.page(func(http.ResponseWriter, *http.Request) error {
+		return notFound("page not found")
+	}))
 	router.Use(
 		http.NewCrossOriginProtection().Handler,
 		headAsGet,
@@ -50,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) uiRoutes(repo chi.Router) {
+	repo.Use(goImport)
 	repo.Get("/info/refs", s.handleGit)
 	repo.Post("/git-upload-pack", s.handleGit)
 	repo.Post("/git-receive-pack", s.handleGit)
@@ -57,9 +78,13 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/", s.page(s.uiApplication))
 	repo.Get("/tree/*", s.page(s.uiSource))
 	repo.Get("/blob/*", s.page(s.uiSource))
+	repo.Get("/blame/*", s.page(s.uiSource))
 	repo.Get("/commits/{ref}", s.page(s.uiApplication))
 	repo.Get("/commit/{sha}", s.page(s.uiApplication))
 	repo.Get("/tags", s.page(s.uiApplication))
+	repo.Get("/branches", s.page(s.uiApplication))
+	repo.Get("/compare", s.page(s.uiApplication))
+	repo.Get("/compare/*", s.page(s.uiApplication))
 	repo.Get("/releases", s.page(s.uiApplication))
 	repo.Get("/runs", s.page(s.uiApplication))
 	repo.Get("/runs/{number}", s.page(s.uiApplication))
@@ -67,6 +92,7 @@ func (s *Server) uiRoutes(repo chi.Router) {
 	repo.Get("/settings", s.page(s.uiApplication))
 	repo.Get("/activity", s.page(s.uiApplication))
 	repo.Get("/releases/tag/*", s.page(s.uiApplication))
+	repo.Get("/archive/*", api(s.handleArchive))
 	repo.Get("/releases/download/*", api(s.handleStableDownload))
 	repo.Get("/releases/latest/download/{name}", api(s.handleLatestDownload))
 	repo.Get("/attachments/{id}/{name}", api(s.handleDownloadAttachment))

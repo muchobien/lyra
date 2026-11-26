@@ -174,6 +174,35 @@ type Attachment struct {
 	Url         string    `json:"url"`
 }
 
+// BlameCommit defines model for BlameCommit.
+type BlameCommit struct {
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Sha     string `json:"sha"`
+	Summary string `json:"summary"`
+}
+
+// BlameRange defines model for BlameRange.
+type BlameRange struct {
+	Commit BlameCommit `json:"commit"`
+
+	// Lines Highlighted HTML, one entry per line.
+	Lines []string `json:"lines"`
+
+	// Start Line number of the range's first line.
+	Start int64 `json:"start"`
+
+	// Text The same lines as plain text.
+	Text []string `json:"text"`
+}
+
+// BlameResponse defines model for BlameResponse.
+type BlameResponse struct {
+	Binary bool         `json:"binary"`
+	Path   string       `json:"path"`
+	Ranges []BlameRange `json:"ranges"`
+}
+
 // BlobResponse defines model for BlobResponse.
 type BlobResponse struct {
 	Binary bool   `json:"binary"`
@@ -183,6 +212,21 @@ type BlobResponse struct {
 	Markdown string `json:"markdown"`
 	Path     string `json:"path"`
 	Size     int64  `json:"size"`
+}
+
+// BranchView defines model for BranchView.
+type BranchView struct {
+	// Ahead Commits on the branch that aren't on the default branch.
+	Ahead int64 `json:"ahead"`
+
+	// Behind Commits on the default branch that aren't on the branch.
+	Behind  int64  `json:"behind"`
+	Commit  Commit `json:"commit"`
+	Default bool   `json:"default"`
+	Name    string `json:"name"`
+
+	// Protected A branch rule forbids deleting it.
+	Protected bool `json:"protected"`
 }
 
 // Check defines model for Check.
@@ -267,6 +311,36 @@ type CommitWorkspace struct {
 	Checks Checks     `json:"checks"`
 	Commit Commit     `json:"commit"`
 	Files  []DiffFile `json:"files"`
+}
+
+// CompareView defines model for CompareView.
+type CompareView struct {
+	BaseSha string `json:"base_sha"`
+
+	// Commits Commits on head that aren't on base, newest first, at most 250.
+	Commits []Commit `json:"commits"`
+
+	// Files Files head changed since the merge base, or base without one.
+	Files   []FileChange `json:"files"`
+	HeadSha string       `json:"head_sha"`
+
+	// MergeBase Empty when the two refs share no history.
+	MergeBase string `json:"merge_base"`
+}
+
+// CompareWorkspace defines model for CompareWorkspace.
+type CompareWorkspace struct {
+	BaseSha string `json:"base_sha"`
+
+	// Commits Commits on head that aren't on base, newest first, at most 250.
+	Commits []Commit `json:"commits"`
+
+	// Files Changes on head since the merge base, or since base without one.
+	Files   []DiffFile `json:"files"`
+	HeadSha string     `json:"head_sha"`
+
+	// MergeBase Empty when the two refs share no history.
+	MergeBase string `json:"merge_base"`
 }
 
 // CreateIssueRequest defines model for CreateIssueRequest.
@@ -1273,6 +1347,15 @@ type UploadAttachmentParams struct {
 	Name string `form:"name" json:"name"`
 }
 
+// GetRepositoryBlameParams defines parameters for GetRepositoryBlame.
+type GetRepositoryBlameParams struct {
+	// Ref Branch, tag, or commit; defaults to the repository's default branch.
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
+
+	// Path Path relative to the repository root.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // GetRepositoryBlobParams defines parameters for GetRepositoryBlob.
 type GetRepositoryBlobParams struct {
 	// Ref Branch, tag, or commit; defaults to the repository's default branch.
@@ -1282,6 +1365,12 @@ type GetRepositoryBlobParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// DeleteBranchParams defines parameters for DeleteBranch.
+type DeleteBranchParams struct {
+	// Name The branch name, such as feature/login.
+	Name string `form:"name" json:"name"`
+}
+
 // ListCommitsParams defines parameters for ListCommits.
 type ListCommitsParams struct {
 	// Ref Defaults to the default branch.
@@ -1289,6 +1378,33 @@ type ListCommitsParams struct {
 
 	// Limit 1 to 500; defaults to 30.
 	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CompareRefsParams defines parameters for CompareRefs.
+type CompareRefsParams struct {
+	// Base Branch, tag, or commit to compare against; defaults to the default branch.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
+
+	// Head Branch, tag, or commit with the changes.
+	Head string `form:"head" json:"head"`
+}
+
+// GetCompareDiffParams defines parameters for GetCompareDiff.
+type GetCompareDiffParams struct {
+	// Base Branch, tag, or commit to compare against; defaults to the default branch.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
+
+	// Head Branch, tag, or commit with the changes.
+	Head string `form:"head" json:"head"`
+}
+
+// GetCompareWorkspaceParams defines parameters for GetCompareWorkspace.
+type GetCompareWorkspaceParams struct {
+	// Base Branch, tag, or commit to compare against; defaults to the default branch.
+	Base *string `form:"base,omitempty" json:"base,omitempty"`
+
+	// Head Branch, tag, or commit with the changes.
+	Head string `form:"head" json:"head"`
 }
 
 // ListRepositoryFilesParams defines parameters for ListRepositoryFiles.
@@ -1778,12 +1894,33 @@ type ClientInterface interface {
 	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
 	UploadAttachmentWithBody(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetRepositoryBlame Read the commit that last changed each line of a file
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+	GetRepositoryBlame(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetRepositoryBlob Read highlighted source or binary/large-file metadata
 	//
 	// Scope: read.
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 	GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteBranch Delete a branch
+	//
+	// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+	//
+	// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+	DeleteBranch(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListBranches List branches with their last commit and distance from the default branch
+	//
+	// Scope: read. The default branch comes first, then the most recently updated.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+	ListBranches(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCommits List commits
 	//
@@ -1805,6 +1942,27 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 	GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompareRefs Compare two refs: the commits head adds and the files it changes
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `CompareRefs` operationId).
+	CompareRefs(ctx context.Context, owner string, repo string, params *CompareRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCompareDiff The unified diff of head since its merge base with base
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare/diff (the `GetCompareDiff` operationId).
+	GetCompareDiff(ctx context.Context, owner string, repo string, params *GetCompareDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCompareWorkspace Compare two refs: the commits head adds and structured diffs
+	//
+	// Scope: read.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare/view (the `GetCompareWorkspace` operationId).
+	GetCompareWorkspace(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRepositoryFiles List recursive file paths for the file finder
 	//
@@ -2447,6 +2605,13 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeToken(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DownloadArchive Download the files at a ref as a .tar.gz or .zip archive
+	//
+	// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+	//
+	// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+	DownloadArchive(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DownloadAttachment Download an attachment
 	//
 	// Scope: read. Supports range requests.
@@ -2950,6 +3115,23 @@ func (c *Client) UploadAttachmentWithBody(ctx context.Context, owner string, rep
 	return c.Client.Do(req)
 }
 
+// GetRepositoryBlame Read the commit that last changed each line of a file
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+func (c *Client) GetRepositoryBlame(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRepositoryBlameRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetRepositoryBlob Read highlighted source or binary/large-file metadata
 //
 // Scope: read.
@@ -2957,6 +3139,40 @@ func (c *Client) UploadAttachmentWithBody(ctx context.Context, owner string, rep
 // Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 func (c *Client) GetRepositoryBlob(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRepositoryBlobRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteBranch Delete a branch
+//
+// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+//
+// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+func (c *Client) DeleteBranch(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteBranchRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListBranches List branches with their last commit and distance from the default branch
+//
+// Scope: read. The default branch comes first, then the most recently updated.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+func (c *Client) ListBranches(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListBranchesRequest(c.Server, owner, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -3008,6 +3224,57 @@ func (c *Client) GetCommit(ctx context.Context, owner string, repo string, rev s
 // Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 func (c *Client) GetCommitWorkspace(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCommitWorkspaceRequest(c.Server, owner, repo, rev)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompareRefs Compare two refs: the commits head adds and the files it changes
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `CompareRefs` operationId).
+func (c *Client) CompareRefs(ctx context.Context, owner string, repo string, params *CompareRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompareRefsRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCompareDiff The unified diff of head since its merge base with base
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare/diff (the `GetCompareDiff` operationId).
+func (c *Client) GetCompareDiff(ctx context.Context, owner string, repo string, params *GetCompareDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCompareDiffRequest(c.Server, owner, repo, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCompareWorkspace Compare two refs: the commits head adds and structured diffs
+//
+// Scope: read.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare/view (the `GetCompareWorkspace` operationId).
+func (c *Client) GetCompareWorkspace(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCompareWorkspaceRequest(c.Server, owner, repo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4469,6 +4736,23 @@ func (c *Client) RevokeToken(ctx context.Context, id int64, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
+// DownloadArchive Download the files at a ref as a .tar.gz or .zip archive
+//
+// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+//
+// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+func (c *Client) DownloadArchive(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadArchiveRequest(c.Server, owner, repo, archive)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // DownloadAttachment Download an attachment
 //
 // Scope: read. Supports range requests.
@@ -5408,6 +5692,86 @@ func NewUploadAttachmentRequestWithBody(server string, owner string, repo string
 	return req, nil
 }
 
+// NewGetRepositoryBlameRequest constructs an http.Request for the GetRepositoryBlame method
+func NewGetRepositoryBlameRequest(server string, owner string, repo string, params *GetRepositoryBlameParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/blame"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetRepositoryBlobRequest constructs an http.Request for the GetRepositoryBlob method
 func NewGetRepositoryBlobRequest(server string, owner string, repo string, params *GetRepositoryBlobParams) (*http.Request, error) {
 	var err error
@@ -5478,6 +5842,111 @@ func NewGetRepositoryBlobRequest(server string, owner string, repo string, param
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteBranchRequest constructs an http.Request for the DeleteBranch method
+func NewDeleteBranchRequest(server string, owner string, repo string, params *DeleteBranchParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/branches"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "name", params.Name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListBranchesRequest constructs an http.Request for the ListBranches method
+func NewListBranchesRequest(server string, owner string, repo string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/branches"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5654,6 +6123,234 @@ func NewGetCommitWorkspaceRequest(server string, owner string, repo string, rev 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompareRefsRequest constructs an http.Request for the CompareRefs method
+func NewCompareRefsRequest(server string, owner string, repo string, params *CompareRefsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/compare"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCompareDiffRequest constructs an http.Request for the GetCompareDiff method
+func NewGetCompareDiffRequest(server string, owner string, repo string, params *GetCompareDiffParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/compare/diff"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCompareWorkspaceRequest constructs an http.Request for the GetCompareWorkspace method
+func NewGetCompareWorkspaceRequest(server string, owner string, repo string, params *GetCompareWorkspaceParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/compare/view"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Base != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "base", *params.Base, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "head", params.Head, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9178,6 +9875,54 @@ func NewRevokeTokenRequest(server string, id int64) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDownloadArchiveRequest constructs an http.Request for the DownloadArchive method
+func NewDownloadArchiveRequest(server string, owner string, repo string, archive string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "archive", archive, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/" + pathParam0 + "/" + pathParam1 + "/archive/" + pathParam2
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDownloadAttachmentRequest constructs an http.Request for the DownloadAttachment method
 func NewDownloadAttachmentRequest(server string, owner string, repo string, id string, name string) (*http.Request, error) {
 	var err error
@@ -9623,6 +10368,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/repos/{owner}/{repo}/attachments (the `UploadAttachment` operationId).
 	UploadAttachmentWithBodyWithResponse(ctx context.Context, owner string, repo string, params *UploadAttachmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadAttachmentResponse, error)
 
+	// GetRepositoryBlameWithResponse Read the commit that last changed each line of a file
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+	GetRepositoryBlameWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlameResponse, error)
+
 	// GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
 	//
 	// Scope: read.
@@ -9631,6 +10385,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/blob (the `GetRepositoryBlob` operationId).
 	GetRepositoryBlobWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlobParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlobResponse, error)
+
+	// DeleteBranchWithResponse Delete a branch
+	//
+	// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+	DeleteBranchWithResponse(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*DeleteBranchResponse, error)
+
+	// ListBranchesWithResponse List branches with their last commit and distance from the default branch
+	//
+	// Scope: read. The default branch comes first, then the most recently updated.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+	ListBranchesWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*ListBranchesResponse, error)
 
 	// ListCommitsWithResponse List commits
 	//
@@ -9658,6 +10430,33 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/commits/{rev}/view (the `GetCommitWorkspace` operationId).
 	GetCommitWorkspaceWithResponse(ctx context.Context, owner string, repo string, rev string, reqEditors ...RequestEditorFn) (*GetCommitWorkspaceResponse, error)
+
+	// CompareRefsWithResponse Compare two refs: the commits head adds and the files it changes
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `CompareRefs` operationId).
+	CompareRefsWithResponse(ctx context.Context, owner string, repo string, params *CompareRefsParams, reqEditors ...RequestEditorFn) (*CompareRefsResponse, error)
+
+	// GetCompareDiffWithResponse The unified diff of head since its merge base with base
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare/diff (the `GetCompareDiff` operationId).
+	GetCompareDiffWithResponse(ctx context.Context, owner string, repo string, params *GetCompareDiffParams, reqEditors ...RequestEditorFn) (*GetCompareDiffResponse, error)
+
+	// GetCompareWorkspaceWithResponse Compare two refs: the commits head adds and structured diffs
+	//
+	// Scope: read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/compare/view (the `GetCompareWorkspace` operationId).
+	GetCompareWorkspaceWithResponse(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*GetCompareWorkspaceResponse, error)
 
 	// ListRepositoryFilesWithResponse List recursive file paths for the file finder
 	//
@@ -10387,6 +11186,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/tokens/{id} (the `RevokeToken` operationId).
 	RevokeTokenWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*RevokeTokenResponse, error)
+
+	// DownloadArchiveWithResponse Download the files at a ref as a .tar.gz or .zip archive
+	//
+	// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+	DownloadArchiveWithResponse(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*DownloadArchiveResponse, error)
 
 	// DownloadAttachmentWithResponse Download an attachment
 	//
@@ -11451,6 +12259,54 @@ func (r UploadAttachmentResponse) ContentType() string {
 	return ""
 }
 
+type GetRepositoryBlameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BlameResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRepositoryBlameResponse) GetJSON200() *BlameResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetRepositoryBlameResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRepositoryBlameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRepositoryBlameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRepositoryBlameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRepositoryBlameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetRepositoryBlobResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11493,6 +12349,102 @@ func (r GetRepositoryBlobResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetRepositoryBlobResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteBranchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeletedWithEvent
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteBranchResponse) GetJSON200() *DeletedWithEvent {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteBranchResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteBranchResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteBranchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteBranchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteBranchResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListBranchesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]BranchView
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListBranchesResponse) GetJSON200() *[]BranchView {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListBranchesResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListBranchesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListBranchesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListBranchesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListBranchesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11637,6 +12589,150 @@ func (r GetCommitWorkspaceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCommitWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompareRefsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CompareView
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompareRefsResponse) GetJSON200() *CompareView {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CompareRefsResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CompareRefsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompareRefsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompareRefsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompareRefsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetCompareDiffResponse200Headers the declared response headers of an HTTP 200 response for GetCompareDiff
+type GetCompareDiffResponse200Headers struct {
+	ContentType *string
+}
+
+type GetCompareDiffResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetCompareDiffResponse200Headers
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetCompareDiffResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCompareDiffResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCompareDiffResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCompareDiffResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCompareDiffResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCompareWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CompareWorkspace
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCompareWorkspaceResponse) GetJSON200() *CompareWorkspace {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetCompareWorkspaceResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCompareWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCompareWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCompareWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCompareWorkspaceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14648,6 +15744,40 @@ func (r RevokeTokenResponse) ContentType() string {
 	return ""
 }
 
+type DownloadArchiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r DownloadArchiveResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadArchiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadArchiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DownloadArchiveResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DownloadAttachmentResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15176,6 +16306,21 @@ func (c *ClientWithResponses) UploadAttachmentWithBodyWithResponse(ctx context.C
 	return ParseUploadAttachmentResponse(rsp)
 }
 
+// GetRepositoryBlameWithResponse Read the commit that last changed each line of a file
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/blame (the `GetRepositoryBlame` operationId).
+func (c *ClientWithResponses) GetRepositoryBlameWithResponse(ctx context.Context, owner string, repo string, params *GetRepositoryBlameParams, reqEditors ...RequestEditorFn) (*GetRepositoryBlameResponse, error) {
+	rsp, err := c.GetRepositoryBlame(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRepositoryBlameResponse(rsp)
+}
+
 // GetRepositoryBlobWithResponse Read highlighted source or binary/large-file metadata
 //
 // Scope: read.
@@ -15189,6 +16334,36 @@ func (c *ClientWithResponses) GetRepositoryBlobWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseGetRepositoryBlobResponse(rsp)
+}
+
+// DeleteBranchWithResponse Delete a branch
+//
+// Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/repos/{owner}/{repo}/branches (the `DeleteBranch` operationId).
+func (c *ClientWithResponses) DeleteBranchWithResponse(ctx context.Context, owner string, repo string, params *DeleteBranchParams, reqEditors ...RequestEditorFn) (*DeleteBranchResponse, error) {
+	rsp, err := c.DeleteBranch(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteBranchResponse(rsp)
+}
+
+// ListBranchesWithResponse List branches with their last commit and distance from the default branch
+//
+// Scope: read. The default branch comes first, then the most recently updated.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/branches (the `ListBranches` operationId).
+func (c *ClientWithResponses) ListBranchesWithResponse(ctx context.Context, owner string, repo string, reqEditors ...RequestEditorFn) (*ListBranchesResponse, error) {
+	rsp, err := c.ListBranches(ctx, owner, repo, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListBranchesResponse(rsp)
 }
 
 // ListCommitsWithResponse List commits
@@ -15234,6 +16409,51 @@ func (c *ClientWithResponses) GetCommitWorkspaceWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetCommitWorkspaceResponse(rsp)
+}
+
+// CompareRefsWithResponse Compare two refs: the commits head adds and the files it changes
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare (the `CompareRefs` operationId).
+func (c *ClientWithResponses) CompareRefsWithResponse(ctx context.Context, owner string, repo string, params *CompareRefsParams, reqEditors ...RequestEditorFn) (*CompareRefsResponse, error) {
+	rsp, err := c.CompareRefs(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompareRefsResponse(rsp)
+}
+
+// GetCompareDiffWithResponse The unified diff of head since its merge base with base
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare/diff (the `GetCompareDiff` operationId).
+func (c *ClientWithResponses) GetCompareDiffWithResponse(ctx context.Context, owner string, repo string, params *GetCompareDiffParams, reqEditors ...RequestEditorFn) (*GetCompareDiffResponse, error) {
+	rsp, err := c.GetCompareDiff(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCompareDiffResponse(rsp)
+}
+
+// GetCompareWorkspaceWithResponse Compare two refs: the commits head adds and structured diffs
+//
+// Scope: read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/compare/view (the `GetCompareWorkspace` operationId).
+func (c *ClientWithResponses) GetCompareWorkspaceWithResponse(ctx context.Context, owner string, repo string, params *GetCompareWorkspaceParams, reqEditors ...RequestEditorFn) (*GetCompareWorkspaceResponse, error) {
+	rsp, err := c.GetCompareWorkspace(ctx, owner, repo, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCompareWorkspaceResponse(rsp)
 }
 
 // ListRepositoryFilesWithResponse List recursive file paths for the file finder
@@ -16451,6 +17671,21 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, id in
 	return ParseRevokeTokenResponse(rsp)
 }
 
+// DownloadArchiveWithResponse Download the files at a ref as a .tar.gz or .zip archive
+//
+// Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /{owner}/{repo}/archive/{archive} (the `DownloadArchive` operationId).
+func (c *ClientWithResponses) DownloadArchiveWithResponse(ctx context.Context, owner string, repo string, archive string, reqEditors ...RequestEditorFn) (*DownloadArchiveResponse, error) {
+	rsp, err := c.DownloadArchive(ctx, owner, repo, archive, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadArchiveResponse(rsp)
+}
+
 // DownloadAttachmentWithResponse Download an attachment
 //
 // Scope: read. Supports range requests.
@@ -17201,6 +18436,39 @@ func ParseUploadAttachmentResponse(rsp *http.Response) (*UploadAttachmentRespons
 	return response, nil
 }
 
+// ParseGetRepositoryBlameResponse parses an HTTP response from a GetRepositoryBlameWithResponse call
+func ParseGetRepositoryBlameResponse(rsp *http.Response) (*GetRepositoryBlameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRepositoryBlameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BlameResponse
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetRepositoryBlobResponse parses an HTTP response from a GetRepositoryBlobWithResponse call
 func ParseGetRepositoryBlobResponse(rsp *http.Response) (*GetRepositoryBlobResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -17217,6 +18485,72 @@ func ParseGetRepositoryBlobResponse(rsp *http.Response) (*GetRepositoryBlobRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest BlobResponse
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteBranchResponse parses an HTTP response from a DeleteBranchWithResponse call
+func ParseDeleteBranchResponse(rsp *http.Response) (*DeleteBranchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteBranchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeletedWithEvent
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListBranchesResponse parses an HTTP response from a ListBranchesWithResponse call
+func ParseListBranchesResponse(rsp *http.Response) (*ListBranchesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListBranchesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []BranchView
 		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -17316,6 +18650,111 @@ func ParseGetCommitWorkspaceResponse(rsp *http.Response) (*GetCommitWorkspaceRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CommitWorkspace
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompareRefsResponse parses an HTTP response from a CompareRefsWithResponse call
+func ParseCompareRefsResponse(rsp *http.Response) (*CompareRefsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompareRefsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CompareView
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCompareDiffResponse parses an HTTP response from a GetCompareDiffWithResponse call
+func ParseGetCompareDiffResponse(rsp *http.Response) (*GetCompareDiffResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCompareDiffResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetCompareDiffResponse200Headers
+		if values := rsp.Header.Values("Content-Type"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Type", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentType = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetCompareWorkspaceResponse parses an HTTP response from a GetCompareWorkspaceWithResponse call
+func ParseGetCompareWorkspaceResponse(rsp *http.Response) (*GetCompareWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCompareWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CompareWorkspace
 		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -19412,6 +20851,22 @@ func ParseRevokeTokenResponse(rsp *http.Response) (*RevokeTokenResponse, error) 
 		}
 		response.JSONDefault = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseDownloadArchiveResponse parses an HTTP response from a DownloadArchiveWithResponse call
+func ParseDownloadArchiveResponse(rsp *http.Response) (*DownloadArchiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadArchiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

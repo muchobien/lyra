@@ -51,7 +51,7 @@ export function DiffViewer({
           <Link
             className="lyra-controls-button"
             to={diffPaths[section]}
-            params={{ owner, repo, number: Number(target), sha: target }}
+            params={{ owner, repo, number: Number(target), sha: target, _splat: target }}
             search={{ ...search, file: undefined }}
           >
             All files
@@ -61,7 +61,7 @@ export function DiffViewer({
           <Link
             className="lyra-controls-button"
             to={diffPaths[section]}
-            params={{ owner, repo, number: Number(target), sha: target }}
+            params={{ owner, repo, number: Number(target), sha: target, _splat: target }}
             search={{ ...search, file: nextFile.path }}
           >
             Next file
@@ -91,7 +91,7 @@ export function DiffViewer({
               <Link
                 key={file.path}
                 to={diffPaths[section]}
-                params={{ owner, repo, number: Number(target), sha: target }}
+                params={{ owner, repo, number: Number(target), sha: target, _splat: target }}
                 search={{ ...search, file: file.path }}
                 aria-current={selected?.path === file.path ? "page" : undefined}
               >

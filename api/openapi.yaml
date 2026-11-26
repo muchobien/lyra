@@ -113,6 +113,64 @@ components:
         - created_at
         - url
       type: object
+    BlameCommit:
+      additionalProperties: false
+      properties:
+        author:
+          type: string
+        date:
+          type: string
+        sha:
+          type: string
+        summary:
+          type: string
+      required:
+        - sha
+        - author
+        - date
+        - summary
+      type: object
+    BlameRange:
+      additionalProperties: false
+      properties:
+        commit:
+          $ref: "#/components/schemas/BlameCommit"
+        lines:
+          description: Highlighted HTML, one entry per line.
+          items:
+            type: string
+          type: array
+        start:
+          description: Line number of the range's first line.
+          format: int64
+          type: integer
+        text:
+          description: The same lines as plain text.
+          items:
+            type: string
+          type: array
+      required:
+        - commit
+        - start
+        - lines
+        - text
+      type: object
+    BlameResponse:
+      additionalProperties: false
+      properties:
+        binary:
+          type: boolean
+        path:
+          type: string
+        ranges:
+          items:
+            $ref: "#/components/schemas/BlameRange"
+          type: array
+      required:
+        - path
+        - binary
+        - ranges
+      type: object
     BlobResponse:
       additionalProperties: false
       properties:
@@ -134,6 +192,34 @@ components:
         - code
         - markdown
         - binary
+      type: object
+    BranchView:
+      additionalProperties: false
+      properties:
+        ahead:
+          description: Commits on the branch that aren't on the default branch.
+          format: int64
+          type: integer
+        behind:
+          description: Commits on the default branch that aren't on the branch.
+          format: int64
+          type: integer
+        commit:
+          $ref: "#/components/schemas/Commit"
+        default:
+          type: boolean
+        name:
+          type: string
+        protected:
+          description: A branch rule forbids deleting it.
+          type: boolean
+      required:
+        - name
+        - default
+        - protected
+        - commit
+        - ahead
+        - behind
       type: object
     Check:
       additionalProperties: false
@@ -312,6 +398,60 @@ components:
       required:
         - commit
         - checks
+        - files
+      type: object
+    CompareView:
+      additionalProperties: false
+      properties:
+        base_sha:
+          type: string
+        commits:
+          description: Commits on head that aren't on base, newest first, at most 250.
+          items:
+            $ref: "#/components/schemas/Commit"
+          type: array
+        files:
+          description: Files head changed since the merge base, or base without one.
+          items:
+            $ref: "#/components/schemas/FileChange"
+          type: array
+        head_sha:
+          type: string
+        merge_base:
+          description: Empty when the two refs share no history.
+          type: string
+      required:
+        - base_sha
+        - head_sha
+        - merge_base
+        - commits
+        - files
+      type: object
+    CompareWorkspace:
+      additionalProperties: false
+      properties:
+        base_sha:
+          type: string
+        commits:
+          description: Commits on head that aren't on base, newest first, at most 250.
+          items:
+            $ref: "#/components/schemas/Commit"
+          type: array
+        files:
+          description: Changes on head since the merge base, or since base without one.
+          items:
+            $ref: "#/components/schemas/DiffFile"
+          type: array
+        head_sha:
+          type: string
+        merge_base:
+          description: Empty when the two refs share no history.
+          type: string
+      required:
+        - base_sha
+        - head_sha
+        - merge_base
+        - commits
         - files
       type: object
     CreateIssueRequest:
@@ -3318,6 +3458,51 @@ paths:
       summary: Upload an image or video
       tags:
         - Attachments
+  /api/repos/{owner}/{repo}/blame:
+    get:
+      description: "Scope: read."
+      operationId: getRepositoryBlame
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit; defaults to the repository's default branch.
+          explode: false
+          in: query
+          name: ref
+          schema:
+            description: Branch, tag, or commit; defaults to the repository's default branch.
+            type: string
+        - description: Path relative to the repository root.
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: Path relative to the repository root.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlameResponse"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Read the commit that last changed each line of a file
+      tags:
+        - Workspaces
   /api/repos/{owner}/{repo}/blob:
     get:
       description: "Scope: read."
@@ -3363,6 +3548,77 @@ paths:
       summary: Read highlighted source or binary/large-file metadata
       tags:
         - Workspaces
+  /api/repos/{owner}/{repo}/branches:
+    delete:
+      description: "Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push."
+      operationId: deleteBranch
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: The branch name, such as feature/login.
+          explode: false
+          in: query
+          name: name
+          required: true
+          schema:
+            description: The branch name, such as feature/login.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedWithEvent"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Delete a branch
+      tags:
+        - Repositories
+    get:
+      description: "Scope: read. The default branch comes first, then the most recently updated."
+      operationId: listBranches
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/BranchView"
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: List branches with their last commit and distance from the default branch
+      tags:
+        - Repositories
   /api/repos/{owner}/{repo}/commits:
     get:
       description: "Scope: read."
@@ -3481,6 +3737,148 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
           description: Error
       summary: Read a commit with checks and structured diffs
+      tags:
+        - Workspaces
+  /api/repos/{owner}/{repo}/compare:
+    get:
+      description: "Scope: read."
+      operationId: compareRefs
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: "Compare two refs: the commits head adds and the files it changes"
+      tags:
+        - Repositories
+  /api/repos/{owner}/{repo}/compare/diff:
+    get:
+      description: "Scope: read."
+      operationId: getCompareDiff
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            text/x-diff:
+              schema:
+                type: string
+          description: The diff
+          headers:
+            Content-Type:
+              schema:
+                type: string
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: The unified diff of head since its merge base with base
+      tags:
+        - Repositories
+  /api/repos/{owner}/{repo}/compare/view:
+    get:
+      description: "Scope: read."
+      operationId: getCompareWorkspace
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - description: Branch, tag, or commit to compare against; defaults to the default branch.
+          explode: false
+          in: query
+          name: base
+          schema:
+            description: Branch, tag, or commit to compare against; defaults to the default branch.
+            type: string
+        - description: Branch, tag, or commit with the changes.
+          explode: false
+          in: query
+          name: head
+          required: true
+          schema:
+            description: Branch, tag, or commit with the changes.
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareWorkspace"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: "Compare two refs: the commits head adds and structured diffs"
       tags:
         - Workspaces
   /api/repos/{owner}/{repo}/files:
@@ -5950,6 +6348,43 @@ paths:
       summary: Revoke a token
       tags:
         - Account
+  /{owner}/{repo}/archive/{archive}:
+    get:
+      description: "Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory."
+      operationId: downloadArchive
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: archive
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/gzip:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            application/zip:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The archive
+      summary: Download the files at a ref as a .tar.gz or .zip archive
+      tags:
+        - Workspaces
   /{owner}/{repo}/attachments/{id}/{name}:
     get:
       description: "Scope: read. Supports range requests."

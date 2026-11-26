@@ -109,7 +109,7 @@ export function useLogic({
   function layoutChanged(event: ChangeEvent<HTMLSelectElement>) {
     void navigate({
       to: diffPaths[section],
-      params: { owner, repo, number: Number(target), sha: target },
+      params: { owner, repo, number: Number(target), sha: target, _splat: target },
       search: { ...search, layout: event.target.value },
       replace: true,
       resetScroll: false,

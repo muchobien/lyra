@@ -1,6 +1,15 @@
 import { Link } from "@tanstack/react-router";
-import { FileDirectoryIcon, TagIcon, VerifiedIcon } from "@primer/octicons-react";
+import {
+  ArrowLeftIcon,
+  FileDirectoryIcon,
+  GitBranchIcon,
+  GitCompareIcon,
+  TagIcon,
+  TrashIcon,
+  VerifiedIcon,
+} from "@primer/octicons-react";
 import { CopyButton } from "@/components/controls/CopyButton";
+import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
 import { DateTime } from "@/components/metadata/DateTime";
 import { Status } from "@/components/status/Status";
@@ -14,6 +23,14 @@ import "@/components/markdown/RichText/styles.css";
 import { CodeBreadcrumb } from "@/components/code/CodeBreadcrumb";
 import { useConnect, type CodeScreenProps } from "./connect";
 
+const breadcrumbLabels = {
+  commits: "Commits",
+  commit: "Commits",
+  tags: "Tags",
+  branches: "Branches",
+  compare: "Compare",
+};
+
 export function CodeScreens({ section, target }: CodeScreenProps) {
   const {
     owner,
@@ -23,8 +40,18 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
     limit,
     commits,
     tags,
+    branches,
+    canWrite,
+    deleting,
+    removing,
+    compareBase,
+    compareHead,
+    comparison,
     detail,
     branchChanged,
+    compareChanged,
+    prepareDelete,
+    deleteBranch,
     retry,
     error,
   } = useConnect({ section, target });
@@ -93,6 +120,167 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
       </div>
     ) : (
       <output className="lyra-workspace-empty">Loading tags…</output>
+    );
+  } else if (section === "branches") {
+    content = branches.data ? (
+      <div className="lyra-workspace-panel lyra-workspace-commits">
+        {branches.data.map((branch) => (
+          <article className="lyra-workspace-row" key={branch.name}>
+            <GitBranchIcon size={16} />
+            <div className="lyra-workspace-grow">
+              <Link
+                className="lyra-workspace-rowTitle"
+                to="/$owner/$repo/tree/$"
+                params={{ owner, repo, _splat: branch.name }}
+              >
+                {branch.name}
+              </Link>{" "}
+              {branch.default && <span className="lyra-workspace-label">default</span>}
+              {branch.protected && !branch.default && (
+                <span className="lyra-workspace-count">protected</span>
+              )}
+              <p className="lyra-workspace-meta">
+                <strong>{branch.commit.author.name}</strong> committed{" "}
+                <DateTime value={branch.commit.committer.date} /> · {branch.commit.subject}
+              </p>
+            </div>
+            {!branch.default && (
+              <span
+                className="lyra-workspace-count"
+                title={`Compared with ${metadata.data?.default_branch || "the default branch"}`}
+              >
+                {branch.behind} behind · {branch.ahead} ahead
+              </span>
+            )}
+            <Link
+              className="lyra-workspace-sha"
+              to="/$owner/$repo/commit/$sha"
+              params={{ owner, repo, sha: branch.commit.sha }}
+              search={{}}
+            >
+              {branch.commit.sha.slice(0, 7)}
+            </Link>
+            {!branch.default && (
+              <Link
+                className="lyra-workspace-browse"
+                to="/$owner/$repo/compare/$"
+                params={{
+                  owner,
+                  repo,
+                  _splat: `${metadata.data?.default_branch || "main"}...${branch.name}`,
+                }}
+                search={{}}
+                aria-label={`Compare ${branch.name}`}
+                title="Compare"
+              >
+                <GitCompareIcon size={16} />
+              </Link>
+            )}
+            {canWrite && !branch.default && !branch.protected && (
+              <button
+                className="lyra-workspace-browse"
+                type="button"
+                data-name={branch.name}
+                onClick={prepareDelete}
+                commandfor="delete-branch"
+                command="show-modal"
+                aria-label={`Delete ${branch.name}`}
+                title="Delete branch"
+              >
+                <TrashIcon size={16} />
+              </button>
+            )}
+          </article>
+        ))}
+        {branches.data.length === 0 && <p className="lyra-workspace-empty">No branches yet.</p>}
+      </div>
+    ) : (
+      <output className="lyra-workspace-empty">Loading branches…</output>
+    );
+  } else if (section === "compare") {
+    const refs = metadata.data?.branches.map((branch) => branch.name) || [];
+    content = (
+      <>
+        <div className="lyra-workspace-toolbar">
+          <GitCompareIcon size={16} />
+          <label className="lyra-controls-srOnly" htmlFor="compare-base">
+            Base
+          </label>
+          <select
+            id="compare-base"
+            name="base"
+            className="lyra-controls-select"
+            value={compareBase}
+            onChange={compareChanged}
+          >
+            {!refs.includes(compareBase) && <option value={compareBase}>{compareBase}</option>}
+            {refs.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <ArrowLeftIcon size={16} />
+          <label className="lyra-controls-srOnly" htmlFor="compare-head">
+            Compare
+          </label>
+          <select
+            id="compare-head"
+            name="head"
+            className="lyra-controls-select"
+            value={compareHead}
+            onChange={compareChanged}
+          >
+            {!compareHead && <option value="">Choose a branch</option>}
+            {compareHead && !refs.includes(compareHead) && (
+              <option value={compareHead}>{compareHead}</option>
+            )}
+            {refs.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!compareHead && (
+          <div className="lyra-workspace-panel">
+            <p className="lyra-workspace-empty">Choose a branch to compare with {compareBase}.</p>
+          </div>
+        )}
+        {compareHead && !comparison.data && (
+          <output className="lyra-workspace-empty">Loading comparison…</output>
+        )}
+        {comparison.data && (
+          <>
+            <p className="lyra-workspace-meta">
+              {comparison.data.commits.length}{" "}
+              {comparison.data.commits.length === 1 ? "commit" : "commits"} on {compareHead} that
+              aren't on {compareBase}
+              {!comparison.data.merge_base && " · the two refs share no history"}
+            </p>
+            {comparison.data.commits.length === 0 && comparison.data.files.length === 0 ? (
+              <div className="lyra-workspace-panel">
+                <p className="lyra-workspace-empty">
+                  {compareHead} has no changes that aren't on {compareBase}.
+                </p>
+              </div>
+            ) : (
+              <>
+                <CommitRows commits={comparison.data.commits} owner={owner} repo={repo} />
+                <DiffViewer
+                  key={`${comparison.data.base_sha}...${comparison.data.head_sha}`}
+                  files={comparison.data.files}
+                  owner={owner}
+                  repo={repo}
+                  section="compare"
+                  target={target}
+                  head={comparison.data.head_sha}
+                />
+              </>
+            )}
+          </>
+        )}
+      </>
     );
   } else if (section === "commits") {
     if (metadata.data?.branches.length === 0) {
@@ -229,12 +417,24 @@ export function CodeScreens({ section, target }: CodeScreenProps) {
         owner={owner}
         repo={repo}
         reference={metadata.data?.default_branch || "main"}
-        section={section === "tags" ? "tags" : "commits"}
-        label={section === "tags" ? "Tags" : "Commits"}
+        section={section === "commit" ? "commits" : section}
+        label={breadcrumbLabels[section]}
         current={section === "commit" ? target.slice(0, 7) : undefined}
       />
 
       {content}
+
+      <ConfirmDialog
+        id="delete-branch"
+        title={`Delete ${deleting}?`}
+        confirm="Delete branch"
+        onConfirm={deleteBranch}
+        pending={removing.isPending}
+        error={removing.error}
+        danger
+      >
+        <p>This removes the branch from the repository.</p>
+      </ConfirmDialog>
     </>
   );
 }

@@ -20,11 +20,16 @@ import type {
 import type {
   AssetWrite,
   Attachment,
+  BlameResponse,
   BlobResponse,
+  BranchView,
   CommentRequest,
   CommentWrite,
   Commit,
   CommitWorkspace,
+  CompareRefsParams,
+  CompareView,
+  CompareWorkspace,
   CreateIssueRequest,
   CreateKeyRequest,
   CreateLabelRequest,
@@ -33,6 +38,7 @@ import type {
   CreateReleaseRequest,
   CreateRepoRequest,
   CreateTokenRequest,
+  DeleteBranchParams,
   DeleteReleaseParams,
   DeleteRuleParams,
   DeletedID,
@@ -45,7 +51,10 @@ import type {
   ErrorBody,
   Event,
   FileChange,
+  GetCompareDiffParams,
+  GetCompareWorkspaceParams,
   GetJobLogsParams,
+  GetRepositoryBlameParams,
   GetRepositoryBlobParams,
   GetRepositoryRawFileParams,
   GetRepositoryTreeParams,
@@ -2188,6 +2197,143 @@ export const useUploadAttachment = <TError = ErrorType<ErrorBody>,
       return useMutation(getUploadAttachmentMutationOptions(options), queryClient);
     }
 
+export const getGetRepositoryBlameUrl = (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/blame?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/blame`
+}
+
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export const getRepositoryBlame = async (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: Parameters<typeof orvalFetch>[1]): Promise<BlameResponse> => {
+
+  return orvalFetch<BlameResponse>(getGetRepositoryBlameUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRepositoryBlameQueryKey = (owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/blame`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRepositoryBlameQueryOptions = <TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRepositoryBlameQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRepositoryBlame>>> = ({ signal }) => getRepositoryBlame(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetRepositoryBlameQueryResult = NonNullable<Awaited<ReturnType<typeof getRepositoryBlame>>>
+export type GetRepositoryBlameQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: undefined |  GetRepositoryBlameParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRepositoryBlame>>,
+          TError,
+          Awaited<ReturnType<typeof getRepositoryBlame>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRepositoryBlame>>,
+          TError,
+          Awaited<ReturnType<typeof getRepositoryBlame>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Read the commit that last changed each line of a file
+ */
+export function useGetRepositoryBlame<TData = Awaited<ReturnType<typeof getRepositoryBlame>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params?: GetRepositoryBlameParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRepositoryBlame>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetRepositoryBlameQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetRepositoryBlobUrl = (owner: string,
     repo: string,
     params?: GetRepositoryBlobParams,) => {
@@ -2313,6 +2459,215 @@ export function useGetRepositoryBlob<TData = Awaited<ReturnType<typeof getReposi
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetRepositoryBlobQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteBranchUrl = (owner: string,
+    repo: string,
+    params: DeleteBranchParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches`
+}
+
+/**
+ * Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+ * @summary Delete a branch
+ */
+export const deleteBranch = async (owner: string,
+    repo: string,
+    params: DeleteBranchParams, options?: Parameters<typeof orvalFetch>[1]): Promise<DeletedWithEvent> => {
+
+  return orvalFetch<DeletedWithEvent>(getDeleteBranchUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteBranchMutationKey = () => ['deleteBranch'] as const;
+
+export const getDeleteBranchMutationOptions = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext> => {
+
+const mutationKey = getDeleteBranchMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteBranch>>, DeleteBranchMutationVariables> = (props) => {
+          const {owner,repo,params} = props ?? {};
+
+          return  deleteBranch(owner,repo,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteBranchMutationResult = NonNullable<Awaited<ReturnType<typeof deleteBranch>>>
+
+    export type DeleteBranchMutationError = ErrorType<ErrorBody>
+    export type DeleteBranchMutationVariables = {owner: string;repo: string;params: DeleteBranchParams}
+
+    /**
+ * Scope: write. Refuses the default branch and branches a rule protects from deletion. Records a push event, so pull requests and workflows see the deletion as they would a git push.
+ * @summary Delete a branch
+ */
+export const useDeleteBranch = <TError = ErrorType<ErrorBody>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBranch>>, TError,DeleteBranchMutationVariables, TContext>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteBranch>>,
+        TError,
+        DeleteBranchMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteBranchMutationOptions(options), queryClient);
+    }
+
+export const getListBranchesUrl = (owner: string,
+    repo: string,) => {
+
+
+
+
+  return `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/branches`
+}
+
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export const listBranches = async (owner: string,
+    repo: string, options?: Parameters<typeof orvalFetch>[1]): Promise<BranchView[]> => {
+
+  return orvalFetch<BranchView[]>(getListBranchesUrl(owner,repo),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBranchesQueryKey = (owner: string,
+    repo: string,) => {
+    return [
+    `/api/repos/${owner}/${repo}/branches`
+    ] as const;
+    }
+
+
+export const getListBranchesQueryOptions = <TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBranchesQueryKey(owner,repo);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBranches>>> = ({ signal }) => listBranches(owner,repo, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListBranchesQueryResult = NonNullable<Awaited<ReturnType<typeof listBranches>>>
+export type ListBranchesQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBranches>>,
+          TError,
+          Awaited<ReturnType<typeof listBranches>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBranches>>,
+          TError,
+          Awaited<ReturnType<typeof listBranches>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The default branch comes first, then the most recently updated.
+ * @summary List branches with their last commit and distance from the default branch
+ */
+export function useListBranches<TData = Awaited<ReturnType<typeof listBranches>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBranches>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListBranchesQueryOptions(owner,repo,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -2710,6 +3065,417 @@ export function useGetCommitWorkspace<TData = Awaited<ReturnType<typeof getCommi
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetCommitWorkspaceQueryOptions(owner,repo,rev,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompareRefsUrl = (owner: string,
+    repo: string,
+    params: CompareRefsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare`
+}
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export const compareRefs = async (owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: Parameters<typeof orvalFetch>[1]): Promise<CompareView> => {
+
+  return orvalFetch<CompareView>(getCompareRefsUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompareRefsQueryKey = (owner: string,
+    repo: string,
+    params?: CompareRefsParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCompareRefsQueryOptions = <TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCompareRefsQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof compareRefs>>> = ({ signal }) => compareRefs(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CompareRefsQueryResult = NonNullable<Awaited<ReturnType<typeof compareRefs>>>
+export type CompareRefsQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof compareRefs>>,
+          TError,
+          Awaited<ReturnType<typeof compareRefs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof compareRefs>>,
+          TError,
+          Awaited<ReturnType<typeof compareRefs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and the files it changes
+ */
+export function useCompareRefs<TData = Awaited<ReturnType<typeof compareRefs>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: CompareRefsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareRefs>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCompareRefsQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCompareDiffUrl = (owner: string,
+    repo: string,
+    params: GetCompareDiffParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/diff?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/diff`
+}
+
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export const getCompareDiff = async (owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: Parameters<typeof orvalFetch>[1]): Promise<string> => {
+
+  return orvalFetch<string>(getGetCompareDiffUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompareDiffQueryKey = (owner: string,
+    repo: string,
+    params?: GetCompareDiffParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare/diff`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCompareDiffQueryOptions = <TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompareDiffQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompareDiff>>> = ({ signal }) => getCompareDiff(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCompareDiffQueryResult = NonNullable<Awaited<ReturnType<typeof getCompareDiff>>>
+export type GetCompareDiffQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareDiff>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareDiff>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareDiff>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareDiff>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary The unified diff of head since its merge base with base
+ */
+export function useGetCompareDiff<TData = Awaited<ReturnType<typeof getCompareDiff>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareDiffParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareDiff>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCompareDiffQueryOptions(owner,repo,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCompareWorkspaceUrl = (owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/view?${stringifiedParams}` : `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/compare/view`
+}
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export const getCompareWorkspace = async (owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: Parameters<typeof orvalFetch>[1]): Promise<CompareWorkspace> => {
+
+  return orvalFetch<CompareWorkspace>(getGetCompareWorkspaceUrl(owner,repo,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompareWorkspaceQueryKey = (owner: string,
+    repo: string,
+    params?: GetCompareWorkspaceParams,) => {
+    return [
+    `/api/repos/${owner}/${repo}/compare/view`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCompareWorkspaceQueryOptions = <TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompareWorkspaceQueryKey(owner,repo,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompareWorkspace>>> = ({ signal }) => getCompareWorkspace(owner,repo,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCompareWorkspaceQueryResult = NonNullable<Awaited<ReturnType<typeof getCompareWorkspace>>>
+export type GetCompareWorkspaceQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareWorkspace>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareWorkspace>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCompareWorkspace>>,
+          TError,
+          Awaited<ReturnType<typeof getCompareWorkspace>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read.
+ * @summary Compare two refs: the commits head adds and structured diffs
+ */
+export function useGetCompareWorkspace<TData = Awaited<ReturnType<typeof getCompareWorkspace>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    params: GetCompareWorkspaceParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCompareWorkspace>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCompareWorkspaceQueryOptions(owner,repo,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -9620,6 +10386,136 @@ export const useRevokeToken = <TError = ErrorType<ErrorBody>,
       > => {
       return useMutation(getRevokeTokenMutationOptions(options), queryClient);
     }
+
+export const getDownloadArchiveUrl = (owner: string,
+    repo: string,
+    archive: string,) => {
+
+
+
+
+  return `/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/archive/${encodeURIComponent(String(archive))}`
+}
+
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export const downloadArchive = async (owner: string,
+    repo: string,
+    archive: string, options?: Parameters<typeof orvalFetch>[1]): Promise<Blob> => {
+
+  return orvalFetch<Blob>(getDownloadArchiveUrl(owner,repo,archive),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadArchiveQueryKey = (owner: string,
+    repo: string,
+    archive: string,) => {
+    return [
+    `/${owner}/${repo}/archive/${archive}`
+    ] as const;
+    }
+
+
+export const getDownloadArchiveQueryOptions = <TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadArchiveQueryKey(owner,repo,archive);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadArchive>>> = ({ signal }) => downloadArchive(owner,repo,archive, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined && archive !== null && archive !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadArchiveQueryResult = NonNullable<Awaited<ReturnType<typeof downloadArchive>>>
+export type DownloadArchiveQueryError = ErrorType<unknown>
+
+
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArchive>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArchive>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArchive>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArchive>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; the ref may contain slashes. Files sit in a <repo>-<ref> directory.
+ * @summary Download the files at a ref as a .tar.gz or .zip archive
+ */
+export function useDownloadArchive<TData = Awaited<ReturnType<typeof downloadArchive>>, TError = ErrorType<unknown>>(
+ owner: string,
+    repo: string,
+    archive: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArchive>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadArchiveQueryOptions(owner,repo,archive,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDownloadAttachmentUrl = (owner: string,
     repo: string,

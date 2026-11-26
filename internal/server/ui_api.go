@@ -33,6 +33,19 @@ type treeResponse struct {
 	Readme  string        `json:"readme"`
 }
 
+type blameRange struct {
+	Commit repos.BlameCommit `json:"commit"`
+	Start  int               `json:"start" doc:"Line number of the range's first line."`
+	Lines  []string          `json:"lines" doc:"Highlighted HTML, one entry per line."`
+	Text   []string          `json:"text" doc:"The same lines as plain text."`
+}
+
+type blameResponse struct {
+	Path   string       `json:"path"`
+	Binary bool         `json:"binary"`
+	Ranges []blameRange `json:"ranges"`
+}
+
 type blobResponse struct {
 	Path     string `json:"path"`
 	Size     int    `json:"size"`
@@ -85,6 +98,17 @@ func (s *Server) uiApplication(w http.ResponseWriter, r *http.Request) error {
 			case "commit":
 				if _, err := s.git.ResolveCommit(r.Context(), s.repoDir(repo.Name), r.PathValue("sha")); err != nil {
 					return notFound("commit not found")
+				}
+			case "compare":
+				dir := s.repoDir(repo.Name)
+				base, head, found := strings.Cut(pathParam(r, "*"), "...")
+				if !found {
+					base, head = s.git.DefaultBranch(r.Context(), dir), base
+				}
+				for _, ref := range []string{base, head} {
+					if _, err := s.git.ResolveCommit(r.Context(), dir, ref); ref != "" && err != nil {
+						return notFound("unknown ref " + ref)
+					}
 				}
 			case "releases":
 				if tag := pathParam(r, "*"); tag != "" {
@@ -141,7 +165,7 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 		return notFound("unknown ref " + ref)
 	}
 	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 4)
-	if len(parts) > 2 && parts[2] == "blob" {
+	if len(parts) > 2 && (parts[2] == "blob" || parts[2] == "blame") {
 		content, err := s.git.Blob(r.Context(), dir, sha, path)
 		if errors.Is(err, repos.ErrNotFound) {
 			return notFound("file not found")
@@ -149,7 +173,7 @@ func (s *Server) uiSource(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		if r.URL.Query().Has("raw") {
+		if parts[2] == "blob" && r.URL.Query().Has("raw") {
 			writeRaw(w, content)
 			return nil
 		}
@@ -237,6 +261,63 @@ func (s *Server) handleBlob(r *http.Request, input *sourceInput) (*body[blobResp
 		if strings.HasSuffix(strings.ToLower(path), ".md") {
 			view.Markdown, _ = renderMarkdownFile(content)
 		}
+	}
+	return reply(view)
+}
+
+func (s *Server) handleBlame(r *http.Request, input *sourceInput) (*body[blameResponse], error) {
+	ctx := r.Context()
+	repo, err := s.lookupRepo(r, scopeRead, input.fullName())
+	if err != nil {
+		return nil, err
+	}
+	dir := s.repoDir(repo.Name)
+	ref := input.Ref
+	if ref == "" {
+		ref = s.git.DefaultBranch(ctx, dir)
+	}
+	sha, err := s.git.ResolveCommit(ctx, dir, ref)
+	if err != nil {
+		return nil, notFound("unknown ref " + ref)
+	}
+	path := strings.Trim(input.Path, "/")
+	content, err := s.git.Blob(ctx, dir, sha, path)
+	if errors.Is(err, repos.ErrNotFound) {
+		return nil, notFound("file not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	view := blameResponse{Path: path, Ranges: []blameRange{}}
+	if view.Binary = !utf8.Valid(content) || len(content) > maxHighlightSize; view.Binary {
+		return reply(view)
+	}
+	lines, commits, err := s.git.Blame(ctx, dir, sha, path)
+	if err != nil {
+		return nil, err
+	}
+	highlighted := make([]diffLine, len(lines))
+	pointers := make([]*diffLine, len(lines))
+	for index, line := range lines {
+		highlighted[index].Text = line.Text
+		pointers[index] = &highlighted[index]
+	}
+	lexer := lexers.Match(path)
+	if lexer == nil {
+		lexer = lexers.Analyse(string(content))
+	}
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	highlightLines(lexer, pointers)
+	for index, line := range lines {
+		last := len(view.Ranges) - 1
+		if last < 0 || view.Ranges[last].Commit.SHA != line.SHA {
+			view.Ranges = append(view.Ranges, blameRange{Commit: commits[line.SHA], Start: index + 1})
+			last++
+		}
+		view.Ranges[last].Lines = append(view.Ranges[last].Lines, highlighted[index].HTML)
+		view.Ranges[last].Text = append(view.Ranges[last].Text, line.Text)
 	}
 	return reply(view)
 }

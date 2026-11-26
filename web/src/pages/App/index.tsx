@@ -155,7 +155,10 @@ export function App({ children }: { children: ReactNode }): ReactElement {
                   : undefined
               }
               aria-current={
-                !section || ["commits", "commit", "tags", "releases", "images"].includes(section)
+                !section ||
+                ["commits", "commit", "tags", "branches", "compare", "releases", "images"].includes(
+                  section,
+                )
                   ? "page"
                   : undefined
               }

@@ -471,6 +471,80 @@
   }
 }
 
+.lyra-repository-page-blame {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.lyra-repository-page-blameRange {
+  display: grid;
+  grid-template-columns: 16rem minmax(max-content, 1fr);
+  border-bottom: 1px solid var(--soft-border);
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.lyra-repository-page-blameCommit {
+  position: sticky;
+  left: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.1rem;
+  padding: 0.35rem 0.8rem;
+  border-right: 1px solid var(--border);
+  background: var(--raised);
+  font-size: var(--text-xs);
+  min-width: 0;
+  & a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    &:hover {
+      color: var(--accent);
+    }
+  }
+  & span {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.lyra-repository-page-blameLines {
+  padding-block: 0.35rem;
+  font: var(--text-xs) / 1.85 var(--mono);
+}
+
+.lyra-repository-page-blameLine {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(max-content, 1fr);
+  & > span {
+    padding-inline: 0.4rem 0.8rem;
+    text-align: right;
+    color: var(--muted);
+    user-select: none;
+  }
+  & pre {
+    margin: 0;
+    padding-inline-end: 1rem;
+    background: transparent !important;
+    font: inherit;
+    white-space: pre;
+  }
+  & .line {
+    display: inline;
+  }
+}
+
+.lyra-repository-page-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .lyra-repository-page-finder {
   width: min(40rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 3rem);

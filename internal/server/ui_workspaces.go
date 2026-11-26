@@ -45,6 +45,14 @@ type pullPatch struct {
 	Files   []diffFile `json:"files"`
 }
 
+type compareWorkspace struct {
+	BaseSHA   string         `json:"base_sha"`
+	HeadSHA   string         `json:"head_sha"`
+	MergeBase string         `json:"merge_base" doc:"Empty when the two refs share no history."`
+	Commits   []repos.Commit `json:"commits" doc:"Commits on head that aren't on base, newest first, at most 250."`
+	Files     []diffFile     `json:"files" doc:"Changes on head since the merge base, or since base without one."`
+}
+
 type commitWorkspace struct {
 	Commit repos.Commit `json:"commit"`
 	Checks store.Checks `json:"checks"`
@@ -254,6 +262,27 @@ func (s *Server) handleCommitWorkspace(r *http.Request, input *commitInput) (*bo
 		return nil, err
 	}
 	return reply(commitWorkspace{Commit: commit, Checks: checks, Files: highlightedDiff(files, nil)})
+}
+
+func (s *Server) handleCompareWorkspace(r *http.Request, input *compareInput) (*body[compareWorkspace], error) {
+	comparison, err := s.resolveCompare(r, input)
+	if err != nil {
+		return nil, err
+	}
+	view := compareWorkspace{BaseSHA: comparison.baseSHA, HeadSHA: comparison.headSHA, MergeBase: comparison.mergeBase}
+	if view.Commits, err = s.commits(r.Context(), comparison.repo, view.HeadSHA, 250, view.BaseSHA); err != nil {
+		return nil, err
+	}
+	patch, err := s.git.Diff(r.Context(), s.repoDir(comparison.repo), comparison.from, view.HeadSHA)
+	if err != nil {
+		return nil, err
+	}
+	files, _, err := gitdiff.Parse(strings.NewReader(patch))
+	if err != nil {
+		return nil, err
+	}
+	view.Files = highlightedDiff(files, nil)
+	return reply(view)
 }
 
 func (s *Server) handleWorkflows(r *http.Request, input *sourceInput) (*body[[]workflowWorkspace], error) {

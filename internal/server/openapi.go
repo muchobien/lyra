@@ -172,6 +172,26 @@ func (s *Server) registerRepos(api huma.API) {
 		Tags: tags, Summary: "Get a commit", Description: "Scope: read.",
 	}, s.handleGetCommit)
 	register(api, huma.Operation{
+		OperationID: "listBranches", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/branches",
+		Tags: tags, Summary: "List branches with their last commit and distance from the default branch",
+		Description: "Scope: read. The default branch comes first, then the most recently updated.",
+	}, s.handleListBranches)
+	register(api, huma.Operation{
+		OperationID: "deleteBranch", Method: http.MethodDelete, Path: "/api/repos/{owner}/{repo}/branches",
+		Tags: tags, Summary: "Delete a branch",
+		Description: "Scope: write. Refuses the default branch and branches a rule protects from deletion. " +
+			"Records a push event, so pull requests and workflows see the deletion as they would a git push.",
+	}, s.handleDeleteBranch)
+	register(api, huma.Operation{
+		OperationID: "compareRefs", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/compare", Tags: tags,
+		Summary: "Compare two refs: the commits head adds and the files it changes", Description: "Scope: read.",
+	}, s.handleCompare)
+	register(api, huma.Operation{
+		OperationID: "getCompareDiff", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/compare/diff",
+		Tags: tags, Summary: "The unified diff of head since its merge base with base", Description: "Scope: read.",
+		Responses: map[string]*huma.Response{"200": text("text/x-diff", "The diff")},
+	}, s.handleCompareDiff)
+	register(api, huma.Operation{
 		OperationID: "listTags", Method: http.MethodGet, Path: "/api/repos/{owner}/{repo}/tags", Tags: tags,
 		Summary: "List tags", Description: "Scope: read.",
 	}, s.handleListTags)
@@ -563,6 +583,10 @@ func (s *Server) registerWorkspaces(api huma.API) {
 		Summary: "Read highlighted source or binary/large-file metadata", Description: "Scope: read.",
 	}, s.handleBlob)
 	register(api, huma.Operation{
+		OperationID: "getRepositoryBlame", Method: http.MethodGet, Path: repository + "/blame", Tags: tags,
+		Summary: "Read the commit that last changed each line of a file", Description: "Scope: read.",
+	}, s.handleBlame)
+	register(api, huma.Operation{
 		OperationID: "getRepositoryRawFile", Method: http.MethodGet, Path: repository + "/raw", Tags: tags,
 		Summary:     "Download the original file bytes",
 		Description: "Scope: read. Served with nosniff and a sandbox policy.",
@@ -574,6 +598,20 @@ func (s *Server) registerWorkspaces(api huma.API) {
 			},
 		}},
 	}, stream[sourceInput](s.handleRawBlob))
+	api.OpenAPI().AddOperation(&huma.Operation{
+		OperationID: "downloadArchive", Method: http.MethodGet, Path: "/{owner}/{repo}/archive/{archive}",
+		Tags: tags, Summary: "Download the files at a ref as a .tar.gz or .zip archive",
+		Description: "Scope: read. The archive parameter is a branch, tag, or commit followed by .tar.gz or .zip; " +
+			"the ref may contain slashes. Files sit in a <repo>-<ref> directory.",
+		Parameters: pathParams("owner", "repo", "archive"),
+		Responses: map[string]*huma.Response{"200": {
+			Description: "The archive",
+			Content: map[string]*huma.MediaType{
+				"application/gzip": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+				"application/zip":  {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+			},
+		}},
+	})
 	register(api, huma.Operation{
 		OperationID: "listRepositoryFiles", Method: http.MethodGet, Path: repository + "/files", Tags: tags,
 		Summary: "List recursive file paths for the file finder", Description: "Scope: read.",
@@ -596,6 +634,10 @@ func (s *Server) registerWorkspaces(api huma.API) {
 		OperationID: "getCommitWorkspace", Method: http.MethodGet, Path: repository + "/commits/{rev}/view", Tags: tags,
 		Summary: "Read a commit with checks and structured diffs", Description: "Scope: read.",
 	}, s.handleCommitWorkspace)
+	register(api, huma.Operation{
+		OperationID: "getCompareWorkspace", Method: http.MethodGet, Path: repository + "/compare/view", Tags: tags,
+		Summary: "Compare two refs: the commits head adds and structured diffs", Description: "Scope: read.",
+	}, s.handleCompareWorkspace)
 	register(api, huma.Operation{
 		OperationID: "listWorkflows", Method: http.MethodGet, Path: repository + "/workflows", Tags: tags,
 		Summary: "Discover workflows and declared manual inputs at a ref", Description: "Scope: read.",

@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"html/template"
+	"mime"
 	"net/http"
+	"path"
 	"strings"
 	"unicode/utf8"
 
@@ -40,6 +42,35 @@ func (s *Server) readme(ctx context.Context, dir, sha, path string, entries []re
 		}
 	}
 	return shown
+}
+
+var archiveTypes = map[string]string{".tar.gz": "application/gzip", ".zip": "application/zip"}
+
+func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request) error {
+	repo, err := s.lookupRepo(r, scopeRead, routeRepo(r))
+	if err != nil {
+		return err
+	}
+	target := pathParam(r, "*")
+	for suffix, contentType := range archiveTypes {
+		ref, found := strings.CutSuffix(target, suffix)
+		if !found {
+			continue
+		}
+		dir := s.repoDir(repo.Name)
+		sha, err := s.git.ResolveCommit(r.Context(), dir, ref)
+		if err != nil {
+			return notFound("unknown ref " + ref)
+		}
+		short := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/heads/"), "refs/tags/")
+		name := path.Base(repo.Name) + "-" + strings.ReplaceAll(short, "/", "-")
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+			"filename": name + suffix,
+		}))
+		return s.git.Archive(r.Context(), dir, strings.TrimPrefix(suffix, "."), name+"/", sha, w)
+	}
+	return notFound("archives end in .tar.gz or .zip")
 }
 
 func writeRaw(w http.ResponseWriter, content []byte) {
