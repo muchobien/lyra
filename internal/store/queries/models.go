@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+type Artifact struct {
+	ID        int64        `json:"id"`
+	RunID     int64        `json:"run_id"`
+	JobID     int64        `json:"job_id"`
+	Name      string       `json:"name"`
+	Object    string       `json:"object"`
+	Size      int64        `json:"size"`
+	Sha256    string       `json:"sha256"`
+	Status    string       `json:"status"`
+	CreatedAt time.Time    `json:"created_at"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+}
+
 type Attachment struct {
 	ID          int64     `json:"id"`
 	Repo        string    `json:"repo"`

@@ -174,6 +174,7 @@ func (s *Server) handleDeleteRepo(r *http.Request, input *RepoPath) (*body[delet
 	for _, prefix := range []string{
 		releasesPath(repo.Name),
 		attachmentsPath(repo.Name),
+		artifactsPath(repo.Name),
 		registryRepositories + repo.Name,
 	} {
 		err := s.storage.Delete(ctx, prefix)

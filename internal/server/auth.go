@@ -159,7 +159,8 @@ func (s *Server) actionsRepo(repo string) bool {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/api/actions/") {
+		if r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/api/actions/") ||
+			strings.HasPrefix(r.URL.Path, artifactService) {
 			next.ServeHTTP(w, r)
 			return
 		}

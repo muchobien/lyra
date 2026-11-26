@@ -982,6 +982,14 @@ func (s *Store) ExpiredRuns(ctx context.Context, before time.Time) ([]ExpiredRun
 		if err != nil {
 			return nil, err
 		}
+		artifacts, err := s.queries.ListRunArtifactObjects(ctx, row.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, object := range artifacts {
+			path := "/lyra/artifacts/" + row.Repo + "/" + object
+			objects = append(objects, path, path+".blocks")
+		}
 		runs = append(runs, ExpiredRun{ID: row.ID, Repo: row.Repo, Objects: objects})
 	}
 	return runs, nil

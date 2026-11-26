@@ -896,6 +896,17 @@ export interface Run {
   workflow: string;
 }
 
+export interface Artifact {
+  created_at: string;
+  /** @nullable */
+  expires_at: string | null;
+  id: number;
+  job_id: number;
+  name: string;
+  sha256: string;
+  size: number;
+}
+
 export interface RunCancelled {
   cancelled: number;
   event_id: number;

@@ -27,6 +27,7 @@ func (s *Server) maintain(ctx context.Context) {
 		s.gate.RLock()
 		s.reapStaleTasks(ctx)
 		s.pruneRuns(ctx)
+		s.pruneArtifacts(ctx)
 		s.gate.RUnlock()
 	}
 }

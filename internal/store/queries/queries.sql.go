@@ -131,6 +131,46 @@ func (q *Queries) CountRunsByStatus(ctx context.Context) ([]CountRunsByStatusRow
 	return items, nil
 }
 
+const createArtifact = `-- name: CreateArtifact :one
+INSERT INTO artifacts (run_id, job_id, name, object, status, created_at, expires_at)
+VALUES (?, ?, ?, ?, 'pending', ?, ?)
+RETURNING id, run_id, job_id, name, object, size, sha256, status, created_at, expires_at
+`
+
+type CreateArtifactParams struct {
+	RunID     int64        `json:"run_id"`
+	JobID     int64        `json:"job_id"`
+	Name      string       `json:"name"`
+	Object    string       `json:"object"`
+	CreatedAt time.Time    `json:"created_at"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+}
+
+func (q *Queries) CreateArtifact(ctx context.Context, arg CreateArtifactParams) (Artifact, error) {
+	row := q.db.QueryRowContext(ctx, createArtifact,
+		arg.RunID,
+		arg.JobID,
+		arg.Name,
+		arg.Object,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.JobID,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO release_assets (release_id, name, object, size, sha256, content_type, user, via, agent, session, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -961,6 +1001,18 @@ func (q *Queries) DeclareRunner(ctx context.Context, arg DeclareRunnerParams) (R
 	return i, err
 }
 
+const deleteArtifact = `-- name: DeleteArtifact :execrows
+DELETE FROM artifacts WHERE id = ?
+`
+
+func (q *Queries) DeleteArtifact(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteArtifact, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteAsset = `-- name: DeleteAsset :execrows
 DELETE FROM release_assets WHERE id = ?
 `
@@ -1215,6 +1267,55 @@ func (q *Queries) DeleteVariable(ctx context.Context, arg DeleteVariableParams) 
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const getArtifact = `-- name: GetArtifact :one
+SELECT id, run_id, job_id, name, object, size, sha256, status, created_at, expires_at FROM artifacts WHERE id = ?
+`
+
+func (q *Queries) GetArtifact(ctx context.Context, id int64) (Artifact, error) {
+	row := q.db.QueryRowContext(ctx, getArtifact, id)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.JobID,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getArtifactByName = `-- name: GetArtifactByName :one
+SELECT id, run_id, job_id, name, object, size, sha256, status, created_at, expires_at FROM artifacts WHERE run_id = ? AND name = ?
+`
+
+type GetArtifactByNameParams struct {
+	RunID int64  `json:"run_id"`
+	Name  string `json:"name"`
+}
+
+func (q *Queries) GetArtifactByName(ctx context.Context, arg GetArtifactByNameParams) (Artifact, error) {
+	row := q.db.QueryRowContext(ctx, getArtifactByName, arg.RunID, arg.Name)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.JobID,
+		&i.Name,
+		&i.Object,
+		&i.Size,
+		&i.Sha256,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const getAsset = `-- name: GetAsset :one
@@ -1738,6 +1839,52 @@ func (q *Queries) LatestRelease(ctx context.Context, repo string) (Release, erro
 	return i, err
 }
 
+const listAllArtifacts = `-- name: ListAllArtifacts :many
+SELECT runs.repo, runs.number, artifacts.name, artifacts.object, artifacts.size, artifacts.sha256
+FROM artifacts JOIN runs ON runs.id = artifacts.run_id
+WHERE artifacts.status = 'ready'
+ORDER BY runs.repo, runs.number, artifacts.name
+`
+
+type ListAllArtifactsRow struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+	Name   string `json:"name"`
+	Object string `json:"object"`
+	Size   int64  `json:"size"`
+	Sha256 string `json:"sha256"`
+}
+
+func (q *Queries) ListAllArtifacts(ctx context.Context) ([]ListAllArtifactsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllArtifacts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllArtifactsRow
+	for rows.Next() {
+		var i ListAllArtifactsRow
+		if err := rows.Scan(
+			&i.Repo,
+			&i.Number,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllAssets = `-- name: ListAllAssets :many
 SELECT releases.repo, releases.tag, release_assets.name, release_assets.object, release_assets.size, release_assets.sha256
 FROM release_assets JOIN releases ON releases.id = release_assets.release_id
@@ -2010,6 +2157,67 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.Session,
 			&i.Data,
 			&i.Item,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpiredArtifacts = `-- name: ListExpiredArtifacts :many
+SELECT artifacts.id, artifacts.run_id, artifacts.job_id, artifacts.name, artifacts.object, artifacts.size, artifacts.sha256, artifacts.status, artifacts.created_at, artifacts.expires_at, runs.repo FROM artifacts JOIN runs ON runs.id = artifacts.run_id
+WHERE (artifacts.expires_at IS NOT NULL AND artifacts.expires_at < ?)
+	OR (artifacts.status = 'pending' AND artifacts.created_at < ?)
+ORDER BY artifacts.id
+`
+
+type ListExpiredArtifactsParams struct {
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	CreatedAt time.Time    `json:"created_at"`
+}
+
+type ListExpiredArtifactsRow struct {
+	ID        int64        `json:"id"`
+	RunID     int64        `json:"run_id"`
+	JobID     int64        `json:"job_id"`
+	Name      string       `json:"name"`
+	Object    string       `json:"object"`
+	Size      int64        `json:"size"`
+	Sha256    string       `json:"sha256"`
+	Status    string       `json:"status"`
+	CreatedAt time.Time    `json:"created_at"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	Repo      string       `json:"repo"`
+}
+
+func (q *Queries) ListExpiredArtifacts(ctx context.Context, arg ListExpiredArtifactsParams) ([]ListExpiredArtifactsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listExpiredArtifacts, arg.ExpiresAt, arg.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListExpiredArtifactsRow
+	for rows.Next() {
+		var i ListExpiredArtifactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.JobID,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.Repo,
 		); err != nil {
 			return nil, err
 		}
@@ -2797,6 +3005,71 @@ func (q *Queries) ListRules(ctx context.Context, repo string) ([]BranchRule, err
 			&i.RequireChecks,
 			&i.AllowForcePush,
 			&i.AllowDeletion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunArtifactObjects = `-- name: ListRunArtifactObjects :many
+SELECT object FROM artifacts WHERE run_id = ?
+`
+
+func (q *Queries) ListRunArtifactObjects(ctx context.Context, runID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRunArtifactObjects, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var object string
+		if err := rows.Scan(&object); err != nil {
+			return nil, err
+		}
+		items = append(items, object)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunArtifacts = `-- name: ListRunArtifacts :many
+SELECT id, run_id, job_id, name, object, size, sha256, status, created_at, expires_at FROM artifacts WHERE run_id = ? AND status = 'ready' ORDER BY name
+`
+
+func (q *Queries) ListRunArtifacts(ctx context.Context, runID int64) ([]Artifact, error) {
+	rows, err := q.db.QueryContext(ctx, listRunArtifacts, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Artifact
+	for rows.Next() {
+		var i Artifact
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.JobID,
+			&i.Name,
+			&i.Object,
+			&i.Size,
+			&i.Sha256,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3629,6 +3902,27 @@ type TouchTaskParams struct {
 
 func (q *Queries) TouchTask(ctx context.Context, arg TouchTaskParams) error {
 	_, err := q.db.ExecContext(ctx, touchTask, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateArtifact = `-- name: UpdateArtifact :exec
+UPDATE artifacts SET size = ?, sha256 = ?, status = ? WHERE id = ?
+`
+
+type UpdateArtifactParams struct {
+	Size   int64  `json:"size"`
+	Sha256 string `json:"sha256"`
+	Status string `json:"status"`
+	ID     int64  `json:"id"`
+}
+
+func (q *Queries) UpdateArtifact(ctx context.Context, arg UpdateArtifactParams) error {
+	_, err := q.db.ExecContext(ctx, updateArtifact,
+		arg.Size,
+		arg.Sha256,
+		arg.Status,
+		arg.ID,
+	)
 	return err
 }
 

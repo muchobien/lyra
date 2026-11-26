@@ -2,9 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -37,6 +41,8 @@ func (app *app) runCommand() *cobra.Command {
 		app.runWatchCommand(),
 		app.runCancelCommand(),
 		app.runRerunCommand(),
+		app.runArtifactsCommand(),
+		app.runDownloadCommand(),
 	)...)
 	return run
 }
@@ -350,4 +356,85 @@ func (app *app) runRerunCommand() *cobra.Command {
 		"only jobs that didn't succeed, and the jobs that need them",
 	)
 	return rerun
+}
+
+func (app *app) runArtifactsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "artifacts <number>",
+		Short: "List the artifacts a run's jobs uploaded",
+		Args:  ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			number, err := parseNumber(args[1])
+			if err != nil {
+				return err
+			}
+			owner, repo := splitRepo(args[0])
+			return app.show(cmd)(app.client.api.ListArtifacts(cmd.Context(), owner, repo, number))
+		},
+	}
+}
+
+func (app *app) runDownloadCommand() *cobra.Command {
+	var dir string
+	download := &cobra.Command{
+		Use:   "download <number> <name>",
+		Short: "Download an artifact as <name>.zip and check its sha256",
+		Args:  ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.downloadArtifact(cmd, args, dir)
+		},
+	}
+	download.Flags().StringVarP(&dir, "dir", "D", ".", "directory to write the zip to")
+	return download
+}
+
+func (app *app) downloadArtifact(cmd *cobra.Command, args []string, dir string) error {
+	number, err := parseNumber(args[1])
+	if err != nil {
+		return err
+	}
+	owner, repo := splitRepo(args[0])
+	artifacts, _, err := decode[[]lyraapi.Artifact](app.client.api.ListArtifacts(cmd.Context(), owner, repo, number))
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(artifacts, func(artifact lyraapi.Artifact) bool { return artifact.Name == args[2] })
+	if index < 0 {
+		return fmt.Errorf("run #%d has no artifact %s", number, args[2])
+	}
+	artifact := artifacts[index]
+	response, err := app.client.streaming.DownloadArtifact(cmd.Context(), owner, repo, number, artifact.Name)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		return responseError(response)
+	}
+	output := filepath.Join(dir, artifact.Name+".zip")
+	temporary, err := os.CreateTemp(dir, ".lyra-download-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary.Name())
+	hash := sha256.New()
+	_, err = io.Copy(io.MultiWriter(temporary, hash), response.Body)
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != artifact.Sha256 {
+		return fmt.Errorf("sha256 is %s, expected %s", got, artifact.Sha256)
+	}
+	if err := os.Rename(temporary.Name(), output); err != nil {
+		return err
+	}
+	return app.emitIndented(cmd, downloadedAsset{
+		Name:   artifact.Name,
+		Path:   output,
+		Size:   artifact.Size,
+		SHA256: artifact.Sha256,
+	})
 }

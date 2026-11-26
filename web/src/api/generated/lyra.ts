@@ -18,6 +18,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  Artifact,
   AssetWrite,
   Attachment,
   BlameResponse,
@@ -8016,6 +8017,274 @@ export function useGetRun<TData = Awaited<ReturnType<typeof getRun>>, TError = E
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetRunQueryOptions(owner,repo,number,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListArtifactsUrl = (owner: string,
+    repo: string,
+    number: number,) => {
+
+
+
+
+  return `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/runs/${encodeURIComponent(String(number))}/artifacts`
+}
+
+/**
+ * Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+ * @summary List a run's artifacts
+ */
+export const listArtifacts = async (owner: string,
+    repo: string,
+    number: number, options?: Parameters<typeof orvalFetch>[1]): Promise<Artifact[]> => {
+
+  return orvalFetch<Artifact[]>(getListArtifactsUrl(owner,repo,number),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListArtifactsQueryKey = (owner: string,
+    repo: string,
+    number: number,) => {
+    return [
+    `/api/repos/${owner}/${repo}/runs/${number}/artifacts`
+    ] as const;
+    }
+
+
+export const getListArtifactsQueryOptions = <TData = Awaited<ReturnType<typeof listArtifacts>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListArtifactsQueryKey(owner,repo,number);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listArtifacts>>> = ({ signal }) => listArtifacts(owner,repo,number, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined && number !== null && number !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListArtifactsQueryResult = NonNullable<Awaited<ReturnType<typeof listArtifacts>>>
+export type ListArtifactsQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+ * @summary List a run's artifacts
+ */
+export function useListArtifacts<TData = Awaited<ReturnType<typeof listArtifacts>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listArtifacts>>,
+          TError,
+          Awaited<ReturnType<typeof listArtifacts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+ * @summary List a run's artifacts
+ */
+export function useListArtifacts<TData = Awaited<ReturnType<typeof listArtifacts>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listArtifacts>>,
+          TError,
+          Awaited<ReturnType<typeof listArtifacts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+ * @summary List a run's artifacts
+ */
+export function useListArtifacts<TData = Awaited<ReturnType<typeof listArtifacts>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+ * @summary List a run's artifacts
+ */
+export function useListArtifacts<TData = Awaited<ReturnType<typeof listArtifacts>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listArtifacts>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListArtifactsQueryOptions(owner,repo,number,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDownloadArtifactUrl = (owner: string,
+    repo: string,
+    number: number,
+    name: string,) => {
+
+
+
+
+  return `/api/repos/${encodeURIComponent(String(owner))}/${encodeURIComponent(String(repo))}/runs/${encodeURIComponent(String(number))}/artifacts/${encodeURIComponent(String(name))}`
+}
+
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an artifact as a zip
+ */
+export const downloadArtifact = async (owner: string,
+    repo: string,
+    number: number,
+    name: string, options?: Parameters<typeof orvalFetch>[1]): Promise<Blob> => {
+
+  return orvalFetch<Blob>(getDownloadArtifactUrl(owner,repo,number,name),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadArtifactQueryKey = (owner: string,
+    repo: string,
+    number: number,
+    name: string,) => {
+    return [
+    `/api/repos/${owner}/${repo}/runs/${number}/artifacts/${name}`
+    ] as const;
+    }
+
+
+export const getDownloadArtifactQueryOptions = <TData = Awaited<ReturnType<typeof downloadArtifact>>, TError = ErrorType<ErrorBody>>(owner: string,
+    repo: string,
+    number: number,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadArtifactQueryKey(owner,repo,number,name);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadArtifact>>> = ({ signal }) => downloadArtifact(owner,repo,number,name, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && repo !== null && repo !== undefined && number !== null && number !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadArtifactQueryResult = NonNullable<Awaited<ReturnType<typeof downloadArtifact>>>
+export type DownloadArtifactQueryError = ErrorType<ErrorBody>
+
+
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an artifact as a zip
+ */
+export function useDownloadArtifact<TData = Awaited<ReturnType<typeof downloadArtifact>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number,
+    name: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArtifact>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArtifact>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an artifact as a zip
+ */
+export function useDownloadArtifact<TData = Awaited<ReturnType<typeof downloadArtifact>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadArtifact>>,
+          TError,
+          Awaited<ReturnType<typeof downloadArtifact>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an artifact as a zip
+ */
+export function useDownloadArtifact<TData = Awaited<ReturnType<typeof downloadArtifact>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * Scope: read. Supports range requests.
+ * @summary Download an artifact as a zip
+ */
+export function useDownloadArtifact<TData = Awaited<ReturnType<typeof downloadArtifact>>, TError = ErrorType<ErrorBody>>(
+ owner: string,
+    repo: string,
+    number: number,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadArtifact>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadArtifactQueryOptions(owner,repo,number,name,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

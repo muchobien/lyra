@@ -89,6 +89,20 @@ func (s *Store) StoredObjects(ctx context.Context) ([]StoredObject, error) {
 			SHA256: attachment.Sha256,
 		})
 	}
+	artifacts, err := s.queries.ListAllArtifacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, artifact := range artifacts {
+		objects = append(objects, StoredObject{
+			Kind:   "artifact",
+			Repo:   artifact.Repo,
+			Name:   "run " + strconv.FormatInt(artifact.Number, 10) + "/" + artifact.Name,
+			Path:   "/lyra/artifacts/" + artifact.Repo + "/" + artifact.Object,
+			Size:   artifact.Size,
+			SHA256: artifact.Sha256,
+		})
+	}
 	logs, err := s.queries.ListLogObjects(ctx)
 	if err != nil {
 		return nil, err
