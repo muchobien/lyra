@@ -11,13 +11,11 @@ import {
   IssueOpenedIcon,
   PersonIcon,
   PlusIcon,
-  SparkleIcon,
 } from "@primer/octicons-react";
 import { ErrorNotice } from "@/components/controls/ErrorNotice";
 import { ActorName } from "@/components/metadata/ActorName";
 import { DateTime } from "@/components/metadata/DateTime";
 import { MarkdownEditor } from "@/components/markdown/MarkdownEditor";
-import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import { itemListPaths, itemDetailPaths } from "@/routing/paths";
 import "@/styles/controls.css";
 import "@/styles/workspace.css";
@@ -44,17 +42,10 @@ export function ItemList({ kind }: ItemListProps) {
     title,
     description,
     creation,
-    draft,
-    labelSuggestion,
-    suggestedLabels,
     retry,
     filtersChanged,
     preventSearchSubmit,
     titleChanged,
-    draftDescription,
-    insertDraft,
-    suggestLabels,
-    applyLabels,
     submit,
   } = useConnect({ kind });
 
@@ -306,64 +297,9 @@ export function ItemList({ kind }: ItemListProps) {
             value={description.value}
             onChange={description.setValue}
           />
-          {kind === "pulls" && draft.available && (
-            <button
-              className="lyra-controls-button"
-              type="button"
-              onClick={draftDescription}
-              disabled={draft.pending}
-            >
-              <SparkleIcon size={16} />
-              Draft description from commits
-            </button>
-          )}
-          <OnDeviceOutput
-            title="Draft description"
-            output={draft.output}
-            progress={draft.progress}
-            error={draft.error}
-            pending={draft.pending}
-            onStop={draft.stop}
-            onDiscard={draft.reset}
-          >
-            <button className="lyra-controls-button" type="button" onClick={insertDraft}>
-              Insert
-            </button>
-          </OnDeviceOutput>
           <Field label="Labels">
             <input name="labels" placeholder="bug, enhancement" list="available-labels" />
           </Field>
-          {labelSuggestion.available && !!labels.data?.length && (
-            <button
-              className="lyra-controls-button"
-              type="button"
-              onClick={suggestLabels}
-              disabled={labelSuggestion.pending || !title.value.trim()}
-            >
-              <SparkleIcon size={16} />
-              Suggest labels
-            </button>
-          )}
-          <OnDeviceOutput
-            title="Suggested labels"
-            output={labelSuggestion.output}
-            progress={labelSuggestion.progress}
-            error={labelSuggestion.error}
-            pending={labelSuggestion.pending}
-            onStop={labelSuggestion.stop}
-            onDiscard={labelSuggestion.reset}
-            content={
-              <p className="lyra-workspace-plainText">
-                {suggestedLabels.length ? suggestedLabels.join(", ") : "No label fits."}
-              </p>
-            }
-          >
-            {suggestedLabels.length > 0 && (
-              <button className="lyra-controls-button" type="button" onClick={applyLabels}>
-                Apply
-              </button>
-            )}
-          </OnDeviceOutput>
           <datalist id="available-labels">
             {labels.data?.map((label) => (
               <option key={label.name} value={label.name}>
