@@ -13,7 +13,14 @@ import {
 import { useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext, request } from "@/api";
-import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
+import {
+  useGetRun,
+  useCancelRun,
+  useRerunRun,
+  useListArtifacts,
+  getGetJobLogsUrl,
+  getDownloadArtifactUrl,
+} from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
 import { classify } from "@/components/code/LogText/logic";
 
@@ -61,6 +68,21 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     )[0];
   const active = !!run.data && ["waiting", "blocked", "running"].includes(run.data.status);
   const logsURL = selected ? getGetJobLogsUrl(owner, repo, number, selected.id) : "";
+  const artifactList = useListArtifacts(owner, repo, number, {
+    query: { refetchInterval: active ? 2000 : false },
+  });
+  const sizeFormat = new Intl.NumberFormat(undefined, {
+    style: "unit",
+    unit: "byte",
+    unitDisplay: "narrow",
+    notation: "compact",
+  });
+  const artifacts = (artifactList.data || []).map((artifact) => ({
+    ...artifact,
+    url: getDownloadArtifactUrl(owner, repo, number, artifact.name),
+    sizeLabel: sizeFormat.format(artifact.size),
+    jobName: jobs.find((job) => job.id === artifact.job_id)?.name || "",
+  }));
   const logKey = [logsURL, selected?.attempt || 0, selected?.started_at || "queued"];
 
   const logs = useQuery({
@@ -364,6 +386,7 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     active,
     logsURL,
     logs,
+    artifacts,
     targetLine,
     annotations,
     following,

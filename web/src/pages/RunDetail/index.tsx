@@ -6,6 +6,7 @@ import {
   DownloadIcon,
   GitBranchIcon,
   InfoIcon,
+  PackageIcon,
   PauseIcon,
   PlayIcon,
   SyncIcon,
@@ -41,6 +42,7 @@ export function RunDetail({ number }: RunDetailProps) {
     active,
     logsURL,
     logs,
+    artifacts,
     targetLine,
     annotations,
     following,
@@ -485,6 +487,35 @@ export function RunDetail({ number }: RunDetailProps) {
           {jobs.length === 0 && <p className="lyra-workspace-empty">This run has no jobs.</p>}
         </section>
       </div>
+
+      {artifacts.length > 0 && (
+        <section className="lyra-actions-artifacts" aria-label="Artifacts">
+          <h2>
+            Artifacts <span className="lyra-workspace-count">{artifacts.length}</span>
+          </h2>
+          {artifacts.map((artifact) => (
+            <div className="lyra-workspace-row" key={artifact.id}>
+              <PackageIcon size={16} />
+              <div className="lyra-workspace-grow">
+                <strong>{artifact.name}</strong>
+                <p className="lyra-workspace-meta">
+                  {artifact.sizeLabel} · {artifact.jobName}
+                  {artifact.expires_at && (
+                    <>
+                      {" "}
+                      · expires <DateTime value={artifact.expires_at} />
+                    </>
+                  )}
+                </p>
+              </div>
+              <a className="lyra-controls-button" href={artifact.url} download>
+                <DownloadIcon size={16} />
+                Download
+              </a>
+            </div>
+          ))}
+        </section>
+      )}
 
       <div id="rerun-options" popover="auto" className="lyra-actions-rerunMenu">
         <button type="button" onClick={rerunClicked} data-failed="false" disabled={rerun.isPending}>

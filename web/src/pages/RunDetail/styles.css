@@ -54,6 +54,19 @@
   }
 }
 
+.lyra-actions-artifacts {
+  margin-top: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  & h2 {
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid var(--soft-border);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+}
+
 .lyra-actions-logSection {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
