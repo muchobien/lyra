@@ -8,7 +8,6 @@ import {
   InfoIcon,
   PauseIcon,
   PlayIcon,
-  SparkleIcon,
   SyncIcon,
   XCircleIcon,
 } from "@primer/octicons-react";
@@ -22,7 +21,6 @@ import { RunState } from "@/components/status/RunState";
 import { Status } from "@/components/status/Status";
 import { ConfirmDialog } from "@/components/forms/ConfirmDialog";
 import { FormError } from "@/components/forms/FormError";
-import { OnDeviceOutput } from "@/components/ai/OnDeviceOutput";
 import { LogText } from "@/components/code/LogText";
 import { matchesQuery } from "@/components/code/LogText/logic";
 import "@/styles/controls.css";
@@ -53,13 +51,10 @@ export function RunDetail({ number }: RunDetailProps) {
     matchIndex,
     cancel,
     rerun,
-    explanation,
-    explainedJob,
     retry,
     retryLogs,
     rerunClicked,
     cancelRun,
-    explainFailure,
     annotationClicked,
     toggleFollow,
     logScrolled,
@@ -376,21 +371,6 @@ export function RunDetail({ number }: RunDetailProps) {
                 {following ? "Pause following" : "Resume following"}
               </button>
             )}
-            {explanation.available &&
-              !active &&
-              selected?.status === "failure" &&
-              logs.data?.done &&
-              logLines.length > 0 && (
-                <button
-                  type="button"
-                  className="lyra-controls-button"
-                  onClick={explainFailure}
-                  disabled={explanation.pending}
-                >
-                  <SparkleIcon size={16} />
-                  Explain failure
-                </button>
-              )}
             {selected && (
               <a
                 href={logsURL}
@@ -458,17 +438,6 @@ export function RunDetail({ number }: RunDetailProps) {
               Show timestamps
             </label>
           </div>
-          {explainedJob === selected?.id && (
-            <OnDeviceOutput
-              title="Why this job failed"
-              output={explanation.output}
-              progress={explanation.progress}
-              error={explanation.error}
-              pending={explanation.pending}
-              onStop={explanation.stop}
-              onDiscard={explanation.reset}
-            />
-          )}
           {active && highlightedStep && (
             <p className="lyra-actions-activeStep">
               <Status value="running" />

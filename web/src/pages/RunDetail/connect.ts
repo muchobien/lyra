@@ -15,8 +15,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IdentityContext, request } from "@/api";
 import { useGetRun, useCancelRun, useRerunRun, getGetJobLogsUrl } from "@/api/generated/lyra";
 import { repositoryQueries } from "@/api/repositoryQueries";
-import { englishText, useOnDeviceModel } from "@/hooks/useOnDeviceModel";
-import { classify, readableText } from "@/components/code/LogText/logic";
+import { classify } from "@/components/code/LogText/logic";
 
 type Logs = { lines: string[]; times: string[]; offset: number; done: boolean };
 
@@ -114,11 +113,6 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
       }),
     [logs.data?.lines, selected],
   );
-
-  const explanation = useOnDeviceModel("language-model", async () =>
-    "LanguageModel" in self ? LanguageModel.availability(englishText) : "unavailable",
-  );
-  const [explainedJob, setExplainedJob] = useState(0);
 
   const [following, setFollowing] = useState(true);
   const [timestamps, setTimestamps] = useState(false);
@@ -281,44 +275,6 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     cancel.mutate({ owner, repo, number });
   }
 
-  function explainFailure() {
-    if (!selected || !logs.data) {
-      return;
-    }
-    const step = selected.steps.find((entry) => entry.result === "failure");
-    let lines = (
-      step
-        ? logs.data.lines.slice(step.log_index, step.log_index + step.log_length)
-        : logs.data.lines
-    ).flatMap((line) => readableText(line) ?? []);
-    setExplainedJob(selected.id);
-    void explanation.run(async (signal, monitor) => {
-      const session = await LanguageModel.create({
-        ...englishText,
-        initialPrompts: [
-          {
-            role: "system",
-            content:
-              "You help a developer understand why a CI job failed. Answer in Markdown: one sentence with the most likely cause, the log lines that show it in a code block, and a suggested fix. Be brief. If the log doesn't show the cause, say so.",
-          },
-        ],
-        signal,
-        monitor,
-      });
-      const prompt = (tail: string[]) =>
-        `Job "${selected.name}"${step ? `, step "${step.name}"` : ""}. The end of its log:\n\n${tail.join("\n")}`;
-      lines = lines.slice(-400);
-      while (
-        lines.length > 20 &&
-        (await session.measureContextUsage(prompt(lines), { signal })) >
-          session.contextWindow - session.contextUsage - 1024
-      ) {
-        lines = lines.slice(Math.floor(lines.length / 4));
-      }
-      return session.promptStreaming(prompt(lines), { signal });
-    });
-  }
-
   function annotationClicked(event: MouseEvent<HTMLButtonElement>) {
     const { step, line } = event.currentTarget.dataset;
     const panel = logPanel.current;
@@ -418,13 +374,10 @@ export function useConnect({ number }: Pick<RunDetailProps, "number">) {
     matchIndex,
     cancel,
     rerun,
-    explanation,
-    explainedJob,
     retry,
     retryLogs,
     rerunClicked,
     cancelRun,
-    explainFailure,
     annotationClicked,
     toggleFollow,
     logScrolled,
