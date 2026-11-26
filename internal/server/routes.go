@@ -57,6 +57,9 @@ func (s *Server) Handler() http.Handler {
 	pingPath, pingHandler := pingv1connect.NewPingServiceHandler(pingService{})
 	router.Handle("/api/actions"+runnerPath+"*", http.StripPrefix("/api/actions", runnerHandler))
 	router.Handle("/api/actions"+pingPath+"*", http.StripPrefix("/api/actions", pingHandler))
+	router.Post(artifactService+"{method}", s.handleArtifactService)
+	router.Put(artifactService+"UploadArtifact", s.handleArtifactUpload)
+	router.Get(artifactService+"DownloadArtifact", s.handleArtifactDownload)
 	router.Get("/api/repos/{owner}/{repo}/releases/tags/*", api(s.handleReleaseByTag))
 	router.Handle("/api/*", api(func(http.ResponseWriter, *http.Request) error {
 		return notFound("no such API endpoint")

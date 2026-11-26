@@ -15,6 +15,39 @@ components:
         - user
         - via
       type: object
+    Artifact:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        expires_at:
+          format: date-time
+          type:
+            - string
+            - "null"
+        id:
+          format: int64
+          type: integer
+        job_id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        sha256:
+          type: string
+        size:
+          format: int64
+          type: integer
+      required:
+        - id
+        - job_id
+        - name
+        - size
+        - sha256
+        - created_at
+        - expires_at
+      type: object
     Asset:
       additionalProperties: false
       properties:
@@ -5559,6 +5592,89 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
           description: Error
       summary: Get a run with its jobs and steps
+      tags:
+        - Actions
+  /api/repos/{owner}/{repo}/runs/{number}/artifacts:
+    get:
+      description: "Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days."
+      operationId: listArtifacts
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: number
+          required: true
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/Artifact"
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: List a run's artifacts
+      tags:
+        - Actions
+  /api/repos/{owner}/{repo}/runs/{number}/artifacts/{name}:
+    get:
+      description: "Scope: read. Supports range requests."
+      operationId: downloadArtifact
+      parameters:
+        - in: path
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: repo
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: number
+          required: true
+          schema:
+            format: int64
+            minimum: 1
+            type: integer
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/zip:
+              schema:
+                type: string
+          description: The artifact's zip; its ETag is its sha256
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Error
+      summary: Download an artifact as a zip
       tags:
         - Actions
   /api/repos/{owner}/{repo}/runs/{number}/cancel:

@@ -137,6 +137,17 @@ type Actor struct {
 	Via     string  `json:"via"`
 }
 
+// Artifact defines model for Artifact.
+type Artifact struct {
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Id        int64      `json:"id"`
+	JobId     int64      `json:"job_id"`
+	Name      string     `json:"name"`
+	Sha256    string     `json:"sha256"`
+	Size      int64      `json:"size"`
+}
+
 // Asset defines model for Asset.
 type Asset struct {
 	ContentType string    `json:"content_type"`
@@ -2378,6 +2389,20 @@ type ClientInterface interface {
 	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number} (the `GetRun` operationId).
 	GetRun(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListArtifacts List a run's artifacts
+	//
+	// Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts (the `ListArtifacts` operationId).
+	ListArtifacts(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DownloadArtifact Download an artifact as a zip
+	//
+	// Scope: read. Supports range requests.
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts/{name} (the `DownloadArtifact` operationId).
+	DownloadArtifact(ctx context.Context, owner string, repo string, number int64, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CancelRun Cancel a run
 	//
 	// Scope: write.
@@ -4209,6 +4234,40 @@ func (c *Client) ListRuns(ctx context.Context, owner string, repo string, params
 // Corresponds with GET /api/repos/{owner}/{repo}/runs/{number} (the `GetRun` operationId).
 func (c *Client) GetRun(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRunRequest(c.Server, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListArtifacts List a run's artifacts
+//
+// Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts (the `ListArtifacts` operationId).
+func (c *Client) ListArtifacts(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListArtifactsRequest(c.Server, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DownloadArtifact Download an artifact as a zip
+//
+// Scope: read. Supports range requests.
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts/{name} (the `DownloadArtifact` operationId).
+func (c *Client) DownloadArtifact(ctx context.Context, owner string, repo string, number int64, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadArtifactRequest(c.Server, owner, repo, number, name)
 	if err != nil {
 		return nil, err
 	}
@@ -8773,6 +8832,109 @@ func NewGetRunRequest(server string, owner string, repo string, number int64) (*
 	return req, nil
 }
 
+// NewListArtifactsRequest constructs an http.Request for the ListArtifacts method
+func NewListArtifactsRequest(server string, owner string, repo string, number int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/runs/" + pathParam2 + "/artifacts"
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDownloadArtifactRequest constructs an http.Request for the DownloadArtifact method
+func NewDownloadArtifactRequest(server string, owner string, repo string, number int64, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "owner", owner, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "repo", repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := "/api/repos/" + pathParam0 + "/" + pathParam1 + "/runs/" + pathParam2 + "/artifacts/" + pathParam3
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCancelRunRequest constructs an http.Request for the CancelRun method
 func NewCancelRunRequest(server string, owner string, repo string, number int64) (*http.Request, error) {
 	var err error
@@ -10925,6 +11087,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number} (the `GetRun` operationId).
 	GetRunWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*GetRunResponse, error)
+
+	// ListArtifactsWithResponse List a run's artifacts
+	//
+	// Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts (the `ListArtifacts` operationId).
+	ListArtifactsWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*ListArtifactsResponse, error)
+
+	// DownloadArtifactWithResponse Download an artifact as a zip
+	//
+	// Scope: read. Supports range requests.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts/{name} (the `DownloadArtifact` operationId).
+	DownloadArtifactWithResponse(ctx context.Context, owner string, repo string, number int64, name string, reqEditors ...RequestEditorFn) (*DownloadArtifactResponse, error)
 
 	// CancelRunWithResponse Cancel a run
 	//
@@ -14638,6 +14818,95 @@ func (r GetRunResponse) ContentType() string {
 	return ""
 }
 
+type ListArtifactsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Artifact
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListArtifactsResponse) GetJSON200() *[]Artifact {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListArtifactsResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListArtifactsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListArtifactsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListArtifactsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListArtifactsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DownloadArtifactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorBody
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DownloadArtifactResponse) GetJSONDefault() *ErrorBody {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DownloadArtifactResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadArtifactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadArtifactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DownloadArtifactResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CancelRunResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17234,6 +17503,36 @@ func (c *ClientWithResponses) GetRunWithResponse(ctx context.Context, owner stri
 		return nil, err
 	}
 	return ParseGetRunResponse(rsp)
+}
+
+// ListArtifactsWithResponse List a run's artifacts
+//
+// Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, or earlier when the upload set retention-days.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts (the `ListArtifacts` operationId).
+func (c *ClientWithResponses) ListArtifactsWithResponse(ctx context.Context, owner string, repo string, number int64, reqEditors ...RequestEditorFn) (*ListArtifactsResponse, error) {
+	rsp, err := c.ListArtifacts(ctx, owner, repo, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListArtifactsResponse(rsp)
+}
+
+// DownloadArtifactWithResponse Download an artifact as a zip
+//
+// Scope: read. Supports range requests.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/repos/{owner}/{repo}/runs/{number}/artifacts/{name} (the `DownloadArtifact` operationId).
+func (c *ClientWithResponses) DownloadArtifactWithResponse(ctx context.Context, owner string, repo string, number int64, name string, reqEditors ...RequestEditorFn) (*DownloadArtifactResponse, error) {
+	rsp, err := c.DownloadArtifact(ctx, owner, repo, number, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadArtifactResponse(rsp)
 }
 
 // CancelRunWithResponse Cancel a run
@@ -20065,6 +20364,65 @@ func ParseGetRunResponse(rsp *http.Response) (*GetRunResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListArtifactsResponse parses an HTTP response from a ListArtifactsWithResponse call
+func ParseListArtifactsResponse(rsp *http.Response) (*ListArtifactsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListArtifactsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Artifact
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorBody
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadArtifactResponse parses an HTTP response from a DownloadArtifactWithResponse call
+func ParseDownloadArtifactResponse(rsp *http.Response) (*DownloadArtifactResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadArtifactResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorBody
 		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {

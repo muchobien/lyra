@@ -227,6 +227,10 @@ func (service runnerService) taskContext(assignment store.Assignment, token stri
 		return nil, err
 	}
 	refType, refName := refKind(run.Ref)
+	runtime, err := service.server.runtimeToken(run.ID, job.ID, assignment.Task.ID)
+	if err != nil {
+		return nil, err
+	}
 	return structpb.NewStruct(map[string]any{
 		"actor":                       run.Author.User,
 		"repository":                  run.Repo,
@@ -248,6 +252,8 @@ func (service runnerService) taskContext(assignment store.Assignment, token stri
 		"head_ref":                    run.HeadRef,
 		"forgejo_default_actions_url": config.DefaultActionsURL,
 		"gitea_default_actions_url":   config.DefaultActionsURL,
+		"forgejo_runtime_token":       runtime,
+		"gitea_runtime_token":         runtime,
 	})
 }
 

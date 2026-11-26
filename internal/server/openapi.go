@@ -474,6 +474,19 @@ func (s *Server) registerRuns(api huma.API) {
 		Summary: "Rerun a run", Description: "Scope: write.",
 	}, s.handleRerunRun)
 	register(api, huma.Operation{
+		OperationID: "listArtifacts", Method: http.MethodGet, Path: runs + "/{number}/artifacts", Tags: tags,
+		Summary: "List a run's artifacts",
+		Description: "Scope: read. Jobs upload artifacts with upload-artifact; they're deleted with the run, " +
+			"or earlier when the upload set retention-days.",
+	}, s.handleListArtifacts)
+	register(api, huma.Operation{
+		OperationID: "downloadArtifact", Method: http.MethodGet, Path: runs + "/{number}/artifacts/{name}",
+		Tags: tags, Summary: "Download an artifact as a zip", Description: "Scope: read. Supports range requests.",
+		Responses: map[string]*huma.Response{
+			"200": text("application/zip", "The artifact's zip; its ETag is its sha256"),
+		},
+	}, stream[artifactInput](s.handleDownloadArtifact))
+	register(api, huma.Operation{
 		OperationID: "dispatchWorkflow", Method: http.MethodPost, Path: "/api/repos/{owner}/{repo}/workflows/dispatch",
 		Tags: tags, DefaultStatus: http.StatusCreated, Summary: "Run a workflow with workflow_dispatch",
 		Description: "Scope: write. Unknown inputs are refused, and choice and boolean values are checked.",

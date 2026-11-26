@@ -64,6 +64,27 @@ exist.
 - **Events:** `run.queued`, `job.completed`, `run.completed` (with the result) and
   `run.cancelled`.
 
+## Artifacts
+
+Jobs pass files to later jobs, and keep build outputs, with the v4 artifact actions. Use
+Forgejo's builds of them, `https://code.forgejo.org/forgejo/upload-artifact@v4` and
+`https://code.forgejo.org/forgejo/download-artifact@v4`: upstream `actions/upload-artifact`
+and `actions/download-artifact` from v4 refuse to run on servers other than github.com.
+
+- **Protocol:** Lyra serves the artifact service at
+  `/twirp/github.actions.results.api.v1.ArtifactService/` on the address the runner reaches it
+  at. Each job gets a runtime token (`ACTIONS_RUNTIME_TOKEN`), signed with a key derived from
+  the secrets key, that works for its own run while the job runs. Upload and download URLs are
+  signed the same way and expire after an hour.
+- **Names** are unique within a run. A rerun of the job that uploaded an artifact replaces it;
+  another job uploading the same name fails.
+- **Storage:** each artifact is one zip in [storage](operations.md#storage), included in
+  backups and `admin storage-check`.
+- **Reading them:** `lyra run artifacts` lists a run's artifacts, `lyra run download` saves
+  one as `<name>.zip` and checks its sha256, and the run page links each one.
+- **Retention:** artifacts are deleted with their run, or earlier when the upload sets
+  `retention-days`. Uploads that aren't finalized within a day are deleted.
+
 ## Checks
 
 `lyra pr view` includes `checks`, and `lyra pr checks` prints them alone: the jobs of the
